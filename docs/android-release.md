@@ -59,6 +59,8 @@ npm run android:release
 - 支持在 App 内配置 GPT、Gemini、豆包文本、Doubao-Seed-Audio 1.0。
 - 没有 API Key 时使用演示模式。
 - 支持应用内播放器和自定义背景图。
+- 支持角色音色参考上传；参考音频会随音频生成请求传入适配器。
+- 支持跳过编剧流程，直接上传音频提示词生成音频。
 - 生成产物以 App 内 Blob/Data URL 方式提供下载和播放。
 
 ## 后续正式化建议

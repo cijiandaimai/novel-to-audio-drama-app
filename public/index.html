@@ -94,6 +94,53 @@
               <div id="resultBox" class="result-box hidden"></div>
             </section>
           </div>
+
+          <div class="creator-layout extra-tools">
+            <section class="panel">
+              <div class="panel-title-row">
+                <div>
+                  <h3>角色音色参考</h3>
+                  <p>为角色上传参考音频，生成时会随请求发送给音频模型。</p>
+                </div>
+                <button id="clearVoiceRefs" class="secondary">清空</button>
+              </div>
+              <div class="voice-ref-form">
+                <label class="field">
+                  <span>角色名</span>
+                  <input id="voiceRoleInput" type="text" placeholder="例如：林舟、沈清、旁白" />
+                </label>
+                <label class="field">
+                  <span>参考音频</span>
+                  <input id="voiceRefFile" type="file" accept="audio/*" />
+                </label>
+                <button id="addVoiceRef" class="primary">添加音色参考</button>
+              </div>
+              <div id="voiceRefList" class="voice-ref-list"></div>
+              <p class="hint">建议每个角色上传 5-20 秒清晰干声；不要上传未授权真人声音。</p>
+            </section>
+
+            <section class="panel">
+              <div class="panel-title-row">
+                <div>
+                  <h3>直接用提示词生成音频</h3>
+                  <p>跳过编剧和提示词制作，直接上传已有音频提示词。</p>
+                </div>
+              </div>
+              <label class="field">
+                <span>上传提示词文件</span>
+                <input id="directPromptFile" type="file" accept=".txt,.md,.json" />
+              </label>
+              <label class="field">
+                <span>音频提示词</span>
+                <textarea id="directPromptInput" class="short-textarea" placeholder="可粘贴 JSON 数组，或用 --- 分隔多段提示词。"></textarea>
+              </label>
+              <div class="actions">
+                <button id="runDirectAudioButton" class="primary">直接生成音频</button>
+                <button id="fillDirectPromptDemo" class="secondary">填入提示词示例</button>
+              </div>
+              <div id="directResultBox" class="result-box hidden"></div>
+            </section>
+          </div>
         </section>
 
         <section id="config" class="view">

@@ -1,4 +1,4 @@
-﻿import { optimizedPlan, runStandalonePipeline } from './mobile-pipeline.js';
+﻿import { optimizedPlan, runDirectAudioPipeline, runStandalonePipeline } from './mobile-pipeline.js';
 
 const defaultConfig = {
   gpt: {
@@ -38,6 +38,7 @@ const stageNames = [
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const playerBgKey = "playerBackgroundImage";
+const voiceRefsKey = "voiceReferences";
 
 function deepMerge(base, extra) {
   const out = structuredClone(base);
@@ -104,6 +105,148 @@ function playInApp(src, title) {
     playerTitle.textContent = `${title || "广播剧"}（点击播放）`;
   });
 }
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
+}
+
+function getVoiceReferences() {
+  try {
+    return JSON.parse(localStorage.getItem(voiceRefsKey) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveVoiceReferences(references) {
+  localStorage.setItem(voiceRefsKey, JSON.stringify(references.slice(0, 12)));
+  renderVoiceReferences();
+}
+
+function renderVoiceReferences() {
+  const box = $("#voiceRefList");
+  if (!box) return;
+  const references = getVoiceReferences();
+  if (!references.length) {
+    box.innerHTML = "<p class=\"hint\">还没有角色音色参考。添加后，完整创作和直接生成音频都会自动带上这些参考。</p>";
+    return;
+  }
+  box.innerHTML = "";
+  references.forEach((item) => {
+    const row = document.createElement("article");
+    row.className = "voice-ref-item";
+    row.innerHTML = `
+      <div>
+        <strong>${item.role}</strong>
+        <span>${item.fileName || "参考音频"}</span>
+      </div>
+      <audio controls src="${item.dataUrl}"></audio>
+      <button class="secondary" data-remove-voice-ref="${item.id}">删除</button>
+    `;
+    box.appendChild(row);
+  });
+}
+
+async function addVoiceReference() {
+  const role = $("#voiceRoleInput").value.trim();
+  const file = $("#voiceRefFile").files?.[0];
+  if (!role) {
+    alert("请先填写角色名。");
+    return;
+  }
+  if (!file) {
+    alert("请先选择参考音频文件。");
+    return;
+  }
+  const dataUrl = await fileToDataUrl(file);
+  const references = getVoiceReferences();
+  references.unshift({
+    id: `voice-${Date.now()}`,
+    role,
+    fileName: file.name,
+    mimeType: file.type || "audio/wav",
+    dataUrl
+  });
+  $("#voiceRoleInput").value = "";
+  $("#voiceRefFile").value = "";
+  saveVoiceReferences(references);
+}
+
+function fillDirectPromptDemo() {
+  $("#directPromptInput").value = `【音频类型】广播剧片段
+【时长】约 60 秒
+【整体情绪】雨夜、悬疑、克制，情绪逐步压低。
+【场景空间】旧档案室，室内安静，窗外雨声和远处车流。
+【音乐设计】低音量悬疑铺底，不要歌词，关键对白时音乐退后。
+【环境声】雨声贯穿，偶尔有远处车辆经过。
+【角色声线】旁白沉稳，林舟压低声线，沈清紧张克制。
+【对白内容】
+旁白：雨下得很密，旧城区的路灯像隔着一层雾。
+林舟（压低声音）：这件事……我本来不想再提。
+沈清（短吸气）：可现在，已经来不及了。
+【音效时间线】18 秒门轴轻响，42 秒杯子轻碰桌面。
+【混音要求】对白始终靠前，雨声和音乐在背景层。
+【禁止事项】不要朗诵腔，不要模仿真实名人声线。`;
+}
+
+async function runDirectAudio() {
+  const promptText = $("#directPromptInput").value.trim();
+  const title = $("#titleInput").value.trim() || "直接提示词音频";
+  if (!promptText) {
+    alert("请先上传或粘贴音频提示词。");
+    return;
+  }
+
+  $("#runDirectAudioButton").disabled = true;
+  $("#directResultBox").classList.add("hidden");
+  $("#directResultBox").textContent = "";
+  try {
+    const config = getConfig();
+    config.voiceReferences = getVoiceReferences();
+    let result;
+    try {
+      const response = await fetch("/api/audio-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title, promptText, config })
+      });
+      if (!response.ok) throw new Error("本地服务不可用");
+      result = await response.json();
+    } catch {
+      result = await runDirectAudioPipeline({ title, promptText, config });
+    }
+
+    const links = result.links || {};
+    $("#directResultBox").classList.remove("hidden");
+    $("#directResultBox").innerHTML = `
+      <strong>${result.title}</strong><br />
+      已跳过编剧流程，直接生成音频。<br />
+      <a href="${links.audioPrompts}" target="_blank">查看使用的提示词</a>　
+      ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">在播放器收听</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
+      <a href="${links.manifest}" target="_blank">查看任务详情</a>
+    `;
+    if (links.finalAudio) playInApp(links.finalAudio, result.title);
+    saveLocalHistory({
+      jobId: result.jobId,
+      title: result.title,
+      createdAt: new Date().toISOString(),
+      finalAudio: links.finalAudio,
+      finalAudioDataUrl: links.finalAudioDataUrl,
+      manifest: links.manifest
+    });
+  } catch (error) {
+    $("#directResultBox").classList.remove("hidden");
+    $("#directResultBox").innerHTML = `<strong>生成失败：</strong>${error.message}`;
+  } finally {
+    $("#runDirectAudioButton").disabled = false;
+  }
+}
+
 function loadConfigIntoForm() {
   const config = getConfig();
   $$("[data-config]").forEach((field) => {
@@ -235,6 +378,7 @@ async function runPipeline() {
       novelText,
       config: getConfig()
     };
+    payload.config.voiceReferences = getVoiceReferences();
     let result;
     try {
       const response = await fetch("/api/run", {
@@ -287,8 +431,17 @@ function bindEvents() {
   $("#saveConfig").addEventListener("click", saveConfigFromForm);
   $("#demoButton").addEventListener("click", fillDemo);
   $("#runButton").addEventListener("click", runPipeline);
+  $("#addVoiceRef").addEventListener("click", addVoiceReference);
+  $("#clearVoiceRefs").addEventListener("click", () => saveVoiceReferences([]));
+  $("#fillDirectPromptDemo").addEventListener("click", fillDirectPromptDemo);
+  $("#runDirectAudioButton").addEventListener("click", runDirectAudio);
   $("#refreshHistory").addEventListener("click", loadHistory);
   document.addEventListener("click", (event) => {
+    const removeVoiceRefButton = event.target.closest("[data-remove-voice-ref]");
+    if (removeVoiceRefButton) {
+      saveVoiceReferences(getVoiceReferences().filter((item) => item.id !== removeVoiceRefButton.dataset.removeVoiceRef));
+      return;
+    }
     const button = event.target.closest("[data-play-src]");
     if (!button) return;
     playInApp(button.dataset.playSrc, button.dataset.playTitle);
@@ -325,10 +478,19 @@ function bindEvents() {
       $("#titleInput").value = file.name.replace(/\.[^.]+$/, "");
     }
   });
+  $("#directPromptFile").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    $("#directPromptInput").value = await file.text();
+    if (!$("#titleInput").value.trim()) {
+      $("#titleInput").value = file.name.replace(/\.[^.]+$/, "");
+    }
+  });
 }
 
 loadConfigIntoForm();
 loadPlayerBackground();
+renderVoiceReferences();
 loadPlan();
 renderStages();
 bindEvents();

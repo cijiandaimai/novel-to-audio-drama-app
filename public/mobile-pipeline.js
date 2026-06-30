@@ -230,6 +230,54 @@ function parsePromptArray(text, title) {
   return fallbackAudioPrompts(text, title);
 }
 
+function normalizeAudioPrompts(input, title) {
+  if (Array.isArray(input)) {
+    return input.map((item, index) => ({
+      id: item.id || `scene-${String(index + 1).padStart(2, "0")}`,
+      title: item.title || `${title} 片段 ${index + 1}`,
+      durationSeconds: Number(item.durationSeconds || item.duration_seconds || 60),
+      prompt: String(item.prompt || item.text || item.content || "").trim()
+    })).filter((item) => item.prompt);
+  }
+  const text = String(input || "").trim();
+  if (!text) return [];
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    try {
+      return normalizeAudioPrompts(JSON.parse(jsonMatch[0]), title);
+    } catch {
+      // Treat as plain text below.
+    }
+  }
+  const blocks = text
+    .split(/\n\s*(?:---+|###\s*|片段\s*\d+[:：]?|Scene\s*\d+[:：]?)\s*\n/gi)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  const source = blocks.length > 1 ? blocks : text.split(/\n{3,}/).map((block) => block.trim()).filter(Boolean);
+  return source.map((prompt, index) => ({
+    id: `direct-${String(index + 1).padStart(2, "0")}`,
+    title: `${title} 提示词 ${index + 1}`,
+    durationSeconds: Math.min(90, Math.max(30, Math.ceil(prompt.length / 28))),
+    prompt
+  }));
+}
+
+function normalizeVoiceReferences(references = []) {
+  return (Array.isArray(references) ? references : [])
+    .map((item, index) => {
+      const dataUrl = String(item.dataUrl || item.url || "");
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",").pop() : String(item.audio_base64 || item.base64 || "");
+      return {
+        id: item.id || `voice-${index + 1}`,
+        role: String(item.role || item.name || `角色 ${index + 1}`).trim(),
+        fileName: String(item.fileName || item.file_name || "voice-reference.wav").trim(),
+        mimeType: String(item.mimeType || item.mime_type || "audio/wav").trim(),
+        audioBase64: base64
+      };
+    })
+    .filter((item) => item.role && item.audioBase64);
+}
+
 function createWavBlob(durationSeconds = 3, frequency = 0) {
   const sampleRate = 16000;
   const sampleCount = Math.max(sampleRate, Math.floor(durationSeconds * sampleRate));
@@ -282,7 +330,8 @@ async function writeMockAudio(segment, index) {
   };
 }
 
-async function callAudioEndpoint(audioConfig, segment, index) {
+async function callAudioEndpoint(audioConfig, segment, index, voiceReferences = []) {
+  const normalizedVoiceReferences = normalizeVoiceReferences(voiceReferences);
   const response = await fetch(audioConfig.endpoint, {
     method: "POST",
     headers: {
@@ -293,7 +342,13 @@ async function callAudioEndpoint(audioConfig, segment, index) {
       model: audioConfig.model || "doubao-seed-audio-1-0",
       prompt: segment.prompt,
       duration_seconds: segment.durationSeconds || 60,
-      format: "wav"
+      format: "wav",
+      voice_references: normalizedVoiceReferences.map((item) => ({
+        role: item.role,
+        file_name: item.fileName,
+        mime_type: item.mimeType,
+        audio_base64: item.audioBase64
+      }))
     })
   });
   const text = await response.text();
@@ -320,13 +375,13 @@ async function callAudioEndpoint(audioConfig, segment, index) {
   };
 }
 
-async function generateAudioSegments(audioConfig, prompts) {
+async function generateAudioSegments(audioConfig, prompts, voiceReferences = []) {
   const generated = [];
   for (let i = 0; i < prompts.length; i++) {
     const segment = prompts[i];
     if (audioConfig?.mode === "http" && audioConfig.endpoint && audioConfig.apiKey) {
       try {
-        generated.push(await callAudioEndpoint(audioConfig, segment, i));
+        generated.push(await callAudioEndpoint(audioConfig, segment, i, voiceReferences));
       } catch (error) {
         const fallback = await writeMockAudio(segment, i);
         generated.push({ ...fallback, error: error.message });
@@ -431,7 +486,7 @@ export async function runStandalonePipeline(input) {
   const audioPrompts = parsePromptArray(audioPromptRaw, title);
   stages.push({ name: "GPT 生成影视级音频提示词", output: JSON.stringify(audioPrompts, null, 2) });
 
-  const audio = await generateAudioSegments(config.audio || {}, audioPrompts);
+  const audio = await generateAudioSegments(config.audio || {}, audioPrompts, config.voiceReferences || []);
   stages.push({ name: "Doubao-Seed-Audio 1.0 生成并合成音频", output: JSON.stringify(audio.generated, null, 2) });
 
   const jobId = `mobile-${Date.now()}`;
@@ -453,6 +508,37 @@ export async function runStandalonePipeline(input) {
     links: {
       manifest: createTextUrl(JSON.stringify(manifest, null, 2), "application/json;charset=utf-8"),
       script2: createTextUrl(script2, "text/markdown;charset=utf-8"),
+      audioPrompts: createTextUrl(JSON.stringify(audioPrompts, null, 2), "application/json;charset=utf-8"),
+      finalAudio: audio.finalAudio,
+      finalAudioDataUrl: audio.finalAudioDataUrl,
+      outputFolder: null
+    }
+  };
+}
+
+export async function runDirectAudioPipeline(input) {
+  const title = safeName(input.title || "直接提示词音频");
+  const config = input.config || {};
+  const audioPrompts = normalizeAudioPrompts(input.prompts || input.promptText || input.text, title);
+  if (!audioPrompts.length) throw new Error("请先上传或粘贴音频提示词。");
+  const audio = await generateAudioSegments(config.audio || {}, audioPrompts, config.voiceReferences || []);
+  const jobId = `mobile-direct-${Date.now()}`;
+  const manifest = {
+    jobId,
+    title,
+    createdAt: new Date().toISOString(),
+    mode: "direct-audio",
+    voiceReferences: normalizeVoiceReferences(config.voiceReferences || []).map(({ audioBase64, ...rest }) => rest),
+    audioSegments: audio.generated,
+    finalAudio: audio.finalAudio
+  };
+
+  return {
+    jobId,
+    title,
+    manifest,
+    links: {
+      manifest: createTextUrl(JSON.stringify(manifest, null, 2), "application/json;charset=utf-8"),
       audioPrompts: createTextUrl(JSON.stringify(audioPrompts, null, 2), "application/json;charset=utf-8"),
       finalAudio: audio.finalAudio,
       finalAudioDataUrl: audio.finalAudioDataUrl,

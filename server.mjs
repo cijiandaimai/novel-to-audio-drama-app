@@ -288,6 +288,54 @@ function parsePromptArray(text, title, promptGuide) {
   return fallbackAudioPrompts(text, title, promptGuide);
 }
 
+function normalizeAudioPrompts(input, title, promptGuide) {
+  if (Array.isArray(input)) {
+    return input.map((item, index) => ({
+      id: item.id || `scene-${String(index + 1).padStart(2, "0")}`,
+      title: item.title || `${title} 片段 ${index + 1}`,
+      durationSeconds: Number(item.durationSeconds || item.duration_seconds || 60),
+      prompt: String(item.prompt || item.text || item.content || "").trim()
+    })).filter((item) => item.prompt);
+  }
+  const text = String(input || "").trim();
+  if (!text) return [];
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    try {
+      return normalizeAudioPrompts(JSON.parse(jsonMatch[0]), title, promptGuide);
+    } catch {
+      // Treat as plain text below.
+    }
+  }
+  const blocks = text
+    .split(/\n\s*(?:---+|###\s*|片段\s*\d+[:：]?|Scene\s*\d+[:：]?)\s*\n/gi)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  const source = blocks.length > 1 ? blocks : text.split(/\n{3,}/).map((block) => block.trim()).filter(Boolean);
+  return source.map((prompt, index) => ({
+    id: `direct-${String(index + 1).padStart(2, "0")}`,
+    title: `${title} 提示词 ${index + 1}`,
+    durationSeconds: Math.min(90, Math.max(30, Math.ceil(prompt.length / 28))),
+    prompt
+  }));
+}
+
+function normalizeVoiceReferences(references = []) {
+  return (Array.isArray(references) ? references : [])
+    .map((item, index) => {
+      const dataUrl = String(item.dataUrl || item.url || "");
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",").pop() : String(item.audio_base64 || item.base64 || "");
+      return {
+        id: item.id || `voice-${index + 1}`,
+        role: String(item.role || item.name || `角色 ${index + 1}`).trim(),
+        fileName: String(item.fileName || item.file_name || "voice-reference.wav").trim(),
+        mimeType: String(item.mimeType || item.mime_type || "audio/wav").trim(),
+        audioBase64: base64
+      };
+    })
+    .filter((item) => item.role && item.audioBase64);
+}
+
 function createWavBuffer(durationSeconds = 3, frequency = 0) {
   const sampleRate = 16000;
   const channels = 1;
@@ -332,7 +380,8 @@ async function writeMockAudio(jobDir, segment, index) {
   };
 }
 
-async function callAudioEndpoint(audioConfig, segment, jobDir, index) {
+async function callAudioEndpoint(audioConfig, segment, jobDir, index, voiceReferences = []) {
+  const normalizedVoiceReferences = normalizeVoiceReferences(voiceReferences);
   const response = await fetch(audioConfig.endpoint, {
     method: "POST",
     headers: {
@@ -343,7 +392,13 @@ async function callAudioEndpoint(audioConfig, segment, jobDir, index) {
       model: audioConfig.model || "doubao-seed-audio-1-0",
       prompt: segment.prompt,
       duration_seconds: segment.durationSeconds || 60,
-      format: "wav"
+      format: "wav",
+      voice_references: normalizedVoiceReferences.map((item) => ({
+        role: item.role,
+        file_name: item.fileName,
+        mime_type: item.mimeType,
+        audio_base64: item.audioBase64
+      }))
     })
   });
   const text = await response.text();
@@ -409,13 +464,13 @@ async function mergeSimpleWav(jobDir, segments) {
   return fileName;
 }
 
-async function generateAudioSegments(audioConfig, prompts, jobDir) {
+async function generateAudioSegments(audioConfig, prompts, jobDir, voiceReferences = []) {
   const generated = [];
   for (let i = 0; i < prompts.length; i++) {
     const segment = prompts[i];
     if (audioConfig?.mode === "http" && audioConfig.endpoint && audioConfig.apiKey) {
       try {
-        generated.push(await callAudioEndpoint(audioConfig, segment, jobDir, i));
+        generated.push(await callAudioEndpoint(audioConfig, segment, jobDir, i, voiceReferences));
       } catch (error) {
         const fallback = await writeMockAudio(jobDir, segment, i);
         generated.push({ ...fallback, error: error.message });
@@ -426,6 +481,45 @@ async function generateAudioSegments(audioConfig, prompts, jobDir) {
   }
   const finalAudio = await mergeSimpleWav(jobDir, generated);
   return { generated, finalAudio };
+}
+
+async function runDirectAudio(input) {
+  const title = safeName(input.title || "直接提示词音频");
+  const config = input.config || {};
+  const guide = await readPromptGuide();
+  const audioPrompts = normalizeAudioPrompts(input.prompts || input.promptText || input.text, title, guide);
+  if (!audioPrompts.length) throw new Error("请先上传或粘贴音频提示词。");
+
+  const jobId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomBytes(4).toString("hex")}`;
+  const jobDir = path.join(outputsDir, jobId);
+  await fs.mkdir(jobDir, { recursive: true });
+
+  const audio = await generateAudioSegments(config.audio || {}, audioPrompts, jobDir, config.voiceReferences || []);
+  const artifacts = [];
+  artifacts.push(await writeArtifact(jobDir, "01-direct-audio-prompts.json", JSON.stringify(audioPrompts, null, 2)));
+  const manifest = {
+    jobId,
+    title,
+    createdAt: new Date().toISOString(),
+    mode: "direct-audio",
+    voiceReferences: normalizeVoiceReferences(config.voiceReferences || []).map(({ audioBase64, ...rest }) => rest),
+    artifacts,
+    audioSegments: audio.generated,
+    finalAudio: audio.finalAudio
+  };
+  await writeArtifact(jobDir, "manifest.json", JSON.stringify(manifest, null, 2));
+
+  return {
+    jobId,
+    title,
+    manifest,
+    links: {
+      manifest: `/outputs/${jobId}/manifest.json`,
+      audioPrompts: `/outputs/${jobId}/01-direct-audio-prompts.json`,
+      finalAudio: audio.finalAudio ? `/outputs/${jobId}/${audio.finalAudio}` : null,
+      outputFolder: `/outputs/${jobId}/`
+    }
+  };
 }
 
 async function writeArtifact(jobDir, name, content) {
@@ -523,7 +617,7 @@ async function runPipeline(input) {
   const audioPrompts = parsePromptArray(audioPromptRaw, title, guide);
   stages.push({ name: "GPT 生成影视级音频提示词", output: JSON.stringify(audioPrompts, null, 2) });
 
-  const audio = await generateAudioSegments(config.audio || {}, audioPrompts, jobDir);
+  const audio = await generateAudioSegments(config.audio || {}, audioPrompts, jobDir, config.voiceReferences || []);
   stages.push({ name: "Doubao-Seed-Audio 1.0 生成并合成音频", output: JSON.stringify(audio, null, 2) });
 
   const artifacts = [];
@@ -633,6 +727,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/run") {
       const input = await readJson(req);
       const result = await runPipeline(input);
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/audio-direct") {
+      const input = await readJson(req);
+      const result = await runDirectAudio(input);
       sendJson(res, 200, result);
       return;
     }

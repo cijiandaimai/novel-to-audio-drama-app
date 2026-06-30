@@ -231,8 +231,36 @@ audio {
   gap: 18px;
 }
 
+.extra-tools {
+  margin-top: 18px;
+}
+
 .panel {
   padding: 20px;
+}
+
+.panel-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.panel-title-row h3,
+.panel-title-row p {
+  margin: 0;
+}
+
+.panel-title-row p,
+.hint {
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.hint {
+  margin: 12px 0 0;
+  font-size: 13px;
 }
 
 .field,
@@ -261,10 +289,51 @@ textarea {
   line-height: 1.7;
 }
 
+.short-textarea {
+  min-height: 230px;
+}
+
 .actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+.voice-ref-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(160px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.voice-ref-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.voice-ref-item {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 2fr) auto;
+  gap: 10px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fffdfa;
+}
+
+.voice-ref-item strong {
+  display: block;
+}
+
+.voice-ref-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.voice-ref-item audio {
+  width: 100%;
 }
 
 .status-panel {
@@ -471,7 +540,9 @@ textarea {
 
   .sample-grid,
   .config-grid,
-  .creator-layout {
+  .creator-layout,
+  .voice-ref-form,
+  .voice-ref-item {
     grid-template-columns: 1fr;
   }
 
