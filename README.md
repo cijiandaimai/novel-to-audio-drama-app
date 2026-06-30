@@ -30,3 +30,23 @@ http://localhost:4173
 没有配置 API Key 时，应用会使用演示模式，生成脚本、提示词和静音占位 WAV，便于先验证流程。
 
 Doubao-Seed-Audio 1.0 的正式接口如果仍处于体验或邀测阶段，可以先在配置页使用演示模式；拿到正式接口地址后，填入音频模型配置即可替换。
+
+## 安卓 App
+
+项目已接入 Capacitor，可生成 Android 原生工程：
+
+```bash
+npm install
+npm run android:sync
+npm run android:debug
+```
+
+调试 APK 通常位于：
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+详细说明见：
+
+[docs/android-release.md](docs/android-release.md)

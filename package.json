@@ -4,9 +4,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "android:init": "npx cap add android",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:debug": "cd android && gradlew.bat assembleDebug",
+    "android:release": "cd android && gradlew.bat bundleRelease"
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "@capacitor/android": "7.6.7",
+    "@capacitor/core": "7.6.7"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "7.6.7"
   }
 }

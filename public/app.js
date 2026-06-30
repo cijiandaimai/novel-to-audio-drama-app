@@ -1,4 +1,6 @@
-﻿const defaultConfig = {
+﻿import { optimizedPlan, runStandalonePipeline } from './mobile-pipeline.js';
+
+const defaultConfig = {
   gpt: {
     baseUrl: "https://api.openai.com/v1/chat/completions",
     model: "",
@@ -157,6 +159,7 @@ async function loadHistory() {
 
   box.innerHTML = "";
   merged.forEach((item) => {
+    const audioSrc = item.finalAudio || item.finalAudioDataUrl;
     const article = document.createElement("article");
     article.className = "history-item";
     article.innerHTML = `
@@ -165,8 +168,8 @@ async function loadHistory() {
         <p>${item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</p>
       </div>
       <div class="actions">
-        ${item.finalAudio ? `<button data-play-src="${item.finalAudio}" data-play-title="${item.title || "未命名作品"}">播放</button>` : ""}
-        ${item.finalAudio ? `<a href="${item.finalAudio}" target="_blank">下载</a>` : ""}
+        ${audioSrc ? `<button data-play-src="${audioSrc}" data-play-title="${item.title || "未命名作品"}">播放</button>` : ""}
+        ${audioSrc ? `<a href="${audioSrc}" target="_blank">下载</a>` : ""}
         ${item.manifest ? `<a href="${item.manifest}" target="_blank">详情</a>` : ""}
       </div>
     `;
@@ -182,7 +185,10 @@ async function loadPlan() {
       <ol>${plan.stages.map((stage) => `<li>${stage}</li>`).join("")}</ol>
     `;
   } catch {
-    $("#planStrip").innerHTML = "";
+    $("#planStrip").innerHTML = `
+      <h3>${optimizedPlan.title}</h3>
+      <ol>${optimizedPlan.stages.map((stage) => `<li>${stage}</li>`).join("")}</ol>
+    `;
   }
 }
 
@@ -224,17 +230,23 @@ async function runPipeline() {
   }, 1800);
 
   try {
-    const response = await fetch("/api/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        novelText,
-        config: getConfig()
-      })
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "生成失败");
+    const payload = {
+      title,
+      novelText,
+      config: getConfig()
+    };
+    let result;
+    try {
+      const response = await fetch("/api/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) throw new Error("本地服务不可用");
+      result = await response.json();
+    } catch {
+      result = await runStandalonePipeline(payload);
+    }
 
     clearInterval(fakeTimer);
     renderStages(false, stageNames.length);
@@ -256,6 +268,7 @@ async function runPipeline() {
       title: result.title,
       createdAt: new Date().toISOString(),
       finalAudio: links.finalAudio,
+      finalAudioDataUrl: links.finalAudioDataUrl,
       manifest: links.manifest
     });
   } catch (error) {
