@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>小说转广播剧</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">声</div>
+          <div>
+            <h1>小说转广播剧</h1>
+            <p>自动编剧、配音、配乐、合成</p>
+          </div>
+        </div>
+        <nav class="nav">
+          <button class="nav-item active" data-view="discover">发现</button>
+          <button class="nav-item" data-view="create">创作</button>
+          <button class="nav-item" data-view="config">API 配置</button>
+          <button class="nav-item" data-view="history">历史</button>
+        </nav>
+      </aside>
+
+      <main class="main">
+        <section id="discover" class="view active">
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">免费试听</p>
+              <h2>先听几段，再开始创作</h2>
+            </div>
+            <button class="primary" data-jump="create">开始创作</button>
+          </header>
+          <div class="sample-grid">
+            <article class="sample-card">
+              <span>悬疑</span>
+              <h3>午夜档案室</h3>
+              <p>低声旁白、远处脚步、门轴轻响，适合悬疑小说开场。</p>
+              <audio controls src=""></audio>
+            </article>
+            <article class="sample-card">
+              <span>都市</span>
+              <h3>雨夜重逢</h3>
+              <p>雨声、车流、克制对白，适合情感与现实题材。</p>
+              <audio controls src=""></audio>
+            </article>
+            <article class="sample-card">
+              <span>古风</span>
+              <h3>长街灯影</h3>
+              <p>木屐、远钟、弦乐铺底，适合古代剧情改编。</p>
+              <audio controls src=""></audio>
+            </article>
+          </div>
+          <section class="workflow-strip" id="planStrip"></section>
+        </section>
+
+        <section id="create" class="view">
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">自动流水线</p>
+              <h2>上传小说，生成广播剧</h2>
+            </div>
+            <button class="secondary" data-jump="config">检查 API</button>
+          </header>
+
+          <div class="creator-layout">
+            <section class="panel">
+              <label class="field">
+                <span>作品名</span>
+                <input id="titleInput" type="text" placeholder="例如：午夜档案室 第一集" />
+              </label>
+              <label class="field">
+                <span>上传小说文本</span>
+                <input id="fileInput" type="file" accept=".txt,.md,.text" />
+              </label>
+              <label class="field">
+                <span>小说内容</span>
+                <textarea id="novelInput" placeholder="上传 .txt/.md，或直接粘贴小说章节内容。"></textarea>
+              </label>
+              <div class="actions">
+                <button id="runButton" class="primary">自动执行完整方案</button>
+                <button id="demoButton" class="secondary">填入演示片段</button>
+              </div>
+            </section>
+
+            <section class="panel status-panel">
+              <div class="status-head">
+                <h3>执行状态</h3>
+                <span id="runStatus">待开始</span>
+              </div>
+              <ol id="stageList" class="stage-list"></ol>
+              <div id="resultBox" class="result-box hidden"></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="config" class="view">
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">傻瓜式配置</p>
+              <h2>把自己的 API 接进来</h2>
+            </div>
+            <button id="saveConfig" class="primary">保存配置</button>
+          </header>
+
+          <div class="config-grid">
+            <section class="panel provider">
+              <h3>GPT：总控与剧本</h3>
+              <p>用于故事骨架、剧本 1、剧本 2 和音频提示词拆分。</p>
+              <label>接口地址<input data-config="gpt.baseUrl" placeholder="https://api.openai.com/v1/chat/completions" /></label>
+              <label>模型 ID<input data-config="gpt.model" placeholder="填写你的 GPT 模型 ID" /></label>
+              <label>API Key<input data-config="gpt.apiKey" type="password" placeholder="sk-..." /></label>
+              <div class="tutorial">购买后复制 API Key，粘贴到这里。接口地址可用默认，也可填兼容接口。</div>
+            </section>
+
+            <section class="panel provider">
+              <h3>Gemini：场景扩写</h3>
+              <p>用于补足剧情、场景动作和戏剧冲突。</p>
+              <label>模型 ID<input data-config="gemini.model" placeholder="例如 gemini-..." /></label>
+              <label>API Key<input data-config="gemini.apiKey" type="password" placeholder="Google AI Studio Key" /></label>
+              <label>自定义接口<input data-config="gemini.endpoint" placeholder="可留空" /></label>
+              <div class="tutorial">在 Google AI Studio 获取 Key；留空接口时会自动拼接官方 generateContent 地址。</div>
+            </section>
+
+            <section class="panel provider">
+              <h3>豆包文本：中文台词</h3>
+              <p>用于中文对白润色、角色语气统一。</p>
+              <label>接口地址<input data-config="doubao.baseUrl" placeholder="https://ark.cn-beijing.volces.com/api/v3/chat/completions" /></label>
+              <label>模型 ID<input data-config="doubao.model" placeholder="doubao-seed-2-1-pro-260628" /></label>
+              <label>API Key<input data-config="doubao.apiKey" type="password" placeholder="火山方舟 API Key" /></label>
+              <div class="tutorial">在火山方舟开通模型服务并创建 API Key，然后填入模型 ID。</div>
+            </section>
+
+            <section class="panel provider">
+              <h3>Doubao-Seed-Audio 1.0：声音导演</h3>
+              <p>逐段生成对白、音乐、音效和环境声一体化音频。</p>
+              <label>模式
+                <select data-config="audio.mode">
+                  <option value="mock">演示模式：生成静音占位音频</option>
+                  <option value="http">HTTP：调用邀测/自定义接口</option>
+                </select>
+              </label>
+              <label>接口地址<input data-config="audio.endpoint" placeholder="填 Doubao Audio 正式接口地址" /></label>
+              <label>模型 ID<input data-config="audio.model" placeholder="doubao-seed-audio-1-0" /></label>
+              <label>API Key<input data-config="audio.apiKey" type="password" placeholder="火山方舟 API Key" /></label>
+              <div class="tutorial">当前公开资料显示该模型处于体验/邀测阶段；正式接口开放后填入地址即可替换演示模式。</div>
+            </section>
+          </div>
+        </section>
+
+        <section id="history" class="view">
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">创作历史</p>
+              <h2>继续收听或下载成品</h2>
+            </div>
+            <button id="refreshHistory" class="secondary">刷新</button>
+          </header>
+          <div id="historyList" class="history-list"></div>
+        </section>
+      </main>
+
+      <section class="player-dock" id="playerDock">
+        <div class="player-art" id="playerArt">
+          <div class="player-shade">
+            <div>
+              <p class="eyebrow">应用内播放器</p>
+              <h3 id="playerTitle">选择一段广播剧开始收听</h3>
+            </div>
+            <audio id="mainPlayer" controls></audio>
+            <div class="player-tools">
+              <label class="image-picker">
+                背景图
+                <input id="playerBgFile" type="file" accept="image/*" />
+              </label>
+              <input id="playerBgUrl" type="url" placeholder="或粘贴图片链接" />
+              <button id="applyBgUrl" class="secondary">应用</button>
+              <button id="clearBg" class="secondary">清除</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
