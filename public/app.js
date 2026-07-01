@@ -154,10 +154,19 @@ const apiHelp = {
 };
 
 const quizAnswers = {
+  age: ["adult", "unknown", "fiction"],
   consent: ["clear", "coercion", "renew"],
   sti: ["screening", "condom", "hpv"],
-  pregnancy: ["ec", "implant", "double"],
+  pregnancy: ["ec", "notAbortion", "double"],
   law: ["minor", "force", "exploit"]
+};
+
+const quizNames = {
+  age: "成年与未成年人保护",
+  consent: "同意边界",
+  sti: "性传播感染和保护",
+  pregnancy: "避孕和紧急避孕",
+  law: "内容禁区"
 };
 
 function deepMerge(base, extra) {
@@ -1010,16 +1019,29 @@ function selectedQuizValues(key) {
   return $$(`[data-quiz="${key}"] input:checked`).map((input) => input.value).sort();
 }
 
+function selectedQuizLabels(key) {
+  return $$(`[data-quiz="${key}"] input:checked`).map((input) =>
+    input.closest("label")?.textContent.trim() || input.value
+  );
+}
+
 function sameValues(a, b) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 function submitMidnightQuiz() {
-  const passed = Object.entries(quizAnswers).every(([key, answers]) =>
-    sameValues(selectedQuizValues(key), [...answers].sort())
-  );
+  const results = Object.entries(quizAnswers).map(([key, answers]) => ({
+    key,
+    ok: sameValues(selectedQuizValues(key), [...answers].sort()),
+    selected: selectedQuizLabels(key)
+  }));
+  const passed = results.every((result) => result.ok);
   if (!passed) {
-    $("#midnightQuizResult").innerHTML = "<p class=\"fail\">答案不完整或有误。请重新阅读题目：这个功能只面向成年人，必须理解同意、避孕、感染预防和内容边界。</p>";
+    const wrong = results
+      .filter((result) => !result.ok)
+      .map((result) => `<p class="fail"><strong>${quizNames[result.key]}</strong>未通过。当前选择：${result.selected.length ? result.selected.join("；") : "未选择"}</p>`)
+      .join("");
+    $("#midnightQuizResult").innerHTML = `${wrong}<p class="fail">请重新阅读题目：这个功能只面向成年人，必须理解未成年人保护、同意、避孕、感染预防和内容边界。</p>`;
     return;
   }
   localStorage.setItem(midnightUnlockKey, "yes");
