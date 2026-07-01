@@ -223,6 +223,22 @@
                   <button id="loadPlayerAudio" class="secondary">导入播放器音频</button>
                   <button id="loadDemoAudio" class="secondary">载入双轨演示</button>
                 </div>
+                <div class="editor-mic-box">
+                  <div class="editor-drawer-head">
+                    <strong>麦克风录入</strong>
+                    <label class="timeline-grid">目标轨道
+                      <select id="editorMicTrack">
+                        <option value="A">轨道 1</option>
+                        <option value="B">轨道 2</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="editor-quick-row">
+                    <button id="startEditorMic" class="secondary">开始录音</button>
+                    <button id="stopEditorMic" class="secondary" disabled>停止并导入</button>
+                  </div>
+                  <p id="editorMicStatus" class="hint">录音会直接导入目标轨道，覆盖前会自动保存为可撤销状态。</p>
+                </div>
                 <div class="track-import-grid">
                   <article class="track-card active" data-track-card="A">
                     <div class="track-head">
@@ -236,6 +252,10 @@
                       <label><input id="trackSoloA" data-track-solo="A" type="checkbox" /> 独奏</label>
                     </div>
                     <div class="editor-source-info" id="trackInfoA">还没有载入音频。</div>
+                    <div class="editor-quick-row">
+                      <button class="secondary" data-undo-import="A">撤销导入</button>
+                      <button class="secondary" data-clear-track="A">移除音频</button>
+                    </div>
                   </article>
 
                   <article class="track-card" data-track-card="B">
@@ -250,6 +270,10 @@
                       <label><input id="trackSoloB" data-track-solo="B" type="checkbox" /> 独奏</label>
                     </div>
                     <div class="editor-source-info" id="trackInfoB">还没有载入音频。</div>
+                    <div class="editor-quick-row">
+                      <button class="secondary" data-undo-import="B">撤销导入</button>
+                      <button class="secondary" data-clear-track="B">移除音频</button>
+                    </div>
                   </article>
                 </div>
               </div>

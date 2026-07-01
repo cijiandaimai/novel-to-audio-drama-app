@@ -65,8 +65,8 @@ const midnightQuizState = {
 const editorState = {
   audioContext: null,
   tracks: [
-    { id: "A", name: "轨道 1", label: "人声/主轨", buffer: null, url: "", fileName: "", volume: 1, muted: false, solo: false },
-    { id: "B", name: "轨道 2", label: "音乐/环境", buffer: null, url: "", fileName: "", volume: 0.75, muted: false, solo: false }
+    { id: "A", name: "轨道 1", label: "人声/主轨", buffer: null, url: "", fileName: "", volume: 1, muted: false, solo: false, sourceHistory: [] },
+    { id: "B", name: "轨道 2", label: "音乐/环境", buffer: null, url: "", fileName: "", volume: 0.75, muted: false, solo: false, sourceHistory: [] }
   ],
   activeTrackId: "A",
   selection: { trackId: "A", sourceStart: 0, sourceEnd: 0, timelineStart: 0 },
@@ -83,7 +83,12 @@ const editorState = {
   redoStack: [],
   renderedUrl: "",
   pendingDrag: null,
-  longPressTimer: null
+  longPressTimer: null,
+  micTrackId: "A",
+  micStream: null,
+  micRecorder: null,
+  micChunks: [],
+  micMimeType: "audio/webm"
 };
 const recorderState = {
   stream: null,
@@ -437,7 +442,10 @@ function pushEditorHistory() {
 }
 
 function undoEditor() {
-  if (!editorState.undoStack.length) return;
+  if (!editorState.undoStack.length) {
+    undoTrackImport(editorState.activeTrackId, { silent: true });
+    return;
+  }
   editorState.redoStack.push(snapshotEditor());
   restoreEditor(editorState.undoStack.pop());
 }
@@ -486,7 +494,7 @@ function syncTimelineControls() {
   $("#snapTimeline").checked = editorState.timeline.snap;
   $("#snapGridSize").value = String(editorState.timeline.grid);
   $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
-  $("#undoEdit").disabled = !editorState.undoStack.length;
+  $("#undoEdit").disabled = !editorState.undoStack.length && !getActiveTrack().sourceHistory?.length;
   $("#redoEdit").disabled = !editorState.redoStack.length;
 }
 
@@ -514,6 +522,8 @@ function setEditorPanel(name = "") {
 
 function setActiveTrack(trackId) {
   editorState.activeTrackId = trackId;
+  editorState.micTrackId = trackId;
+  if ($("#editorMicTrack")) $("#editorMicTrack").value = trackId;
   editorState.selection.trackId = trackId;
   const track = getActiveTrack();
   const duration = track.buffer?.duration || 0;
@@ -566,11 +576,67 @@ function updateEditorSourceInfo() {
   editorState.tracks.forEach((track) => syncTrackControls(track.id));
 }
 
-async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.activeTrackId }) {
+function snapshotTrackSource(track) {
+  return {
+    buffer: track.buffer,
+    url: track.url,
+    fileName: track.fileName
+  };
+}
+
+function pushTrackSourceHistory(track) {
+  track.sourceHistory = track.sourceHistory || [];
+  track.sourceHistory.push(snapshotTrackSource(track));
+  track.sourceHistory = track.sourceHistory.slice(-20);
+}
+
+function pruneClipsForTrack(trackId) {
+  const track = getTrack(trackId);
+  const duration = track.buffer?.duration || 0;
+  editorState.clips = editorState.clips.filter((clip) => {
+    if (clip.trackId !== trackId) return true;
+    if (!duration) return false;
+    clip.sourceStart = clamp(clip.sourceStart, 0, Math.max(0, duration - 0.1));
+    clip.sourceEnd = clamp(clip.sourceEnd, clip.sourceStart + 0.1, duration);
+    return clip.sourceEnd > clip.sourceStart;
+  });
+}
+
+function restoreTrackSource(trackId, source) {
+  const track = getTrack(trackId);
+  track.buffer = source?.buffer || null;
+  track.url = source?.url || "";
+  track.fileName = source?.fileName || "";
+  pruneClipsForTrack(trackId);
+  setActiveTrack(trackId);
+  setClipInputs(0, Math.min(track.buffer?.duration || 0, 30), 0);
+  updateEditorSourceInfo();
+  renderClipList();
+  renderWaveform();
+  syncTimelineControls();
+}
+
+function undoTrackImport(trackId, options = {}) {
+  const track = getTrack(trackId);
+  if (!track.sourceHistory?.length) {
+    if (!options.silent) alert(`${track.name} 没有可撤销的导入。`);
+    return;
+  }
+  restoreTrackSource(trackId, track.sourceHistory.pop());
+}
+
+function clearTrackSource(trackId) {
+  const track = getTrack(trackId);
+  if (!track.buffer && !track.url) return;
+  pushTrackSourceHistory(track);
+  restoreTrackSource(trackId, null);
+}
+
+async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.activeTrackId, remember = true }) {
   const context = getEditorAudioContext();
   const track = getTrack(trackId);
   const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
-  if (track.url && track.url.startsWith("blob:")) URL.revokeObjectURL(track.url);
+  if (remember) pushTrackSourceHistory(track);
   track.buffer = buffer;
   track.url = url;
   track.fileName = name || "未命名音频";
@@ -582,6 +648,7 @@ async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.a
   updateEditorSourceInfo();
   renderClipList();
   renderWaveform();
+  syncTimelineControls();
 }
 
 async function loadEditorFile(file, trackId = editorState.activeTrackId) {
@@ -589,6 +656,66 @@ async function loadEditorFile(file, trackId = editorState.activeTrackId) {
   const arrayBuffer = await file.arrayBuffer();
   const url = URL.createObjectURL(file);
   await setEditorSource({ arrayBuffer, url, name: file.name, trackId });
+}
+
+async function startEditorMicRecording() {
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    alert("当前环境不支持麦克风录音。");
+    return;
+  }
+  const trackId = $("#editorMicTrack")?.value || editorState.activeTrackId;
+  editorState.micTrackId = trackId;
+  editorState.micChunks = [];
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  });
+  const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? "audio/webm;codecs=opus"
+    : "audio/webm";
+  const recorder = new MediaRecorder(stream, { mimeType });
+  editorState.micStream = stream;
+  editorState.micRecorder = recorder;
+  editorState.micMimeType = mimeType;
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data?.size) editorState.micChunks.push(event.data);
+  });
+  recorder.addEventListener("stop", async () => {
+    try {
+      const blob = new Blob(editorState.micChunks, { type: editorState.micMimeType });
+      if (!blob.size) throw new Error("没有录到声音。");
+      const name = `麦克风录音-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+      await setEditorSource({
+        arrayBuffer: await blob.arrayBuffer(),
+        url: URL.createObjectURL(blob),
+        name,
+        trackId: editorState.micTrackId
+      });
+      $("#editorMicStatus").textContent = `录音已导入 ${getTrack(editorState.micTrackId).name}。`;
+      setEditorPanel("import");
+    } catch (error) {
+      $("#editorMicStatus").textContent = `录音导入失败：${error.message}`;
+    } finally {
+      editorState.micStream?.getTracks().forEach((track) => track.stop());
+      editorState.micStream = null;
+      editorState.micRecorder = null;
+      $("#startEditorMic").disabled = false;
+      $("#stopEditorMic").disabled = true;
+    }
+  });
+  recorder.start();
+  $("#startEditorMic").disabled = true;
+  $("#stopEditorMic").disabled = false;
+  $("#editorMicStatus").textContent = `正在录音到 ${getTrack(trackId).name}，停止后会自动导入。`;
+}
+
+function stopEditorMicRecording() {
+  if (editorState.micRecorder?.state === "recording") {
+    editorState.micRecorder.stop();
+  }
 }
 
 async function loadEditorFromPlayer() {
@@ -1964,6 +2091,24 @@ function bindEvents() {
   });
   $$("[data-close-editor-drawer]").forEach((button) => {
     button.addEventListener("click", () => setEditorPanel(""));
+  });
+  $("#editorMicTrack").addEventListener("change", (event) => {
+    editorState.micTrackId = event.target.value;
+    setActiveTrack(event.target.value);
+  });
+  $("#startEditorMic").addEventListener("click", () => startEditorMicRecording().catch((error) => {
+    $("#editorMicStatus").textContent = `录音失败：${error.message}`;
+    $("#startEditorMic").disabled = false;
+    $("#stopEditorMic").disabled = true;
+    editorState.micStream?.getTracks().forEach((track) => track.stop());
+    editorState.micStream = null;
+  }));
+  $("#stopEditorMic").addEventListener("click", stopEditorMicRecording);
+  $$("[data-undo-import]").forEach((button) => {
+    button.addEventListener("click", () => undoTrackImport(button.dataset.undoImport));
+  });
+  $$("[data-clear-track]").forEach((button) => {
+    button.addEventListener("click", () => clearTrackSource(button.dataset.clearTrack));
   });
   $("#editorAudioFileA").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];

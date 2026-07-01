@@ -663,6 +663,15 @@ textarea {
   gap: 10px;
 }
 
+.editor-mic-box {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.72);
+}
+
 .editor-mini-tools {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, auto));
@@ -1439,6 +1448,11 @@ body[data-view="editor"] .main {
 
   .editor-mini-tools {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .editor-quick-row,
+  .editor-mic-box .editor-drawer-head {
+    grid-template-columns: 1fr;
   }
 
   .page-head h2 {
