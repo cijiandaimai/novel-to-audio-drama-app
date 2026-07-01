@@ -967,6 +967,27 @@ textarea {
   gap: 12px;
 }
 
+#midnightGate > .quiz-list:not(#midnightQuizList) {
+  display: none;
+}
+
+.gate-meter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 11px 12px;
+  border: 1px solid rgba(78, 73, 60, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.78);
+  color: var(--muted);
+}
+
+.gate-meter strong {
+  color: var(--ink);
+}
+
 .quiz-question {
   border: 1px solid var(--line);
   border-radius: 8px;

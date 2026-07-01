@@ -52,6 +52,16 @@ const playerBgKey = "playerBackgroundImage";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
+const midnightFailKey = "midnightNekomataFailCount";
+const midnightRemovedKey = "midnightNekomataRemoved";
+const midnightQuizSessionKey = "midnightNekomataQuizSession";
+const midnightQuizUrl = "/assets/midnight-quiz.enc.json";
+const midnightQuizSecret = "midnight-nekomata-quiz-v1|novel-radio-drama";
+const midnightQuizState = {
+  bank: [],
+  selected: [],
+  loading: null
+};
 const editorState = {
   audioContext: null,
   sourceBuffer: null,
@@ -151,22 +161,6 @@ const apiHelp = {
     url: "https://console.x.ai/",
     text: "进入 xAI Console 创建 API Key。午夜猫娘只做合规的成年人成熟向氛围改编。"
   }
-};
-
-const quizAnswers = {
-  age: ["adult", "unknown", "fiction"],
-  consent: ["clear", "coercion", "renew"],
-  sti: ["screening", "condom", "hpv"],
-  pregnancy: ["ec", "notAbortion", "double"],
-  law: ["minor", "force", "exploit"]
-};
-
-const quizNames = {
-  age: "成年与未成年人保护",
-  consent: "同意边界",
-  sti: "性传播感染和保护",
-  pregnancy: "避孕和紧急避孕",
-  law: "内容禁区"
 };
 
 function deepMerge(base, extra) {
@@ -998,53 +992,207 @@ function isMidnightUnlocked() {
   return localStorage.getItem(midnightUnlockKey) === "yes";
 }
 
+function isMidnightRemoved() {
+  return localStorage.getItem(midnightRemovedKey) === "yes";
+}
+
+function getMidnightFailCount() {
+  return Number(localStorage.getItem(midnightFailKey) || 0);
+}
+
 function setMidnightModal(open) {
   $("#midnightModal").classList.toggle("hidden", !open);
   updateMidnightState();
 }
 
+async function openMidnightGate() {
+  setMidnightModal(true);
+  if (!isMidnightUnlocked() && !isMidnightRemoved()) {
+    await startMidnightQuiz();
+  }
+}
+
 function updateMidnightState() {
   const unlocked = isMidnightUnlocked();
-  $("#midnightGate")?.classList.toggle("hidden", unlocked);
-  $("#midnightUnlocked")?.classList.toggle("hidden", !unlocked);
+  const removed = isMidnightRemoved();
+  $("#midnightCatButton")?.classList.toggle("hidden", removed);
+  $("#grokProvider")?.classList.toggle("hidden", removed);
+  $("#midnightGate")?.classList.toggle("hidden", unlocked || removed);
+  $("#midnightUnlocked")?.classList.toggle("hidden", !unlocked || removed);
   $("#grokProvider")?.classList.toggle("locked", !unlocked);
   $$("[data-config^='grok.']").forEach((field) => {
-    field.disabled = !unlocked;
+    field.disabled = !unlocked || removed;
   });
   const configButton = $("#openMidnightGateFromConfig");
-  if (configButton) configButton.textContent = unlocked ? "已解锁" : "打开门禁";
+  if (configButton) {
+    configButton.disabled = removed;
+    configButton.textContent = removed ? "本机已隐藏" : unlocked ? "已解锁" : "打开门禁";
+  }
+  if (removed && !$("#midnightModal")?.classList.contains("hidden")) {
+    $("#midnightQuizResult").innerHTML = "<p class=\"fail\">连续 6 次未通过，本机已隐藏午夜猫娘入口。</p>";
+  }
 }
 
-function selectedQuizValues(key) {
-  return $$(`[data-quiz="${key}"] input:checked`).map((input) => input.value).sort();
+function bytesFromBase64(value) {
+  const raw = atob(value);
+  const bytes = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) {
+    bytes[index] = raw.charCodeAt(index);
+  }
+  return bytes;
 }
 
-function selectedQuizLabels(key) {
-  return $$(`[data-quiz="${key}"] input:checked`).map((input) =>
-    input.closest("label")?.textContent.trim() || input.value
+async function decryptMidnightQuiz(payload) {
+  const encoder = new TextEncoder();
+  const keyBytes = await crypto.subtle.digest("SHA-256", encoder.encode(midnightQuizSecret));
+  const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["decrypt"]);
+  const body = bytesFromBase64(payload.data);
+  const tag = bytesFromBase64(payload.tag);
+  const encrypted = new Uint8Array(body.length + tag.length);
+  encrypted.set(body);
+  encrypted.set(tag, body.length);
+  const plain = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: bytesFromBase64(payload.iv) },
+    key,
+    encrypted
   );
+  return JSON.parse(new TextDecoder().decode(plain));
+}
+
+async function loadMidnightQuizBank() {
+  if (midnightQuizState.bank.length) return midnightQuizState.bank;
+  if (midnightQuizState.loading) return midnightQuizState.loading;
+  midnightQuizState.loading = fetch(midnightQuizUrl, { cache: "no-store" })
+    .then((response) => {
+      if (!response.ok) throw new Error(`题库读取失败：${response.status}`);
+      return response.json();
+    })
+    .then((payload) => decryptMidnightQuiz(payload))
+    .then((bank) => {
+      midnightQuizState.bank = Array.isArray(bank.questions) ? bank.questions : [];
+      if (midnightQuizState.bank.length < 7) throw new Error("题库数量不足，至少需要 7 题。");
+      return midnightQuizState.bank;
+    })
+    .finally(() => {
+      midnightQuizState.loading = null;
+    });
+  return midnightQuizState.loading;
+}
+
+function pickRandomQuestions(bank, count = 7) {
+  const copy = [...bank];
+  for (let index = copy.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [copy[index], copy[swapIndex]] = [copy[swapIndex], copy[index]];
+  }
+  return copy.slice(0, count);
+}
+
+function getStoredQuizSession(bank) {
+  try {
+    const ids = JSON.parse(localStorage.getItem(midnightQuizSessionKey) || "[]");
+    const selected = ids
+      .map((id) => bank.find((question) => question.id === id))
+      .filter(Boolean);
+    return selected.length === 7 ? selected : [];
+  } catch {
+    return [];
+  }
+}
+
+function createMidnightQuizSession(bank) {
+  const selected = pickRandomQuestions(bank, 7);
+  localStorage.setItem(midnightQuizSessionKey, JSON.stringify(selected.map((question) => question.id)));
+  midnightQuizState.selected = selected;
+  return selected;
+}
+
+function renderMidnightQuiz() {
+  const list = $("#midnightQuizList");
+  if (!list) return;
+  list.innerHTML = midnightQuizState.selected.map((question, index) => `
+    <fieldset class="quiz-question" data-quiz-id="${question.id}">
+      <legend>${index + 1}. ${question.stem}</legend>
+      ${question.options.map((option) => `
+        <label>
+          <input type="checkbox" value="${option.id}" />
+          ${option.id}. ${option.text}
+        </label>
+      `).join("")}
+    </fieldset>
+  `).join("");
+  const remaining = Math.max(0, 6 - getMidnightFailCount());
+  $("#midnightAttemptStatus").textContent = `剩余机会：${remaining} 次`;
+  $("#midnightQuestionStatus").textContent = "本次随机抽取 7 道题，全部答对才会解锁。";
+}
+
+async function startMidnightQuiz(forceNew = false) {
+  if (isMidnightUnlocked() || isMidnightRemoved()) {
+    updateMidnightState();
+    return;
+  }
+  $("#midnightAttemptStatus").textContent = "正在读取加密题库...";
+  $("#midnightQuestionStatus").textContent = "题库会在本机解密后随机抽题。";
+  $("#midnightQuizResult").textContent = "";
+  try {
+    const bank = await loadMidnightQuizBank();
+    midnightQuizState.selected = forceNew ? [] : getStoredQuizSession(bank);
+    if (!midnightQuizState.selected.length) createMidnightQuizSession(bank);
+    renderMidnightQuiz();
+  } catch (error) {
+    $("#midnightAttemptStatus").textContent = "题库加载失败";
+    $("#midnightQuizResult").innerHTML = `<p class="fail">${error.message}</p>`;
+  }
+}
+
+function selectedQuizValues(questionId) {
+  return $$(`[data-quiz-id="${questionId}"] input:checked`).map((input) => input.value).sort();
 }
 
 function sameValues(a, b) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
-function submitMidnightQuiz() {
-  const results = Object.entries(quizAnswers).map(([key, answers]) => ({
-    key,
-    ok: sameValues(selectedQuizValues(key), [...answers].sort()),
-    selected: selectedQuizLabels(key)
+function questionPassed(question) {
+  return sameValues(selectedQuizValues(question.id), [...question.correct].sort());
+}
+
+function hideMidnightEntranceLocally() {
+  localStorage.setItem(midnightRemovedKey, "yes");
+  localStorage.removeItem(midnightUnlockKey);
+  localStorage.removeItem(midnightQuizSessionKey);
+  $("#midnightQuizList").innerHTML = "";
+  $("#midnightQuizResult").innerHTML = "<p class=\"fail\">连续 6 次未通过，本机已隐藏午夜猫娘入口。重新安装或清除 App 数据前不会再显示。</p>";
+  updateMidnightState();
+}
+
+async function submitMidnightQuiz() {
+  if (!midnightQuizState.selected.length) await startMidnightQuiz();
+  if (!midnightQuizState.selected.length) return;
+  const results = midnightQuizState.selected.map((question) => ({
+    question,
+    ok: questionPassed(question)
   }));
   const passed = results.every((result) => result.ok);
   if (!passed) {
+    const failCount = getMidnightFailCount() + 1;
+    localStorage.setItem(midnightFailKey, String(failCount));
+    if (failCount >= 6) {
+      hideMidnightEntranceLocally();
+      return;
+    }
     const wrong = results
       .filter((result) => !result.ok)
-      .map((result) => `<p class="fail"><strong>${quizNames[result.key]}</strong>未通过。当前选择：${result.selected.length ? result.selected.join("；") : "未选择"}</p>`)
+      .map((result) => `<p class="fail"><strong>${result.question.category}</strong>未通过：${result.question.explanation}</p>`)
       .join("");
-    $("#midnightQuizResult").innerHTML = `${wrong}<p class="fail">请重新阅读题目：这个功能只面向成年人，必须理解未成年人保护、同意、避孕、感染预防和内容边界。</p>`;
+    $("#midnightQuizResult").innerHTML = `${wrong}<p class="fail">本次未通过，已记录 ${failCount}/6 次。系统已重新抽题，请认真阅读后再答。</p>`;
+    createMidnightQuizSession(await loadMidnightQuizBank());
+    renderMidnightQuiz();
     return;
   }
   localStorage.setItem(midnightUnlockKey, "yes");
+  localStorage.removeItem(midnightFailKey);
+  localStorage.removeItem(midnightQuizSessionKey);
   $("#midnightQuizResult").innerHTML = "<p class=\"ok\">门禁已通过。请继续填写 Grok API Key，并只用于合规的成年人成熟向氛围改编。</p>";
   updateMidnightState();
 }
@@ -1114,7 +1262,7 @@ async function callGrokRewrite(source, config) {
 
 async function runMidnightRewrite() {
   if (!isMidnightUnlocked()) {
-    setMidnightModal(true);
+    await openMidnightGate();
     return;
   }
   const source = getMidnightSource();
@@ -1397,8 +1545,8 @@ function bindEvents() {
   $("#testNetwork").addEventListener("click", testNetworkRoutes);
   $("#openBluetoothSettings").addEventListener("click", openBluetoothSettings);
   $("#testBluetoothAudio").addEventListener("click", testBluetoothAudio);
-  $("#midnightCatButton").addEventListener("click", () => setMidnightModal(true));
-  $("#openMidnightGateFromConfig").addEventListener("click", () => setMidnightModal(true));
+  $("#midnightCatButton").addEventListener("click", openMidnightGate);
+  $("#openMidnightGateFromConfig").addEventListener("click", openMidnightGate);
   $("#closeMidnightModal").addEventListener("click", () => setMidnightModal(false));
   $("#submitMidnightQuiz").addEventListener("click", submitMidnightQuiz);
   $("#lockMidnightMode").addEventListener("click", lockMidnightMode);
