@@ -210,7 +210,8 @@ function getByPath(object, path) {
 
 function showView(name) {
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === name));
-  $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === name));
+  const navView = name === "config" || name === "history" ? "discover" : name;
+  $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === navView));
   if (name === "history") loadHistory();
 }
 
@@ -1775,14 +1776,16 @@ async function loadHistory() {
 }
 
 async function loadPlan() {
+  const planStrip = $("#planStrip");
+  if (!planStrip) return;
   try {
     const plan = await fetch("/api/plan").then((res) => res.json());
-    $("#planStrip").innerHTML = `
+    planStrip.innerHTML = `
       <h3>${plan.title}</h3>
       <ol>${plan.stages.map((stage) => `<li>${stage}</li>`).join("")}</ol>
     `;
   } catch {
-    $("#planStrip").innerHTML = `
+    planStrip.innerHTML = `
       <h3>${optimizedPlan.title}</h3>
       <ol>${optimizedPlan.stages.map((stage) => `<li>${stage}</li>`).join("")}</ol>
     `;
@@ -1817,14 +1820,10 @@ async function runPipeline() {
   }
 
   $("#runButton").disabled = true;
-  $("#runStatus").textContent = "自动执行中";
+  $("#runStatusPanel").classList.remove("hidden");
+  $("#runStatus").textContent = "正在执行";
   $("#resultBox").classList.add("hidden");
-  renderStages(true, 0);
-
-  const fakeTimer = setInterval(() => {
-    const done = $$("#stageList li.done").length;
-    if (done < stageNames.length - 1) renderStages(true, done + 1);
-  }, 1800);
+  $("#stageList").innerHTML = "";
 
   try {
     const payload = {
@@ -1846,7 +1845,6 @@ async function runPipeline() {
       result = await runStandalonePipeline(payload);
     }
 
-    clearInterval(fakeTimer);
     renderStages(false, stageNames.length);
     $("#runStatus").textContent = "已完成";
 
@@ -1870,7 +1868,6 @@ async function runPipeline() {
       manifest: links.manifest
     });
   } catch (error) {
-    clearInterval(fakeTimer);
     $("#runStatus").textContent = "失败";
     $("#resultBox").classList.remove("hidden");
     $("#resultBox").innerHTML = `<strong>生成失败：</strong>${error.message}`;
@@ -2070,7 +2067,6 @@ renderVoiceReferences();
 renderClipList();
 renderWaveform();
 loadPlan();
-renderStages();
 updateMidnightState();
 bindEvents();
 syncTimelineControls();

@@ -23,7 +23,7 @@
         <nav class="nav" aria-label="主导航">
           <button class="nav-item active" data-view="discover">
             <span class="nav-icon nav-icon-discover"></span>
-            发现
+            小屋
           </button>
           <button class="nav-item" data-view="create">
             <span class="nav-icon nav-icon-create"></span>
@@ -32,14 +32,6 @@
           <button class="nav-item" data-view="editor">
             <span class="nav-icon nav-icon-editor"></span>
             剪辑
-          </button>
-          <button class="nav-item" data-view="config">
-            <span class="nav-icon nav-icon-config"></span>
-            API
-          </button>
-          <button class="nav-item" data-view="history">
-            <span class="nav-icon nav-icon-history"></span>
-            历史
           </button>
         </nav>
       </aside>
@@ -50,7 +42,6 @@
             <div>
               <p class="eyebrow">免费试听</p>
               <h2>把章节磨成声场，把人物放进耳边</h2>
-              <p class="page-note">从小说文本到广播剧脚本、音频提示词、分段生成与合成，一次走完。</p>
             </div>
             <button class="primary" data-jump="create">开始创作</button>
           </header>
@@ -78,15 +69,18 @@
               <audio controls src=""></audio>
             </article>
           </div>
-          <section class="workflow-strip" id="planStrip"></section>
+          <div class="home-actions" aria-label="小屋快捷入口">
+            <button class="secondary" data-jump="config">API 配置</button>
+            <button class="secondary" data-jump="history">创作历史</button>
+          </div>
+          <section class="workflow-strip hidden" id="planStrip" aria-hidden="true"></section>
         </section>
 
         <section id="create" class="view">
           <header class="page-head">
             <div>
-              <p class="eyebrow">自动流水线</p>
+              <p class="eyebrow">创作台</p>
               <h2>上传小说，生成广播剧</h2>
-              <p class="page-note">保留原著骨架，分工扩写、润色对白，再转成影视级音频提示词。</p>
             </div>
             <button class="secondary" data-jump="config">检查 API</button>
           </header>
@@ -111,10 +105,10 @@
               </div>
             </section>
 
-            <section class="panel status-panel">
+            <section class="panel status-panel hidden" id="runStatusPanel">
               <div class="status-head">
                 <h3>执行状态</h3>
-                <span id="runStatus">待开始</span>
+                <span id="runStatus"></span>
               </div>
               <ol id="stageList" class="stage-list"></ol>
               <div id="resultBox" class="result-box hidden"></div>
@@ -398,7 +392,6 @@
             <div>
               <p class="eyebrow">创作历史</p>
               <h2>继续收听或下载成品</h2>
-              <p class="page-note">本机生成记录会保留在本地，方便回听和复用。</p>
             </div>
             <button id="refreshHistory" class="secondary">刷新</button>
           </header>
@@ -415,18 +408,23 @@
               <h3 id="playerTitle">选择一段广播剧开始收听</h3>
             </div>
             <audio id="mainPlayer" controls></audio>
-            <div class="player-tools">
+            <div class="player-actions">
               <label class="image-picker">
-                背景图
+                换背景
                 <input id="playerBgFile" type="file" accept="image/*" />
               </label>
-              <input id="playerBgUrl" type="url" placeholder="或粘贴图片链接" />
-              <button id="applyBgUrl" class="secondary">应用</button>
-              <button id="clearBg" class="secondary">清除</button>
-              <button id="openBluetoothSettings" class="secondary">蓝牙音箱</button>
-              <button id="testBluetoothAudio" class="secondary">测试播放</button>
-              <p id="bluetoothStatus" class="hint">请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。</p>
+              <button id="openBluetoothSettings" class="secondary">蓝牙</button>
+              <button id="testBluetoothAudio" class="secondary">测试</button>
             </div>
+            <details class="player-more">
+              <summary>更多设置</summary>
+              <input id="playerBgUrl" type="url" placeholder="粘贴图片链接" />
+              <div class="actions">
+                <button id="applyBgUrl" class="secondary">应用链接</button>
+                <button id="clearBg" class="secondary">恢复默认</button>
+              </div>
+              <p id="bluetoothStatus" class="hint">请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。</p>
+            </details>
           </div>
         </div>
       </section>

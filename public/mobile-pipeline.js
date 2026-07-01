@@ -163,13 +163,25 @@ async function callGemini(provider, system, user, temperature = 0.5, network = {
     || JSON.stringify(data, null, 2);
 }
 
-async function invokeChat({ providerName, provider, system, user, temperature, mock, network }) {
-  if (missingProvider(provider)) return mock;
-  if (providerName === "gemini") return callGemini(provider, system, user, temperature, network);
-  return callOpenAICompatible(provider, [
+async function invokeChat({ providerName, provider, system, user, temperature, mock, network, fallbackProvider }) {
+  const canUseDoubaoPlanB = providerName !== "doubao" && !missingProvider(fallbackProvider);
+  const messages = [
     { role: "system", content: system },
     { role: "user", content: user }
-  ], temperature, network);
+  ];
+
+  if (missingProvider(provider)) {
+    if (!canUseDoubaoPlanB) return mock;
+    return callOpenAICompatible(fallbackProvider, messages, temperature, network);
+  }
+
+  try {
+    if (providerName === "gemini") return await callGemini(provider, system, user, temperature, network);
+    return await callOpenAICompatible(provider, messages, temperature, network);
+  } catch (error) {
+    if (!canUseDoubaoPlanB) throw error;
+    return callOpenAICompatible(fallbackProvider, messages, temperature, network);
+  }
 }
 
 async function readPromptGuide() {
@@ -456,6 +468,7 @@ export async function runStandalonePipeline(input) {
   const projectBible = await invokeChat({
     providerName: "gpt",
     provider: config.gpt,
+    fallbackProvider: config.doubao,
     system: gptSystem,
     temperature: 0.35,
     user: `请把小说改编成广播剧项目资料包。必须包含：故事骨架、角色小传、人物关系、场景列表、广播剧改编策略、不得改动的关键设定。\n\n${novelContext.context}`,
@@ -467,6 +480,7 @@ export async function runStandalonePipeline(input) {
   const expansion = await invokeChat({
     providerName: "gemini",
     provider: config.gemini,
+    fallbackProvider: config.doubao,
     system: geminiSystem,
     temperature: 0.55,
     user: `基于下面项目资料包扩展成广播剧分场大纲。要求：增强冲突、补足场景动作、标注每场情绪曲线，不要改核心剧情。\n\n${projectBible}`,
@@ -489,6 +503,7 @@ export async function runStandalonePipeline(input) {
   const script1 = await invokeChat({
     providerName: "gpt",
     provider: config.gpt,
+    fallbackProvider: config.doubao,
     system: gptSystem,
     temperature: 0.42,
     user: `请生成广播剧剧本 1。格式必须包含：场次编号、场景空间、角色、旁白、对白、音效、音乐、情绪提示、预计时长。\n\n【项目资料包】\n${projectBible}\n\n【分场大纲】\n${expansion}\n\n【台词方向】\n${dialogueBrief}`,
@@ -511,6 +526,7 @@ export async function runStandalonePipeline(input) {
   const script2 = await invokeChat({
     providerName: "gpt",
     provider: config.gpt,
+    fallbackProvider: config.doubao,
     system: gptSystem,
     temperature: 0.35,
     user: `请根据二次优化稿生成最终录制版剧本 2。要求：分段清楚、可直接进入音频提示词生成；保留角色声线、音效时间线、混音要求。\n\n${script1Dialogue}`,
@@ -522,6 +538,7 @@ export async function runStandalonePipeline(input) {
   const audioPromptRaw = await invokeChat({
     providerName: "gpt",
     provider: config.gpt,
+    fallbackProvider: config.doubao,
     system: "你是影视级音频提示词工程师。你必须输出 JSON 数组，不要输出解释。",
     temperature: 0.25,
     user: `请根据提示词写作指导，把广播剧剧本拆成 Doubao-Seed-Audio 1.0 可用的分段音频提示词。每段 30-90 秒，复杂多人戏拆短。每个元素格式：{"id":"scene-01","title":"片段名","durationSeconds":60,"prompt":"完整提示词"}。\n\n【提示词指导】\n${guide}\n\n【剧本 2】\n${script2}`,

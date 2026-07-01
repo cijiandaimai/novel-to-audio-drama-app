@@ -145,7 +145,7 @@ button {
 
 .nav {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -380,6 +380,19 @@ audio {
 .workflow-strip {
   margin-top: 18px;
   padding: 18px;
+}
+
+.home-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.home-actions .secondary {
+  min-height: 48px;
+  font-size: 15px;
+  background: rgba(255, 252, 244, 0.9);
 }
 
 .workflow-strip h3 {
@@ -958,7 +971,7 @@ textarea {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 18px;
+  gap: 14px;
   padding: 22px;
   color: #fffaf0;
   background:
@@ -980,8 +993,9 @@ textarea {
   width: 100%;
 }
 
-.player-tools {
+.player-actions {
   display: grid;
+  grid-template-columns: 1fr 0.72fr 0.72fr;
   gap: 10px;
 }
 
@@ -1001,12 +1015,49 @@ textarea {
   display: none;
 }
 
-.player-tools input[type="url"] {
+.player-actions .secondary,
+.player-more .secondary {
+  background: rgba(255, 252, 244, 0.9);
+}
+
+.player-more {
+  border: 1px solid rgba(255, 250, 238, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px 12px;
+}
+
+.player-more summary {
+  cursor: pointer;
+  font-weight: 800;
+  list-style: none;
+}
+
+.player-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.player-more summary::after {
+  content: "+";
+  float: right;
+}
+
+.player-more[open] summary::after {
+  content: "-";
+}
+
+.player-more input[type="url"] {
+  margin-top: 10px;
   background: rgba(255, 252, 244, 0.92);
 }
 
-.player-tools .secondary {
-  background: rgba(255, 252, 244, 0.9);
+.player-more .actions {
+  margin-top: 10px;
+}
+
+.player-more .hint {
+  margin-bottom: 0;
+  color: rgba(255, 250, 238, 0.78);
 }
 
 .midnight-cat-button {
@@ -1155,6 +1206,10 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .home-actions {
+    grid-template-columns: 1fr;
+  }
+
   .workflow-strip ol {
     columns: 1;
   }
@@ -1190,6 +1245,10 @@ textarea {
   .nav-item {
     min-height: 56px;
     font-size: 11px;
+  }
+
+  .player-actions {
+    grid-template-columns: 1fr;
   }
 
   .page-head h2 {
