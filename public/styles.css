@@ -543,14 +543,69 @@ textarea {
 .editor-source-info {
   border: 1px dashed var(--line-strong);
   border-radius: 8px;
-  padding: 12px;
+  padding: 10px 12px;
   color: var(--muted);
   background: rgba(255, 253, 247, 0.58);
   line-height: 1.7;
+  min-height: 44px;
 }
 
 #editorPreview {
+  width: min(360px, 100%);
+}
+
+.track-import-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   margin: 14px 0;
+}
+
+.track-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 253, 247, 0.7);
+  display: grid;
+  gap: 10px;
+}
+
+.track-card.active {
+  border-color: rgba(49, 95, 76, 0.45);
+  box-shadow: 0 0 0 3px rgba(49, 95, 76, 0.08);
+}
+
+.track-head,
+.timeline-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.track-select {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.track-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.track-controls input[type="range"] {
+  min-height: 28px;
+  padding: 0;
+}
+
+.timeline-toolbar {
+  margin: 12px 0;
+  color: var(--muted);
 }
 
 .waveform-wrap {
@@ -566,13 +621,14 @@ textarea {
 #waveformCanvas {
   display: block;
   width: 100%;
-  height: 220px;
-  cursor: crosshair;
+  height: 320px;
+  cursor: grab;
+  touch-action: none;
 }
 
 .editor-selection {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }
@@ -627,6 +683,10 @@ textarea {
   gap: 8px;
 }
 
+.clip-fields-wide {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
 .clip-fields label {
   display: grid;
   gap: 5px;
@@ -634,7 +694,8 @@ textarea {
   font-size: 12px;
 }
 
-.clip-fields input {
+.clip-fields input,
+.clip-fields select {
   min-height: 38px;
   padding: 8px;
 }
@@ -1054,6 +1115,7 @@ textarea {
   .config-grid,
   .creator-layout,
   .editor-grid,
+  .track-import-grid,
   .voice-ref-form,
   .voice-ref-item {
     grid-template-columns: 1fr;
@@ -1120,12 +1182,14 @@ textarea {
   }
 
   .editor-selection,
-  .clip-fields {
+  .track-controls,
+  .clip-fields,
+  .clip-fields-wide {
     grid-template-columns: 1fr;
   }
 
   #waveformCanvas {
-    height: 180px;
+    height: 260px;
   }
 
   .api-input-row {

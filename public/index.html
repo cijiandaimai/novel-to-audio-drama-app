@@ -196,50 +196,84 @@
             <section class="panel editor-source-panel">
               <div class="panel-title-row">
                 <div>
-                  <h3>源音频</h3>
-                  <p>上传一段音频，或从右侧播放器导入刚生成的广播剧。</p>
+                  <h3>双轨时间线</h3>
+                  <p>两条轨道可分别导入音频，拖拽波形选区后加入时间线，导出时自动混音。</p>
                 </div>
               </div>
-              <label class="field">
-                <span>上传音频文件</span>
-                <input id="editorAudioFile" type="file" accept="audio/*" />
-              </label>
-              <div class="editor-source-info" id="editorSourceInfo">还没有载入音频。</div>
-              <audio id="editorPreview" controls></audio>
+
+              <div class="track-import-grid">
+                <article class="track-card active" data-track-card="A">
+                  <div class="track-head">
+                    <button class="track-select" data-select-track="A">轨道 1</button>
+                    <strong>人声 / 主轨</strong>
+                  </div>
+                  <input id="editorAudioFileA" type="file" accept="audio/*" />
+                  <div class="track-controls">
+                    <label>音量<input id="trackVolumeA" data-track-volume="A" type="range" min="0" max="2" step="0.01" value="1" /></label>
+                    <label><input id="trackMuteA" data-track-mute="A" type="checkbox" /> 静音</label>
+                    <label><input id="trackSoloA" data-track-solo="A" type="checkbox" /> 独奏</label>
+                  </div>
+                  <div class="editor-source-info" id="trackInfoA">还没有载入音频。</div>
+                </article>
+
+                <article class="track-card" data-track-card="B">
+                  <div class="track-head">
+                    <button class="track-select" data-select-track="B">轨道 2</button>
+                    <strong>音乐 / 环境</strong>
+                  </div>
+                  <input id="editorAudioFileB" type="file" accept="audio/*" />
+                  <div class="track-controls">
+                    <label>音量<input id="trackVolumeB" data-track-volume="B" type="range" min="0" max="2" step="0.01" value="0.75" /></label>
+                    <label><input id="trackMuteB" data-track-mute="B" type="checkbox" /> 静音</label>
+                    <label><input id="trackSoloB" data-track-solo="B" type="checkbox" /> 独奏</label>
+                  </div>
+                  <div class="editor-source-info" id="trackInfoB">还没有载入音频。</div>
+                </article>
+              </div>
+
+              <div class="timeline-toolbar">
+                <div id="editorSourceInfo">当前选中：轨道 1</div>
+                <audio id="editorPreview" controls></audio>
+              </div>
+
               <div class="waveform-wrap">
-                <canvas id="waveformCanvas" width="960" height="240"></canvas>
+                <canvas id="waveformCanvas" width="960" height="320"></canvas>
               </div>
               <div class="editor-selection">
                 <label class="field">
-                  <span>起点（秒）</span>
+                  <span>源起点（秒）</span>
                   <input id="clipStart" type="number" min="0" step="0.01" value="0" />
                 </label>
                 <label class="field">
-                  <span>终点（秒）</span>
+                  <span>源终点（秒）</span>
                   <input id="clipEnd" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <label class="field">
+                  <span>时间线位置（秒）</span>
+                  <input id="clipTimelineStart" type="number" min="0" step="0.01" value="0" />
                 </label>
               </div>
               <div class="actions">
                 <button id="setClipStartFromPlayer" class="secondary">当前时间设起点</button>
                 <button id="setClipEndFromPlayer" class="secondary">当前时间设终点</button>
-                <button id="addClip" class="primary">添加片段</button>
-                <button id="addWholeClip" class="secondary">整段加入</button>
-                <button id="loadDemoAudio" class="secondary">载入演示音频</button>
+                <button id="addClip" class="primary">加入选区</button>
+                <button id="addWholeClip" class="secondary">整轨加入</button>
+                <button id="loadDemoAudio" class="secondary">载入双轨演示</button>
               </div>
-              <p class="hint">点击波形会交替设置起点和终点；拖动播放器可精确定位。</p>
+              <p class="hint">在上、下轨道波形中拖拽可创建选区；拖选区中间可整体滑动，拖左右边缘可修剪。</p>
             </section>
 
             <section class="panel editor-clips-panel">
               <div class="panel-title-row">
                 <div>
-                  <h3>剪辑列表</h3>
-                  <p>片段会按列表顺序合并，可单独调整音量和淡入淡出。</p>
+                  <h3>时间线片段</h3>
+                  <p>片段按时间线位置叠放混音，可单独调整轨道、音量、淡入淡出和静音。</p>
                 </div>
                 <button id="clearClips" class="secondary">清空</button>
               </div>
               <div id="clipList" class="clip-list"></div>
               <div class="editor-export-row">
-                <button id="exportMix" class="primary">合成并导出 WAV</button>
+                <button id="exportMix" class="primary">混音并导出 WAV</button>
               </div>
               <div id="editorResult" class="result-box hidden"></div>
             </section>

@@ -64,12 +64,20 @@ const midnightQuizState = {
 };
 const editorState = {
   audioContext: null,
+  tracks: [
+    { id: "A", name: "轨道 1", label: "人声/主轨", buffer: null, url: "", fileName: "", volume: 1, muted: false, solo: false },
+    { id: "B", name: "轨道 2", label: "音乐/环境", buffer: null, url: "", fileName: "", volume: 0.75, muted: false, solo: false }
+  ],
+  activeTrackId: "A",
+  selection: { trackId: "A", sourceStart: 0, sourceEnd: 0, timelineStart: 0 },
+  drag: null,
   sourceBuffer: null,
   sourceUrl: "",
   sourceName: "",
   clips: [],
   pickNext: "start",
   clipTimer: null,
+  playingNodes: [],
   renderedUrl: ""
 };
 const recorderState = {
@@ -377,57 +385,100 @@ function getEditorAudioContext() {
   return editorState.audioContext;
 }
 
-function getEditorDuration() {
-  return editorState.sourceBuffer?.duration || 0;
+function getTrack(trackId = editorState.activeTrackId) {
+  return editorState.tracks.find((track) => track.id === trackId) || editorState.tracks[0];
 }
 
-function setClipInputs(start, end) {
-  const duration = getEditorDuration();
-  $("#clipStart").value = clamp(start, 0, duration).toFixed(2);
-  $("#clipEnd").value = clamp(end, 0, duration).toFixed(2);
+function getActiveTrack() {
+  return getTrack(editorState.activeTrackId);
+}
+
+function getEditorDuration(trackId = editorState.activeTrackId) {
+  return getTrack(trackId)?.buffer?.duration || 0;
+}
+
+function getTimelineDuration() {
+  const clipEnd = editorState.clips.reduce((max, clip) => Math.max(max, clip.timelineStart + Math.max(0, clip.sourceEnd - clip.sourceStart)), 0);
+  const trackEnd = editorState.tracks.reduce((max, track) => Math.max(max, track.buffer?.duration || 0), 0);
+  return Math.max(1, clipEnd, trackEnd);
+}
+
+function setActiveTrack(trackId) {
+  editorState.activeTrackId = trackId;
+  editorState.selection.trackId = trackId;
+  const track = getActiveTrack();
+  const duration = track.buffer?.duration || 0;
+  if (duration) {
+    const length = Math.min(30, duration);
+    editorState.selection.sourceStart = clamp(editorState.selection.sourceStart, 0, Math.max(0, duration - 0.1));
+    editorState.selection.sourceEnd = clamp(editorState.selection.sourceEnd || length, Math.min(duration, editorState.selection.sourceStart + 0.1), duration);
+  }
+  $("#editorPreview").src = track.url || "";
+  updateEditorSourceInfo();
+  setClipInputs(editorState.selection.sourceStart, editorState.selection.sourceEnd, editorState.selection.timelineStart);
+  renderWaveform();
+}
+
+function setClipInputs(start, end, timelineStart = editorState.selection.timelineStart) {
+  const duration = getEditorDuration(editorState.selection.trackId);
+  const safeStart = clamp(start, 0, Math.max(0, duration));
+  const safeEnd = clamp(end, safeStart, Math.max(0, duration));
+  editorState.selection.sourceStart = Math.min(safeStart, safeEnd);
+  editorState.selection.sourceEnd = Math.max(safeStart, safeEnd);
+  editorState.selection.timelineStart = Math.max(0, Number(timelineStart) || 0);
+  $("#clipStart").value = editorState.selection.sourceStart.toFixed(2);
+  $("#clipEnd").value = editorState.selection.sourceEnd.toFixed(2);
+  $("#clipTimelineStart").value = editorState.selection.timelineStart.toFixed(2);
   renderWaveform();
 }
 
 function getClipInputs() {
-  const duration = getEditorDuration();
-  const start = clamp($("#clipStart").value, 0, duration);
-  const end = clamp($("#clipEnd").value, 0, duration);
-  return { start: Math.min(start, end), end: Math.max(start, end) };
+  return {
+    trackId: editorState.selection.trackId,
+    start: editorState.selection.sourceStart,
+    end: editorState.selection.sourceEnd,
+    timelineStart: editorState.selection.timelineStart
+  };
 }
 
 function updateEditorSourceInfo() {
-  const info = $("#editorSourceInfo");
-  if (!info) return;
-  if (!editorState.sourceBuffer) {
-    info.textContent = "还没有载入音频。";
-    return;
-  }
-  const duration = editorState.sourceBuffer.duration;
-  info.textContent = `${editorState.sourceName}｜${formatSeconds(duration)}｜${editorState.sourceBuffer.numberOfChannels} 声道｜${editorState.sourceBuffer.sampleRate} Hz`;
+  editorState.tracks.forEach((track) => {
+    const info = $(`#trackInfo${track.id}`);
+    if (!info) return;
+    if (!track.buffer) {
+      info.textContent = "还没有载入音频。";
+      return;
+    }
+    info.textContent = `${track.fileName}｜${formatSeconds(track.buffer.duration)}｜${track.buffer.numberOfChannels} 声道｜${track.buffer.sampleRate} Hz`;
+  });
+  const active = getActiveTrack();
+  $("#editorSourceInfo").textContent = `当前选中：${active.name}｜${active.label}${active.buffer ? `｜${formatSeconds(active.buffer.duration)}` : ""}`;
+  $$("[data-track-card]").forEach((card) => card.classList.toggle("active", card.dataset.trackCard === editorState.activeTrackId));
 }
 
-async function setEditorSource({ arrayBuffer, url, name }) {
+async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.activeTrackId }) {
   const context = getEditorAudioContext();
+  const track = getTrack(trackId);
   const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
-  if (editorState.sourceUrl && editorState.sourceUrl.startsWith("blob:")) {
-    URL.revokeObjectURL(editorState.sourceUrl);
-  }
+  if (track.url && track.url.startsWith("blob:")) URL.revokeObjectURL(track.url);
+  track.buffer = buffer;
+  track.url = url;
+  track.fileName = name || "未命名音频";
   editorState.sourceBuffer = buffer;
   editorState.sourceUrl = url;
-  editorState.sourceName = name || "未命名音频";
-  editorState.clips = [];
-  $("#editorPreview").src = url;
-  setClipInputs(0, Math.min(buffer.duration, 30));
+  editorState.sourceName = track.fileName;
+  setActiveTrack(trackId);
+  setClipInputs(0, Math.min(buffer.duration, 30), 0);
   updateEditorSourceInfo();
   renderClipList();
   renderWaveform();
 }
 
-async function loadEditorFile(file) {
+async function loadEditorFile(file, trackId = editorState.activeTrackId) {
   if (!file) return;
   const arrayBuffer = await file.arrayBuffer();
   const url = URL.createObjectURL(file);
-  await setEditorSource({ arrayBuffer, url, name: file.name });
+  await setEditorSource({ arrayBuffer, url, name: file.name, trackId });
 }
 
 async function loadEditorFromPlayer() {
@@ -442,7 +493,8 @@ async function loadEditorFromPlayer() {
     await setEditorSource({
       arrayBuffer,
       url: player.src,
-      name: $("#playerTitle")?.textContent?.trim() || "播放器音频"
+      name: $("#playerTitle")?.textContent?.trim() || "播放器音频",
+      trackId: editorState.activeTrackId
     });
     showView("editor");
   } catch {
@@ -450,26 +502,97 @@ async function loadEditorFromPlayer() {
   }
 }
 
-async function loadDemoEditorAudio() {
+function makeDemoBuffer({ frequency = 220, duration = 8, pulse = false, noise = false }) {
   const context = getEditorAudioContext();
   const sampleRate = 44100;
-  const duration = 8;
   const buffer = context.createBuffer(1, sampleRate * duration, sampleRate);
   const channel = buffer.getChannelData(0);
   for (let i = 0; i < channel.length; i++) {
     const time = i / sampleRate;
-    const tone = Math.sin(2 * Math.PI * 220 * time) * 0.16 + Math.sin(2 * Math.PI * 440 * time) * 0.08;
-    const pulse = Math.sin(2 * Math.PI * 2 * time) > 0 ? 1 : 0.45;
+    const tone = Math.sin(2 * Math.PI * frequency * time) * 0.13 + Math.sin(2 * Math.PI * frequency * 2 * time) * 0.05;
+    const beat = pulse ? (Math.sin(2 * Math.PI * 2 * time) > 0 ? 1 : 0.42) : 1;
+    const wind = noise ? (Math.random() * 2 - 1) * 0.045 : 0;
     const fade = Math.min(1, time / 0.4, (duration - time) / 0.6);
-    channel[i] = tone * pulse * Math.max(0, fade);
+    channel[i] = (tone * beat + wind) * Math.max(0, fade);
   }
-  const blob = audioBufferToWav(buffer);
-  const url = URL.createObjectURL(blob);
-  await setEditorSource({
-    arrayBuffer: await blob.arrayBuffer(),
-    url,
-    name: "演示音频.wav"
-  });
+  return buffer;
+}
+
+async function loadDemoEditorAudio() {
+  const main = makeDemoBuffer({ frequency: 220, duration: 10, pulse: true });
+  const bg = makeDemoBuffer({ frequency: 110, duration: 12, noise: true });
+  for (const [trackId, buffer, name] of [["A", main, "演示人声主轨.wav"], ["B", bg, "演示环境配乐.wav"]]) {
+    const blob = audioBufferToWav(buffer);
+    await setEditorSource({
+      arrayBuffer: await blob.arrayBuffer(),
+      url: URL.createObjectURL(blob),
+      name,
+      trackId
+    });
+  }
+  setActiveTrack("A");
+  editorState.clips = [];
+  addEditorClip(0, Math.min(6, getEditorDuration("A")), 0, "A");
+  addEditorClip(0, Math.min(8, getEditorDuration("B")), 0, "B");
+}
+
+function canvasTimelineInfo(canvas) {
+  const ratio = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const width = canvas.width;
+  const height = canvas.height;
+  const laneHeight = height / editorState.tracks.length;
+  const duration = getTimelineDuration();
+  return { ratio, rect, width, height, laneHeight, duration };
+}
+
+function timeToX(time, width, duration) {
+  return (time / Math.max(0.01, duration)) * width;
+}
+
+function xToTime(x, width, duration) {
+  return clamp((x / Math.max(1, width)) * duration, 0, duration);
+}
+
+function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, projectDuration, ratio) {
+  ctx.fillStyle = track.id === editorState.activeTrackId ? "rgba(255, 253, 247, 0.92)" : "rgba(255, 253, 247, 0.62)";
+  ctx.fillRect(0, laneTop, width, laneHeight);
+  ctx.fillStyle = "rgba(31, 33, 31, 0.72)";
+  ctx.font = `${12 * ratio}px Microsoft YaHei, sans-serif`;
+  ctx.fillText(`${track.name} · ${track.label}`, 14 * ratio, laneTop + 22 * ratio);
+  ctx.strokeStyle = "rgba(31, 33, 31, 0.14)";
+  ctx.beginPath();
+  ctx.moveTo(0, laneTop + laneHeight / 2);
+  ctx.lineTo(width, laneTop + laneHeight / 2);
+  ctx.stroke();
+
+  if (!track.buffer) {
+    ctx.fillStyle = "rgba(116, 111, 99, 0.78)";
+    ctx.fillText("导入音频后显示波形", 14 * ratio, laneTop + laneHeight / 2 + 6 * ratio);
+    return;
+  }
+
+  const drawWidth = Math.max(1, timeToX(track.buffer.duration, width, projectDuration));
+  const data = track.buffer.getChannelData(0);
+  const samplesPerPixel = Math.max(1, Math.floor(data.length / drawWidth));
+  ctx.strokeStyle = track.id === "A" ? "#315f4c" : "#6f1f1b";
+  ctx.lineWidth = Math.max(1, ratio);
+  ctx.beginPath();
+  for (let x = 0; x < drawWidth; x += 1) {
+    let min = 1;
+    let max = -1;
+    const start = Math.floor(x * samplesPerPixel);
+    for (let i = 0; i < samplesPerPixel && start + i < data.length; i += 1) {
+      const sample = data[start + i];
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+    const y1 = laneTop + ((1 - max) * laneHeight) / 2;
+    const y2 = laneTop + ((1 - min) * laneHeight) / 2;
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+  }
+  ctx.stroke();
 }
 
 function renderWaveform() {
@@ -477,134 +600,190 @@ function renderWaveform() {
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
   const ratio = window.devicePixelRatio || 1;
-  const width = Math.max(320, Math.floor(rect.width * ratio));
-  const height = Math.max(160, Math.floor(rect.height * ratio));
+  const width = Math.max(360, Math.floor(rect.width * ratio));
+  const height = Math.max(260, Math.floor(rect.height * ratio));
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
+  const { laneHeight, duration } = canvasTimelineInfo(canvas);
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "rgba(255, 250, 238, 0.86)";
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "rgba(49, 95, 76, 0.16)";
+  ctx.strokeStyle = "rgba(49, 95, 76, 0.14)";
   ctx.lineWidth = 1;
-  for (let x = 0; x < width; x += 64 * ratio) {
+  const gridStep = Math.max(1, duration / 8);
+  for (let time = 0; time <= duration; time += gridStep) {
+    const x = timeToX(time, width, duration);
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
     ctx.stroke();
-  }
-  ctx.strokeStyle = "rgba(31, 33, 31, 0.18)";
-  ctx.beginPath();
-  ctx.moveTo(0, height / 2);
-  ctx.lineTo(width, height / 2);
-  ctx.stroke();
-
-  const buffer = editorState.sourceBuffer;
-  if (!buffer) {
-    ctx.fillStyle = "rgba(116, 111, 99, 0.78)";
-    ctx.font = `${14 * ratio}px Microsoft YaHei, sans-serif`;
-    ctx.fillText("上传音频后这里会显示波形", 18 * ratio, 34 * ratio);
-    return;
+    ctx.fillStyle = "rgba(116, 111, 99, 0.75)";
+    ctx.font = `${10 * ratio}px Microsoft YaHei, sans-serif`;
+    ctx.fillText(formatSeconds(time), x + 4 * ratio, 12 * ratio);
   }
 
-  const data = buffer.getChannelData(0);
-  const samplesPerPixel = Math.max(1, Math.floor(data.length / width));
-  ctx.strokeStyle = "#315f4c";
-  ctx.lineWidth = Math.max(1, ratio);
-  ctx.beginPath();
-  for (let x = 0; x < width; x++) {
-    let min = 1;
-    let max = -1;
-    const start = x * samplesPerPixel;
-    for (let i = 0; i < samplesPerPixel && start + i < data.length; i++) {
-      const sample = data[start + i];
-      if (sample < min) min = sample;
-      if (sample > max) max = sample;
-    }
-    const y1 = ((1 - max) * height) / 2;
-    const y2 = ((1 - min) * height) / 2;
-    ctx.moveTo(x, y1);
-    ctx.lineTo(x, y2);
-  }
-  ctx.stroke();
+  editorState.tracks.forEach((track, index) => {
+    drawTrackWaveform(ctx, track, index * laneHeight, laneHeight, width, duration, ratio);
+  });
 
-  const { start, end } = getClipInputs();
-  if (end > start) {
-    const x1 = (start / buffer.duration) * width;
-    const x2 = (end / buffer.duration) * width;
+  editorState.clips.forEach((clip) => {
+    const trackIndex = editorState.tracks.findIndex((track) => track.id === clip.trackId);
+    if (trackIndex < 0) return;
+    const x = timeToX(clip.timelineStart, width, duration);
+    const w = Math.max(3 * ratio, timeToX(clip.sourceEnd - clip.sourceStart, width, duration));
+    const y = trackIndex * laneHeight + laneHeight - 30 * ratio;
+    ctx.fillStyle = clip.muted ? "rgba(116, 111, 99, 0.28)" : "rgba(49, 95, 76, 0.2)";
+    ctx.strokeStyle = clip.trackId === "A" ? "rgba(49, 95, 76, 0.72)" : "rgba(111, 31, 27, 0.72)";
+    ctx.fillRect(x, y, w, 20 * ratio);
+    ctx.strokeRect(x, y, w, 20 * ratio);
+  });
+
+  const selection = editorState.selection;
+  const track = getTrack(selection.trackId);
+  if (track?.buffer && selection.sourceEnd > selection.sourceStart) {
+    const trackIndex = editorState.tracks.findIndex((item) => item.id === selection.trackId);
+    const x1 = timeToX(selection.sourceStart, width, duration);
+    const x2 = timeToX(selection.sourceEnd, width, duration);
+    const y = trackIndex * laneHeight;
     ctx.fillStyle = "rgba(111, 31, 27, 0.16)";
-    ctx.fillRect(x1, 0, Math.max(2, x2 - x1), height);
-    ctx.strokeStyle = "rgba(111, 31, 27, 0.72)";
+    ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), laneHeight);
+    ctx.strokeStyle = "rgba(111, 31, 27, 0.82)";
     ctx.lineWidth = 2 * ratio;
-    ctx.strokeRect(x1, 0, Math.max(2, x2 - x1), height);
+    ctx.strokeRect(x1, y + 1 * ratio, Math.max(2 * ratio, x2 - x1), laneHeight - 2 * ratio);
   }
 }
 
-function addEditorClip(start, end) {
-  if (!editorState.sourceBuffer) {
-    alert("请先上传或导入音频。");
+function getCanvasPointer(event) {
+  const canvas = $("#waveformCanvas");
+  const info = canvasTimelineInfo(canvas);
+  const x = (event.clientX - info.rect.left) * info.ratio;
+  const y = (event.clientY - info.rect.top) * info.ratio;
+  const trackIndex = clamp(Math.floor(y / info.laneHeight), 0, editorState.tracks.length - 1);
+  const track = editorState.tracks[trackIndex];
+  const time = xToTime(x, info.width, info.duration);
+  return { canvas, ...info, x, y, trackIndex, track, time };
+}
+
+function startTimelineDrag(event) {
+  const point = getCanvasPointer(event);
+  if (!point.track?.buffer) return;
+  event.preventDefault();
+  setActiveTrack(point.track.id);
+  const selection = editorState.selection;
+  const handleSize = 10 * point.ratio;
+  const x1 = timeToX(selection.sourceStart, point.width, point.duration);
+  const x2 = timeToX(selection.sourceEnd, point.width, point.duration);
+  const inside = point.track.id === selection.trackId && point.x >= x1 && point.x <= x2;
+  const type = Math.abs(point.x - x1) < handleSize ? "left" : Math.abs(point.x - x2) < handleSize ? "right" : inside ? "move" : "create";
+  editorState.drag = {
+    type,
+    trackId: point.track.id,
+    startTime: point.time,
+    originalStart: selection.sourceStart,
+    originalEnd: selection.sourceEnd
+  };
+  if (type === "create") setClipInputs(point.time, point.time, selection.timelineStart);
+  point.canvas.setPointerCapture?.(event.pointerId);
+}
+
+function moveTimelineDrag(event) {
+  if (!editorState.drag) return;
+  const point = getCanvasPointer(event);
+  const drag = editorState.drag;
+  const track = getTrack(drag.trackId);
+  const maxTime = track.buffer?.duration || 0;
+  if (!maxTime) return;
+  if (drag.type === "create") {
+    setClipInputs(Math.min(drag.startTime, point.time), Math.max(drag.startTime, point.time), editorState.selection.timelineStart);
+  } else if (drag.type === "left") {
+    setClipInputs(clamp(point.time, 0, drag.originalEnd - 0.1), drag.originalEnd, editorState.selection.timelineStart);
+  } else if (drag.type === "right") {
+    setClipInputs(drag.originalStart, clamp(point.time, drag.originalStart + 0.1, maxTime), editorState.selection.timelineStart);
+  } else if (drag.type === "move") {
+    const length = Math.max(0.1, drag.originalEnd - drag.originalStart);
+    const delta = point.time - drag.startTime;
+    const start = clamp(drag.originalStart + delta, 0, Math.max(0, maxTime - length));
+    setClipInputs(start, start + length, editorState.selection.timelineStart);
+  }
+}
+
+function endTimelineDrag() {
+  editorState.drag = null;
+}
+
+function addEditorClip(start, end, timelineStart = editorState.selection.timelineStart, trackId = editorState.selection.trackId) {
+  const track = getTrack(trackId);
+  if (!track?.buffer) {
+    alert("请先给当前轨道导入音频。");
     return;
   }
-  const duration = getEditorDuration();
-  const safeStart = clamp(start, 0, duration);
-  const safeEnd = clamp(end, 0, duration);
+  const safeStart = clamp(start, 0, track.buffer.duration);
+  const safeEnd = clamp(end, safeStart, track.buffer.duration);
   if (safeEnd - safeStart < 0.1) {
     alert("片段太短，请至少保留 0.1 秒。");
     return;
   }
   editorState.clips.push({
     id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: `片段 ${editorState.clips.length + 1}`,
-    start: safeStart,
-    end: safeEnd,
+    name: `${track.name} 片段 ${editorState.clips.filter((clip) => clip.trackId === trackId).length + 1}`,
+    trackId,
+    sourceStart: safeStart,
+    sourceEnd: safeEnd,
+    timelineStart: Math.max(0, Number(timelineStart) || 0),
     volume: 1,
     fadeIn: 0,
     fadeOut: 0,
     muted: false
   });
   renderClipList();
+  renderWaveform();
 }
 
 function renderClipList() {
   const list = $("#clipList");
   if (!list) return;
   if (!editorState.clips.length) {
-    list.innerHTML = "<p class=\"clip-empty\">还没有剪辑片段。选择起点和终点后点“添加片段”。</p>";
+    list.innerHTML = "<p class=\"clip-empty\">还没有时间线片段。拖拽轨道选区后点“加入选区”，或直接导出整轨混音。</p>";
     return;
   }
   list.innerHTML = "";
-  editorState.clips.forEach((clip, index) => {
-    const duration = Math.max(0, clip.end - clip.start);
-    const article = document.createElement("article");
-    article.className = "clip-item";
-    article.dataset.clipId = clip.id;
-    article.innerHTML = `
-      <div class="clip-head">
-        <div>
-          <strong>${index + 1}. ${clip.name}</strong>
-          <span>${formatSeconds(clip.start)} - ${formatSeconds(clip.end)}｜${formatSeconds(duration)}</span>
+  editorState.clips
+    .slice()
+    .sort((a, b) => a.timelineStart - b.timelineStart || a.trackId.localeCompare(b.trackId))
+    .forEach((clip, index) => {
+      const duration = Math.max(0, clip.sourceEnd - clip.sourceStart);
+      const trackOptions = editorState.tracks.map((track) => `<option value="${track.id}" ${track.id === clip.trackId ? "selected" : ""}>${track.name}</option>`).join("");
+      const article = document.createElement("article");
+      article.className = "clip-item";
+      article.dataset.clipId = clip.id;
+      article.innerHTML = `
+        <div class="clip-head">
+          <div>
+            <strong>${index + 1}. ${clip.name}</strong>
+            <span>${getTrack(clip.trackId).name}｜源 ${formatSeconds(clip.sourceStart)} - ${formatSeconds(clip.sourceEnd)}｜时间线 ${formatSeconds(clip.timelineStart)}｜${formatSeconds(duration)}</span>
+          </div>
+          <label><input type="checkbox" data-clip-field="muted" ${clip.muted ? "checked" : ""} /> 静音</label>
         </div>
-        <label><input type="checkbox" data-clip-field="muted" ${clip.muted ? "checked" : ""} /> 静音</label>
-      </div>
-      <div class="clip-fields">
-        <label>起点<input type="number" step="0.01" min="0" data-clip-field="start" value="${clip.start.toFixed(2)}" /></label>
-        <label>终点<input type="number" step="0.01" min="0" data-clip-field="end" value="${clip.end.toFixed(2)}" /></label>
-        <label>音量<input type="number" step="0.05" min="0" max="2" data-clip-field="volume" value="${clip.volume.toFixed(2)}" /></label>
-        <label>淡入<input type="number" step="0.1" min="0" data-clip-field="fadeIn" value="${clip.fadeIn.toFixed(1)}" /></label>
-        <label>淡出<input type="number" step="0.1" min="0" data-clip-field="fadeOut" value="${clip.fadeOut.toFixed(1)}" /></label>
-      </div>
-      <div class="clip-actions">
-        <button class="secondary" data-clip-action="preview">试听</button>
-        <button class="secondary" data-clip-action="select">选中范围</button>
-        <button class="secondary" data-clip-action="up">上移</button>
-        <button class="secondary" data-clip-action="down">下移</button>
-        <button class="secondary" data-clip-action="remove">删除</button>
-      </div>
-    `;
-    list.appendChild(article);
-  });
+        <div class="clip-fields clip-fields-wide">
+          <label>轨道<select data-clip-field="trackId">${trackOptions}</select></label>
+          <label>源起点<input type="number" step="0.01" min="0" data-clip-field="sourceStart" value="${clip.sourceStart.toFixed(2)}" /></label>
+          <label>源终点<input type="number" step="0.01" min="0" data-clip-field="sourceEnd" value="${clip.sourceEnd.toFixed(2)}" /></label>
+          <label>位置<input type="number" step="0.01" min="0" data-clip-field="timelineStart" value="${clip.timelineStart.toFixed(2)}" /></label>
+          <label>音量<input type="number" step="0.05" min="0" max="2" data-clip-field="volume" value="${clip.volume.toFixed(2)}" /></label>
+          <label>淡入<input type="number" step="0.1" min="0" data-clip-field="fadeIn" value="${clip.fadeIn.toFixed(1)}" /></label>
+          <label>淡出<input type="number" step="0.1" min="0" data-clip-field="fadeOut" value="${clip.fadeOut.toFixed(1)}" /></label>
+        </div>
+        <div class="clip-actions">
+          <button class="secondary" data-clip-action="preview">试听</button>
+          <button class="secondary" data-clip-action="select">载入选区</button>
+          <button class="secondary" data-clip-action="remove">删除</button>
+        </div>
+      `;
+      list.appendChild(article);
+    });
 }
 
 function updateClipField(clipId, field, value, checked) {
@@ -612,47 +791,60 @@ function updateClipField(clipId, field, value, checked) {
   if (!clip) return;
   if (field === "muted") {
     clip.muted = checked;
+  } else if (field === "trackId") {
+    clip.trackId = value;
+    const duration = getEditorDuration(value);
+    clip.sourceStart = clamp(clip.sourceStart, 0, Math.max(0, duration - 0.1));
+    clip.sourceEnd = clamp(clip.sourceEnd, clip.sourceStart + 0.1, duration);
   } else {
-    const duration = getEditorDuration();
+    const duration = getEditorDuration(clip.trackId);
     const numeric = Number(value);
-    if (field === "start") clip.start = clamp(numeric, 0, Math.max(0, clip.end - 0.1));
-    if (field === "end") clip.end = clamp(numeric, Math.min(duration, clip.start + 0.1), duration);
+    if (field === "sourceStart") clip.sourceStart = clamp(numeric, 0, Math.max(0, clip.sourceEnd - 0.1));
+    if (field === "sourceEnd") clip.sourceEnd = clamp(numeric, Math.min(duration, clip.sourceStart + 0.1), duration);
+    if (field === "timelineStart") clip.timelineStart = Math.max(0, numeric || 0);
     if (field === "volume") clip.volume = clamp(numeric, 0, 2);
-    if (field === "fadeIn") clip.fadeIn = clamp(numeric, 0, Math.max(0, clip.end - clip.start));
-    if (field === "fadeOut") clip.fadeOut = clamp(numeric, 0, Math.max(0, clip.end - clip.start));
+    if (field === "fadeIn") clip.fadeIn = clamp(numeric, 0, Math.max(0, clip.sourceEnd - clip.sourceStart));
+    if (field === "fadeOut") clip.fadeOut = clamp(numeric, 0, Math.max(0, clip.sourceEnd - clip.sourceStart));
   }
   renderClipList();
+  renderWaveform();
 }
 
-function moveClip(clipId, direction) {
-  const index = editorState.clips.findIndex((item) => item.id === clipId);
-  const nextIndex = index + direction;
-  if (index < 0 || nextIndex < 0 || nextIndex >= editorState.clips.length) return;
-  const [clip] = editorState.clips.splice(index, 1);
-  editorState.clips.splice(nextIndex, 0, clip);
-  renderClipList();
+function stopEditorPlayback() {
+  clearTimeout(editorState.clipTimer);
+  editorState.playingNodes.forEach((node) => {
+    try { node.stop(); } catch {}
+  });
+  editorState.playingNodes = [];
 }
 
 function playEditorClip(clipId) {
   const clip = editorState.clips.find((item) => item.id === clipId);
-  const preview = $("#editorPreview");
-  if (!clip || !preview) return;
-  clearTimeout(editorState.clipTimer);
-  preview.currentTime = clip.start;
-  preview.play();
-  editorState.clipTimer = setTimeout(() => preview.pause(), Math.max(120, (clip.end - clip.start) * 1000));
+  const track = getTrack(clip?.trackId);
+  if (!clip || !track?.buffer) return;
+  stopEditorPlayback();
+  const context = getEditorAudioContext();
+  const source = context.createBufferSource();
+  const gain = context.createGain();
+  source.buffer = track.buffer;
+  gain.gain.value = clip.muted || track.muted ? 0 : clamp(clip.volume * track.volume, 0, 2);
+  source.connect(gain).connect(context.destination);
+  source.start(0, clip.sourceStart, Math.max(0.1, clip.sourceEnd - clip.sourceStart));
+  editorState.playingNodes = [source];
 }
 
 function handleClipAction(clipId, action) {
   const clip = editorState.clips.find((item) => item.id === clipId);
   if (!clip) return;
   if (action === "preview") playEditorClip(clipId);
-  if (action === "select") setClipInputs(clip.start, clip.end);
-  if (action === "up") moveClip(clipId, -1);
-  if (action === "down") moveClip(clipId, 1);
+  if (action === "select") {
+    setActiveTrack(clip.trackId);
+    setClipInputs(clip.sourceStart, clip.sourceEnd, clip.timelineStart);
+  }
   if (action === "remove") {
     editorState.clips = editorState.clips.filter((item) => item.id !== clipId);
     renderClipList();
+    renderWaveform();
   }
 }
 
@@ -694,48 +886,66 @@ function audioBufferToWav(buffer) {
 }
 
 async function exportEditorMix() {
-  if (!editorState.sourceBuffer) {
-    alert("请先上传或导入音频。");
-    return;
-  }
-  if (!editorState.clips.length) {
-    alert("请先添加至少一个片段。");
+  const loadedTracks = editorState.tracks.filter((track) => track.buffer);
+  if (!loadedTracks.length) {
+    alert("请先给至少一条轨道导入音频。");
     return;
   }
   $("#exportMix").disabled = true;
   $("#editorResult").classList.add("hidden");
   try {
-    const sourceBuffer = editorState.sourceBuffer;
-    const sampleRate = sourceBuffer.sampleRate;
-    const channels = sourceBuffer.numberOfChannels;
-    const totalDuration = editorState.clips.reduce((sum, clip) => sum + Math.max(0, clip.end - clip.start), 0);
+    const sampleRate = loadedTracks[0].buffer.sampleRate || 44100;
+    const soloTracks = editorState.tracks.filter((track) => track.solo).map((track) => track.id);
+    const sourceClips = editorState.clips.length
+      ? editorState.clips
+      : loadedTracks.map((track) => ({
+          id: `whole-${track.id}`,
+          name: `${track.name} 整轨`,
+          trackId: track.id,
+          sourceStart: 0,
+          sourceEnd: track.buffer.duration,
+          timelineStart: 0,
+          volume: 1,
+          fadeIn: 0,
+          fadeOut: 0,
+          muted: false
+        }));
+    const clips = sourceClips.filter((clip) => {
+      const track = getTrack(clip.trackId);
+      if (!track?.buffer || clip.muted || track.muted) return false;
+      return !soloTracks.length || soloTracks.includes(track.id);
+    });
+    if (!clips.length) throw new Error("所有轨道或片段都被静音了。");
+    const totalDuration = clips.reduce((max, clip) => Math.max(max, clip.timelineStart + Math.max(0, clip.sourceEnd - clip.sourceStart)), 0);
+    if (totalDuration <= 0) throw new Error("没有可导出的有效时长。");
+    const channels = 2;
     const offline = new OfflineAudioContext(channels, Math.ceil(totalDuration * sampleRate), sampleRate);
-    let offset = 0;
-    for (const clip of editorState.clips) {
-      const duration = Math.max(0, clip.end - clip.start);
+    for (const clip of clips) {
+      const track = getTrack(clip.trackId);
+      const duration = Math.max(0, clip.sourceEnd - clip.sourceStart);
       if (duration <= 0) continue;
       const source = offline.createBufferSource();
       const gain = offline.createGain();
-      source.buffer = sourceBuffer;
-      const volume = clip.muted ? 0 : clamp(clip.volume, 0, 2);
+      source.buffer = track.buffer;
+      const volume = clamp((clip.volume || 1) * (track.volume || 1), 0, 2);
       const fadeIn = Math.min(duration, Math.max(0, clip.fadeIn || 0));
       const fadeOut = Math.min(duration, Math.max(0, clip.fadeOut || 0));
-      gain.gain.setValueAtTime(fadeIn > 0 ? 0 : volume, offset);
-      if (fadeIn > 0) gain.gain.linearRampToValueAtTime(volume, offset + fadeIn);
-      gain.gain.setValueAtTime(volume, Math.max(offset, offset + duration - fadeOut));
-      if (fadeOut > 0) gain.gain.linearRampToValueAtTime(0, offset + duration);
+      const startAt = Math.max(0, clip.timelineStart);
+      gain.gain.setValueAtTime(fadeIn > 0 ? 0 : volume, startAt);
+      if (fadeIn > 0) gain.gain.linearRampToValueAtTime(volume, startAt + fadeIn);
+      gain.gain.setValueAtTime(volume, Math.max(startAt, startAt + duration - fadeOut));
+      if (fadeOut > 0) gain.gain.linearRampToValueAtTime(0, startAt + duration);
       source.connect(gain).connect(offline.destination);
-      source.start(offset, clip.start, duration);
-      offset += duration;
+      source.start(startAt, clip.sourceStart, duration);
     }
     const rendered = await offline.startRendering();
     const blob = audioBufferToWav(rendered);
     if (editorState.renderedUrl) URL.revokeObjectURL(editorState.renderedUrl);
     editorState.renderedUrl = URL.createObjectURL(blob);
-    const fileName = `${(editorState.sourceName || "广播剧剪辑").replace(/\.[^.]+$/, "")}-剪辑版.wav`;
+    const fileName = "白泽声工坊-双轨混音.wav";
     $("#editorResult").classList.remove("hidden");
     $("#editorResult").innerHTML = `
-      <strong>合成完成：</strong>${fileName}<br />
+      <strong>混音完成：</strong>${fileName}<br />
       <audio controls src="${editorState.renderedUrl}"></audio>
       <div class="actions">
         <button data-play-src="${editorState.renderedUrl}" data-play-title="${fileName}">送到播放器</button>
@@ -1483,49 +1693,67 @@ function bindEvents() {
   $("#runDirectAudioButton").addEventListener("click", runDirectAudio);
   $("#refreshHistory").addEventListener("click", loadHistory);
   $("#loadPlayerAudio").addEventListener("click", loadEditorFromPlayer);
-  $("#editorAudioFile").addEventListener("change", async (event) => {
+  $("#editorAudioFileA").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      await loadEditorFile(file);
+      await loadEditorFile(file, "A");
     } catch (error) {
       alert(`音频读取失败：${error.message}`);
     }
   });
-  $("#clipStart").addEventListener("input", renderWaveform);
-  $("#clipEnd").addEventListener("input", renderWaveform);
-  $("#waveformCanvas").addEventListener("click", (event) => {
-    if (!editorState.sourceBuffer) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const time = ((event.clientX - rect.left) / rect.width) * getEditorDuration();
-    const { start, end } = getClipInputs();
-    if (editorState.pickNext === "start") {
-      setClipInputs(Math.min(time, end), end || Math.min(getEditorDuration(), time + 30));
-      editorState.pickNext = "end";
-    } else {
-      setClipInputs(start, Math.max(time, start + 0.1));
-      editorState.pickNext = "start";
+  $("#editorAudioFileB").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await loadEditorFile(file, "B");
+    } catch (error) {
+      alert(`音频读取失败：${error.message}`);
     }
   });
+  $$("[data-select-track]").forEach((button) => button.addEventListener("click", () => setActiveTrack(button.dataset.selectTrack)));
+  $$("[data-track-volume]").forEach((input) => input.addEventListener("input", () => {
+    getTrack(input.dataset.trackVolume).volume = Number(input.value) || 0;
+  }));
+  $$("[data-track-mute]").forEach((input) => input.addEventListener("change", () => {
+    getTrack(input.dataset.trackMute).muted = input.checked;
+    renderWaveform();
+  }));
+  $$("[data-track-solo]").forEach((input) => input.addEventListener("change", () => {
+    getTrack(input.dataset.trackSolo).solo = input.checked;
+    renderWaveform();
+  }));
+  $("#clipStart").addEventListener("input", () => setClipInputs(Number($("#clipStart").value), editorState.selection.sourceEnd, editorState.selection.timelineStart));
+  $("#clipEnd").addEventListener("input", () => setClipInputs(editorState.selection.sourceStart, Number($("#clipEnd").value), editorState.selection.timelineStart));
+  $("#clipTimelineStart").addEventListener("input", () => setClipInputs(editorState.selection.sourceStart, editorState.selection.sourceEnd, Number($("#clipTimelineStart").value)));
+  $("#waveformCanvas").addEventListener("pointerdown", startTimelineDrag);
+  $("#waveformCanvas").addEventListener("pointermove", moveTimelineDrag);
+  $("#waveformCanvas").addEventListener("pointerup", endTimelineDrag);
+  $("#waveformCanvas").addEventListener("pointercancel", endTimelineDrag);
+  $("#waveformCanvas").addEventListener("pointerleave", endTimelineDrag);
   $("#setClipStartFromPlayer").addEventListener("click", () => {
     const preview = $("#editorPreview");
     const { end } = getClipInputs();
-    setClipInputs(preview.currentTime || 0, end);
+    setClipInputs(preview.currentTime || 0, end, editorState.selection.timelineStart);
   });
   $("#setClipEndFromPlayer").addEventListener("click", () => {
     const preview = $("#editorPreview");
     const { start } = getClipInputs();
-    setClipInputs(start, preview.currentTime || 0);
+    setClipInputs(start, preview.currentTime || 0, editorState.selection.timelineStart);
   });
   $("#addClip").addEventListener("click", () => {
-    const { start, end } = getClipInputs();
-    addEditorClip(start, end);
+    const { start, end, timelineStart, trackId } = getClipInputs();
+    addEditorClip(start, end, timelineStart, trackId);
   });
-  $("#addWholeClip").addEventListener("click", () => addEditorClip(0, getEditorDuration()));
+  $("#addWholeClip").addEventListener("click", () => {
+    const track = getActiveTrack();
+    addEditorClip(0, track.buffer?.duration || 0, editorState.selection.timelineStart, track.id);
+  });
   $("#loadDemoAudio").addEventListener("click", loadDemoEditorAudio);
   $("#clearClips").addEventListener("click", () => {
     editorState.clips = [];
     renderClipList();
+    renderWaveform();
   });
   $("#clipList").addEventListener("change", (event) => {
     const field = event.target.dataset.clipField;
