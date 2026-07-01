@@ -181,80 +181,54 @@
             <div>
               <p class="eyebrow">音频工作台</p>
               <h2>像剪视频一样剪广播剧音频</h2>
-              <p class="page-note">本地完成波形预览、裁剪分段、排序、音量、淡入淡出和合成导出。</p>
             </div>
-            <button id="loadPlayerAudio" class="secondary">导入播放器音频</button>
+            <div class="editor-head-actions">
+              <button id="loadPlayerAudio" class="secondary">导入播放器音频</button>
+              <button id="loadDemoAudio" class="secondary">载入双轨演示</button>
+            </div>
           </header>
 
-          <div class="editor-grid">
-            <section class="panel editor-source-panel">
-              <div class="panel-title-row">
-                <div>
-                  <h3>双轨时间线</h3>
-                  <p>两条轨道可分别导入音频，拖拽波形选区后加入时间线，导出时自动混音。</p>
+          <div class="editor-workbench">
+            <section class="panel editor-main-panel">
+              <div class="editor-command-bar">
+                <div class="editor-tool-group">
+                  <button id="undoEdit" class="secondary">撤销</button>
+                  <button id="redoEdit" class="secondary">重做</button>
+                  <button id="zoomOutTimeline" class="secondary">缩小</button>
+                  <button id="zoomInTimeline" class="secondary">放大</button>
+                  <button id="fitTimeline" class="secondary">适应</button>
                 </div>
-              </div>
-
-              <div class="track-import-grid">
-                <article class="track-card active" data-track-card="A">
-                  <div class="track-head">
-                    <button class="track-select" data-select-track="A">轨道 1</button>
-                    <strong>人声 / 主轨</strong>
-                  </div>
-                  <input id="editorAudioFileA" type="file" accept="audio/*" />
-                  <div class="track-controls">
-                    <label>音量<input id="trackVolumeA" data-track-volume="A" type="range" min="0" max="2" step="0.01" value="1" /></label>
-                    <label><input id="trackMuteA" data-track-mute="A" type="checkbox" /> 静音</label>
-                    <label><input id="trackSoloA" data-track-solo="A" type="checkbox" /> 独奏</label>
-                  </div>
-                  <div class="editor-source-info" id="trackInfoA">还没有载入音频。</div>
-                </article>
-
-                <article class="track-card" data-track-card="B">
-                  <div class="track-head">
-                    <button class="track-select" data-select-track="B">轨道 2</button>
-                    <strong>音乐 / 环境</strong>
-                  </div>
-                  <input id="editorAudioFileB" type="file" accept="audio/*" />
-                  <div class="track-controls">
-                    <label>音量<input id="trackVolumeB" data-track-volume="B" type="range" min="0" max="2" step="0.01" value="0.75" /></label>
-                    <label><input id="trackMuteB" data-track-mute="B" type="checkbox" /> 静音</label>
-                    <label><input id="trackSoloB" data-track-solo="B" type="checkbox" /> 独奏</label>
-                  </div>
-                  <div class="editor-source-info" id="trackInfoB">还没有载入音频。</div>
-                </article>
+                <div class="editor-tool-group">
+                  <label class="timeline-toggle"><input id="snapTimeline" type="checkbox" checked /> 吸附</label>
+                  <label class="timeline-grid">网格
+                    <select id="snapGridSize">
+                      <option value="0.1">0.1s</option>
+                      <option value="0.25">0.25s</option>
+                      <option value="0.5" selected>0.5s</option>
+                      <option value="1">1s</option>
+                    </select>
+                  </label>
+                  <label class="timeline-grid">播放头
+                    <input id="playheadInput" type="number" min="0" step="0.01" value="0" />
+                  </label>
+                </div>
+                <div class="editor-tool-group editor-transport">
+                  <button id="splitAtPlayhead" class="secondary">分割</button>
+                  <button id="previewTimelineMix" class="secondary">预听</button>
+                  <button id="stopTimelineMix" class="secondary">停止</button>
+                  <button id="exportMix" class="primary">导出 WAV</button>
+                </div>
               </div>
 
               <div class="timeline-toolbar">
                 <div id="editorSourceInfo">当前选中：轨道 1</div>
                 <audio id="editorPreview" controls></audio>
               </div>
-              <div class="timeline-tools">
-                <button id="undoEdit" class="secondary">撤销</button>
-                <button id="redoEdit" class="secondary">重做</button>
-                <button id="zoomOutTimeline" class="secondary">缩小</button>
-                <button id="zoomInTimeline" class="secondary">放大</button>
-                <button id="fitTimeline" class="secondary">适应</button>
-                <label class="timeline-toggle"><input id="snapTimeline" type="checkbox" checked /> 吸附</label>
-                <label class="timeline-grid">网格
-                  <select id="snapGridSize">
-                    <option value="0.1">0.1s</option>
-                    <option value="0.25">0.25s</option>
-                    <option value="0.5" selected>0.5s</option>
-                    <option value="1">1s</option>
-                  </select>
-                </label>
-                <label class="timeline-grid">播放头
-                  <input id="playheadInput" type="number" min="0" step="0.01" value="0" />
-                </label>
-                <button id="splitAtPlayhead" class="secondary">分割</button>
-                <button id="previewTimelineMix" class="secondary">预听混音</button>
-                <button id="stopTimelineMix" class="secondary">停止</button>
-              </div>
 
               <div class="waveform-wrap">
                 <canvas id="waveformCanvas" width="960" height="320"></canvas>
               </div>
+
               <div class="editor-selection">
                 <label class="field">
                   <span>源起点（秒）</span>
@@ -269,31 +243,69 @@
                   <input id="clipTimelineStart" type="number" min="0" step="0.01" value="0" />
                 </label>
               </div>
-              <div class="actions">
-                <button id="setClipStartFromPlayer" class="secondary">当前时间设起点</button>
-                <button id="setClipEndFromPlayer" class="secondary">当前时间设终点</button>
+
+              <div class="editor-selection-actions">
+                <button id="setClipStartFromPlayer" class="secondary">设起点</button>
+                <button id="setClipEndFromPlayer" class="secondary">设终点</button>
                 <button id="addClip" class="primary">加入选区</button>
                 <button id="addWholeClip" class="secondary">整轨加入</button>
-                <button id="loadDemoAudio" class="secondary">载入双轨演示</button>
               </div>
-              <p class="hint">在上、下轨道波形中拖拽可创建选区；拖选区中间可整体滑动，拖左右边缘可修剪。</p>
             </section>
 
-            <section class="panel editor-clips-panel">
-              <div class="panel-title-row">
-                <div>
-                  <h3>时间线片段</h3>
-                  <p>片段按时间线位置叠放混音，可单独调整轨道、音量、淡入淡出和静音。</p>
+            <aside class="editor-side-panel">
+              <section class="panel editor-mixer-panel">
+                <div class="editor-panel-head">
+                  <h3>轨道</h3>
                 </div>
-                <button id="clearClips" class="secondary">清空</button>
-              </div>
-              <div id="clipList" class="clip-list"></div>
-              <div class="editor-export-row">
-                <button id="exportMix" class="primary">混音并导出 WAV</button>
-              </div>
-              <div id="editorResult" class="result-box hidden"></div>
-            </section>
+                <div class="track-import-grid">
+                  <article class="track-card active" data-track-card="A">
+                    <div class="track-head">
+                      <button class="track-select" data-select-track="A">轨道 1</button>
+                      <strong>人声 / 主轨</strong>
+                    </div>
+                    <input id="editorAudioFileA" type="file" accept="audio/*" />
+                    <div class="track-controls">
+                      <label>音量<input id="trackVolumeA" data-track-volume="A" type="range" min="0" max="2" step="0.01" value="1" /></label>
+                      <label><input id="trackMuteA" data-track-mute="A" type="checkbox" /> 静音</label>
+                      <label><input id="trackSoloA" data-track-solo="A" type="checkbox" /> 独奏</label>
+                    </div>
+                    <div class="editor-source-info" id="trackInfoA">还没有载入音频。</div>
+                  </article>
+
+                  <article class="track-card" data-track-card="B">
+                    <div class="track-head">
+                      <button class="track-select" data-select-track="B">轨道 2</button>
+                      <strong>音乐 / 环境</strong>
+                    </div>
+                    <input id="editorAudioFileB" type="file" accept="audio/*" />
+                    <div class="track-controls">
+                      <label>音量<input id="trackVolumeB" data-track-volume="B" type="range" min="0" max="2" step="0.01" value="0.75" /></label>
+                      <label><input id="trackMuteB" data-track-mute="B" type="checkbox" /> 静音</label>
+                      <label><input id="trackSoloB" data-track-solo="B" type="checkbox" /> 独奏</label>
+                    </div>
+                    <div class="editor-source-info" id="trackInfoB">还没有载入音频。</div>
+                  </article>
+                </div>
+              </section>
+
+              <section class="panel editor-clips-panel">
+                <div class="editor-panel-head">
+                  <h3>片段</h3>
+                  <button id="clearClips" class="secondary">清空</button>
+                </div>
+                <div id="clipList" class="clip-list"></div>
+                <div id="editorResult" class="result-box hidden"></div>
+              </section>
+            </aside>
           </div>
+
+          <footer class="source-credit">
+            UI 参考：
+            <a href="https://github.com/audacity/audacity" target="_blank" rel="noreferrer">Audacity</a>
+            <a href="https://github.com/pkalogiros/audiomass" target="_blank" rel="noreferrer">AudioMass</a>
+            <a href="https://github.com/naomiaro/waveform-playlist" target="_blank" rel="noreferrer">Waveform Playlist</a>
+            <a href="https://github.com/katspaugh/wavesurfer.js" target="_blank" rel="noreferrer">wavesurfer.js</a>
+          </footer>
         </section>
 
         <section id="config" class="view">

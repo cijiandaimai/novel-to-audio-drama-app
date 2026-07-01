@@ -546,11 +546,75 @@ textarea {
   line-height: 1.7;
 }
 
-.editor-grid {
+.editor-head-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.editor-workbench {
   display: grid;
-  grid-template-columns: minmax(420px, 1.05fr) minmax(360px, 0.95fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.36fr);
   gap: 18px;
   align-items: start;
+}
+
+.editor-main-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.editor-side-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.editor-command-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(78, 73, 60, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.editor-tool-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+}
+
+.editor-transport {
+  justify-content: flex-end;
+}
+
+.editor-command-bar .timeline-grid {
+  white-space: nowrap;
+}
+
+.editor-tool-group button,
+.editor-selection-actions button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.editor-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.editor-panel-head h3 {
+  margin: 0;
 }
 
 .editor-source-info {
@@ -571,7 +635,11 @@ textarea {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  margin: 14px 0;
+  margin: 0;
+}
+
+.editor-mixer-panel .track-import-grid {
+  grid-template-columns: 1fr;
 }
 
 .track-card {
@@ -621,23 +689,6 @@ textarea {
   color: var(--muted);
 }
 
-.timeline-tools {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 10px 0 12px;
-  padding: 10px;
-  border: 1px solid rgba(78, 73, 60, 0.14);
-  border-radius: 8px;
-  background: rgba(255, 253, 247, 0.62);
-}
-
-.timeline-tools button {
-  min-height: 34px;
-  padding: 7px 10px;
-}
-
 .timeline-toggle,
 .timeline-grid {
   display: inline-flex;
@@ -677,7 +728,13 @@ textarea {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
-  margin-top: 14px;
+}
+
+.editor-selection-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .clip-list {
@@ -690,6 +747,24 @@ textarea {
   margin: 0;
   color: var(--muted);
   line-height: 1.8;
+}
+
+.source-credit {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.72);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.source-credit a {
+  display: inline-block;
+  margin-left: 10px;
+  color: var(--accent-dark);
+  font-weight: 800;
 }
 
 .clip-item {
@@ -1199,7 +1274,8 @@ textarea {
   .sample-grid,
   .config-grid,
   .creator-layout,
-  .editor-grid,
+  .editor-workbench,
+  .editor-command-bar,
   .track-import-grid,
   .voice-ref-form,
   .voice-ref-item {
@@ -1251,6 +1327,31 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .editor-command-bar {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .editor-tool-group {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .editor-command-bar .editor-tool-group:nth-child(2) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .editor-command-bar .editor-tool-group:nth-child(2) .timeline-grid:last-child,
+  .editor-transport #exportMix {
+    grid-column: 1 / -1;
+  }
+
+  .editor-transport {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
   .page-head h2 {
     font-size: 24px;
   }
@@ -1262,7 +1363,8 @@ textarea {
 
   .actions,
   .panel-title-row,
-  .timeline-tools,
+  .editor-tool-group,
+  .editor-selection-actions,
   .history-item {
     align-items: stretch;
     flex-direction: column;
@@ -1270,7 +1372,8 @@ textarea {
 
   .actions .primary,
   .actions .secondary,
-  .timeline-tools button,
+  .editor-tool-group button,
+  .editor-selection-actions button,
   .page-head .primary,
   .page-head .secondary {
     width: 100%;
