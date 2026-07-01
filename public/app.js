@@ -18,8 +18,8 @@ const defaultConfig = {
   },
   audio: {
     mode: "mock",
-    endpoint: "",
-    model: "doubao-seed-audio-1-0",
+    endpoint: "https://openspeech.bytedance.com/api/v3/tts/create",
+    model: "seed-audio-1.0",
     apiKey: ""
   }
 };
@@ -32,12 +32,13 @@ const stageNames = [
   "豆包二次优化台词",
   "GPT 生成剧本 2",
   "GPT 生成影视级音频提示词",
-  "Doubao-Seed-Audio 1.0 生成并合成音频"
+  "豆包音频生成 seed-audio-1.0 生成并合成音频"
 ];
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const playerBgKey = "playerBackgroundImage";
+const defaultPlayerBg = "/assets/player-default-bg.png";
 const voiceRefsKey = "voiceReferences";
 
 function deepMerge(base, extra) {
@@ -84,11 +85,8 @@ function showView(name) {
 function setPlayerBackground(value) {
   const art = $("#playerArt");
   if (!art) return;
-  if (value) {
-    art.style.setProperty("--player-bg", `url("${value}")`);
-  } else {
-    art.style.removeProperty("--player-bg");
-  }
+  const background = value || defaultPlayerBg;
+  art.style.setProperty("--player-bg", `url("${background}")`);
 }
 
 function loadPlayerBackground() {

@@ -1,0 +1,9 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="小说转广播剧">
+  <rect width="512" height="512" rx="108" fill="#efe3cb"/>
+  <path d="M52 392c76-82 138-114 204-103 49 8 89 44 143 96 18 17 36 34 61 51H52z" fill="#314d42" opacity=".18"/>
+  <path d="M74 111h364v304H74z" fill="#fff9ec" stroke="#741f1b" stroke-width="20"/>
+  <path d="M137 309c58-75 115-108 171-98 44 8 77 46 115 95" fill="none" stroke="#1f211f" stroke-width="26" stroke-linecap="round" stroke-linejoin="round" opacity=".86"/>
+  <path d="M158 176c56-35 124-39 190 0M184 227c38-22 89-22 129 0" fill="none" stroke="#741f1b" stroke-width="24" stroke-linecap="round"/>
+  <circle cx="256" cy="279" r="18" fill="#741f1b"/>
+  <path d="M111 112c36 34 55 63 58 91M401 112c-35 32-53 61-56 89M112 415c35-34 54-62 57-88M400 415c-36-34-54-63-57-90" fill="none" stroke="#741f1b" stroke-width="14" stroke-linecap="round" opacity=".55"/>
+</svg>

@@ -331,25 +331,32 @@ async function writeMockAudio(segment, index) {
 }
 
 async function callAudioEndpoint(audioConfig, segment, index, voiceReferences = []) {
-  const normalizedVoiceReferences = normalizeVoiceReferences(voiceReferences);
+  const normalizedVoiceReferences = normalizeVoiceReferences(voiceReferences).slice(0, 3);
+  const requestId = globalThis.crypto?.randomUUID
+    ? globalThis.crypto.randomUUID()
+    : `audio-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const body = {
+    model: audioConfig.model || "seed-audio-1.0",
+    text_prompt: segment.prompt,
+    original_duration: Math.min(120, Number(segment.durationSeconds || 60)),
+    audio_config: {
+      format: "wav",
+      sample_rate: 24000
+    }
+  };
+  if (normalizedVoiceReferences.length) {
+    body.references = normalizedVoiceReferences.map((item) => ({
+      audio_data: item.audioBase64
+    }));
+  }
   const response = await fetch(audioConfig.endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${audioConfig.apiKey}`
+      "X-Api-Key": audioConfig.apiKey,
+      "X-Api-Request-Id": requestId
     },
-    body: JSON.stringify({
-      model: audioConfig.model || "doubao-seed-audio-1-0",
-      prompt: segment.prompt,
-      duration_seconds: segment.durationSeconds || 60,
-      format: "wav",
-      voice_references: normalizedVoiceReferences.map((item) => ({
-        role: item.role,
-        file_name: item.fileName,
-        mime_type: item.mimeType,
-        audio_base64: item.audioBase64
-      }))
-    })
+    body: JSON.stringify(body)
   });
   const text = await response.text();
   if (!response.ok) throw new Error(`Doubao Audio 调用失败：${response.status} ${text.slice(0, 500)}`);
@@ -359,8 +366,11 @@ async function callAudioEndpoint(audioConfig, segment, index, voiceReferences = 
   } catch {
     data = { raw: text };
   }
-  const base64 = data.audio_base64 || data.audio || data.data?.audio_base64 || data.result?.audio_base64;
-  const audioUrl = data.audio_url || data.url || data.data?.audio_url || data.result?.audio_url;
+  if (typeof data.code === "number" && data.code !== 0) {
+    throw new Error(`Doubao Audio 返回错误：${data.code} ${data.message || ""}`.trim());
+  }
+  const base64 = data.audio || data.audio_base64 || data.data?.audio || data.data?.audio_base64 || data.result?.audio || data.result?.audio_base64;
+  const audioUrl = data.url || data.audio_url || data.data?.url || data.data?.audio_url || data.result?.url || data.result?.audio_url;
   if (base64) {
     const dataUrl = `data:audio/wav;base64,${base64}`;
     return { ...segment, mode: "remote", fileName: `${String(index + 1).padStart(2, "0")}-${segment.id}.wav`, url: dataUrl, dataUrl };
@@ -371,7 +381,7 @@ async function callAudioEndpoint(audioConfig, segment, index, voiceReferences = 
   return {
     ...segment,
     mode: "remote-response",
-    note: "接口返回中未识别到 audio_base64 或 audio_url。"
+    note: "接口返回中未识别到 audio 或 url。"
   };
 }
 

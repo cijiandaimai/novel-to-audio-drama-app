@@ -381,25 +381,30 @@ async function writeMockAudio(jobDir, segment, index) {
 }
 
 async function callAudioEndpoint(audioConfig, segment, jobDir, index, voiceReferences = []) {
-  const normalizedVoiceReferences = normalizeVoiceReferences(voiceReferences);
+  const normalizedVoiceReferences = normalizeVoiceReferences(voiceReferences).slice(0, 3);
+  const requestId = crypto.randomUUID();
+  const body = {
+    model: audioConfig.model || "seed-audio-1.0",
+    text_prompt: segment.prompt,
+    original_duration: Math.min(120, Number(segment.durationSeconds || 60)),
+    audio_config: {
+      format: "wav",
+      sample_rate: 24000
+    }
+  };
+  if (normalizedVoiceReferences.length) {
+    body.references = normalizedVoiceReferences.map((item) => ({
+      audio_data: item.audioBase64
+    }));
+  }
   const response = await fetch(audioConfig.endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${audioConfig.apiKey}`
+      "X-Api-Key": audioConfig.apiKey,
+      "X-Api-Request-Id": requestId
     },
-    body: JSON.stringify({
-      model: audioConfig.model || "doubao-seed-audio-1-0",
-      prompt: segment.prompt,
-      duration_seconds: segment.durationSeconds || 60,
-      format: "wav",
-      voice_references: normalizedVoiceReferences.map((item) => ({
-        role: item.role,
-        file_name: item.fileName,
-        mime_type: item.mimeType,
-        audio_base64: item.audioBase64
-      }))
-    })
+    body: JSON.stringify(body)
   });
   const text = await response.text();
   if (!response.ok) {
@@ -412,8 +417,12 @@ async function callAudioEndpoint(audioConfig, segment, jobDir, index, voiceRefer
     data = { raw: text };
   }
 
-  const base64 = data.audio_base64 || data.audio || data.data?.audio_base64 || data.result?.audio_base64;
-  const audioUrl = data.audio_url || data.url || data.data?.audio_url || data.result?.audio_url;
+  if (typeof data.code === "number" && data.code !== 0) {
+    throw new Error(`Doubao Audio 返回错误：${data.code} ${data.message || ""}`.trim());
+  }
+
+  const base64 = data.audio || data.audio_base64 || data.data?.audio || data.data?.audio_base64 || data.result?.audio || data.result?.audio_base64;
+  const audioUrl = data.url || data.audio_url || data.data?.url || data.data?.audio_url || data.result?.url || data.result?.audio_url;
   const fileName = `${String(index + 1).padStart(2, "0")}-${segment.id}.wav`;
   const filePath = path.join(jobDir, fileName);
 
@@ -432,7 +441,7 @@ async function callAudioEndpoint(audioConfig, segment, jobDir, index, voiceRefer
   return {
     ...segment,
     mode: "remote-response",
-    note: "接口返回中未识别到 audio_base64 或 audio_url，已保存原始响应。"
+    note: "接口返回中未识别到 audio 或 url，已保存原始响应。"
   };
 }
 

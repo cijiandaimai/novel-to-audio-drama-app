@@ -4,49 +4,75 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>小说转广播剧</title>
+    <link rel="icon" href="/assets/app-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div class="ink-backdrop" aria-hidden="true"></div>
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
-          <div class="brand-mark">声</div>
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" role="img">
+              <path class="seal-paper" d="M9 8h46v48H9z" />
+              <path class="seal-wave" d="M16 41c7-8 13-12 20-11 5 1 9 5 13 11" />
+              <path class="seal-sound" d="M20 23c6-5 15-6 23 0M24 30c5-3 10-3 16 0" />
+              <path class="seal-dot" d="M31 36h2v2h-2z" />
+            </svg>
+          </div>
           <div>
             <h1>小说转广播剧</h1>
-            <p>自动编剧、配音、配乐、合成</p>
+            <p>编剧、配音、配乐、合成</p>
           </div>
         </div>
-        <nav class="nav">
-          <button class="nav-item active" data-view="discover">发现</button>
-          <button class="nav-item" data-view="create">创作</button>
-          <button class="nav-item" data-view="config">API 配置</button>
-          <button class="nav-item" data-view="history">历史</button>
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item active" data-view="discover">
+            <span class="nav-icon nav-icon-discover"></span>
+            发现
+          </button>
+          <button class="nav-item" data-view="create">
+            <span class="nav-icon nav-icon-create"></span>
+            创作
+          </button>
+          <button class="nav-item" data-view="config">
+            <span class="nav-icon nav-icon-config"></span>
+            API 配置
+          </button>
+          <button class="nav-item" data-view="history">
+            <span class="nav-icon nav-icon-history"></span>
+            历史
+          </button>
         </nav>
       </aside>
 
       <main class="main">
         <section id="discover" class="view active">
-          <header class="page-head">
+          <header class="page-head ink-hero">
             <div>
               <p class="eyebrow">免费试听</p>
-              <h2>先听几段，再开始创作</h2>
+              <h2>把章节磨成声场，把人物放进耳边</h2>
+              <p class="page-note">从小说文本到广播剧脚本、音频提示词、分段生成与合成，一次走完。</p>
             </div>
             <button class="primary" data-jump="create">开始创作</button>
           </header>
+
           <div class="sample-grid">
-            <article class="sample-card">
+            <article class="sample-card sample-night">
+              <div class="sample-visual" aria-hidden="true"></div>
               <span>悬疑</span>
               <h3>午夜档案室</h3>
               <p>低声旁白、远处脚步、门轴轻响，适合悬疑小说开场。</p>
               <audio controls src=""></audio>
             </article>
-            <article class="sample-card">
+            <article class="sample-card sample-rain">
+              <div class="sample-visual" aria-hidden="true"></div>
               <span>都市</span>
               <h3>雨夜重逢</h3>
               <p>雨声、车流、克制对白，适合情感与现实题材。</p>
               <audio controls src=""></audio>
             </article>
-            <article class="sample-card">
+            <article class="sample-card sample-ancient">
+              <div class="sample-visual" aria-hidden="true"></div>
               <span>古风</span>
               <h3>长街灯影</h3>
               <p>木屐、远钟、弦乐铺底，适合古代剧情改编。</p>
@@ -61,6 +87,7 @@
             <div>
               <p class="eyebrow">自动流水线</p>
               <h2>上传小说，生成广播剧</h2>
+              <p class="page-note">保留原著骨架，分工扩写、润色对白，再转成影视级音频提示词。</p>
             </div>
             <button class="secondary" data-jump="config">检查 API</button>
           </header>
@@ -100,7 +127,7 @@
               <div class="panel-title-row">
                 <div>
                   <h3>角色音色参考</h3>
-                  <p>为角色上传参考音频，生成时会随请求发送给音频模型。</p>
+                  <p>为主要角色上传参考音频，生成时会随请求一并发送。</p>
                 </div>
                 <button id="clearVoiceRefs" class="secondary">清空</button>
               </div>
@@ -148,6 +175,7 @@
             <div>
               <p class="eyebrow">傻瓜式配置</p>
               <h2>把自己的 API 接进来</h2>
+              <p class="page-note">没有 Key 时可先用演示模式；准备生成真实音频时再切到 HTTP。</p>
             </div>
             <button id="saveConfig" class="primary">保存配置</button>
           </header>
@@ -181,18 +209,18 @@
             </section>
 
             <section class="panel provider">
-              <h3>Doubao-Seed-Audio 1.0：声音导演</h3>
+              <h3>豆包音频生成：声场导演</h3>
               <p>逐段生成对白、音乐、音效和环境声一体化音频。</p>
               <label>模式
                 <select data-config="audio.mode">
                   <option value="mock">演示模式：生成静音占位音频</option>
-                  <option value="http">HTTP：调用邀测/自定义接口</option>
+                  <option value="http">HTTP：调用豆包音频生成接口</option>
                 </select>
               </label>
-              <label>接口地址<input data-config="audio.endpoint" placeholder="填 Doubao Audio 正式接口地址" /></label>
-              <label>模型 ID<input data-config="audio.model" placeholder="doubao-seed-audio-1-0" /></label>
-              <label>API Key<input data-config="audio.apiKey" type="password" placeholder="火山方舟 API Key" /></label>
-              <div class="tutorial">当前公开资料显示该模型处于体验/邀测阶段；正式接口开放后填入地址即可替换演示模式。</div>
+              <label>接口地址<input data-config="audio.endpoint" placeholder="https://openspeech.bytedance.com/api/v3/tts/create" /></label>
+              <label>模型 ID<input data-config="audio.model" placeholder="seed-audio-1.0" /></label>
+              <label>API Key<input data-config="audio.apiKey" type="password" placeholder="豆包语音 API Key" /></label>
+              <div class="tutorial">官方音频生成 HTTP 使用 X-Api-Key 鉴权；模型 ID 当前填 seed-audio-1.0，单段最长 120 秒。</div>
             </section>
           </div>
         </section>
@@ -202,6 +230,7 @@
             <div>
               <p class="eyebrow">创作历史</p>
               <h2>继续收听或下载成品</h2>
+              <p class="page-note">本机生成记录会保留在本地，方便回听和复用。</p>
             </div>
             <button id="refreshHistory" class="secondary">刷新</button>
           </header>
