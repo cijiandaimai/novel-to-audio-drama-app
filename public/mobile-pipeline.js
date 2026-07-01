@@ -1,5 +1,5 @@
 export const optimizedPlan = {
-  title: "小说转广播剧自动流水线",
+  title: "白泽声工坊自动流水线",
   stages: [
     "GPT 读取小说样本并生成故事骨架、角色表、改编策略",
     "Gemini 基于骨架扩展场景与戏剧冲突",

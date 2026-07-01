@@ -43,5 +43,5 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: novel-to-audio-drama-debug-apk
+          name: baize-voice-studio-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
