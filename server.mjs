@@ -723,12 +723,40 @@ async function listHistory() {
   return manifests.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
 }
 
+function midnightSystemPrompt() {
+  return [
+    "你是广播剧成人向氛围改编顾问。",
+    "只允许处理虚构、成年、明确自愿的角色关系。",
+    "输出应偏向成熟关系张力、边界沟通、声场氛围、音乐、呼吸、停顿和情绪推进。",
+    "禁止露骨性行为细节、未成年人、年龄不明、胁迫、醉酒/失去意识、药物控制、剥削、违法或隐私侵犯内容。",
+    "如果素材存在风险，先拒绝风险部分，再改写为健康、合规、非露骨的成熟向氛围提示词。",
+    "输出格式：标题、适用前提、角色年龄与同意声明、分段音频提示词、禁止事项。"
+  ].join("\n");
+}
+
+async function runMidnightNekomata(input) {
+  const source = pickText(input.source);
+  const grok = input.config?.grok || {};
+  const network = input.config?.network || {};
+  if (!source) throw new Error("缺少改编素材。");
+  if (!grok.apiKey || !grok.model) throw new Error("请先填写 Grok API Key 和模型 ID。");
+  const text = await callOpenAICompatible(grok, [
+    { role: "system", content: midnightSystemPrompt() },
+    {
+      role: "user",
+      content: `请把以下素材改写为合规的“午夜猫娘”成熟向广播剧音频提示词。再次强调：所有角色必须是虚构成年人并明确自愿；不要输出露骨性行为细节。\n\n${source.slice(0, 12000)}`
+    }
+  ], 0.55, network);
+  return { text };
+}
+
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
+  ".png": "image/png",
   ".wav": "audio/wav",
   ".mp3": "audio/mpeg",
   ".m4a": "audio/mp4"
@@ -778,6 +806,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/audio-direct") {
       const input = await readJson(req);
       const result = await runDirectAudio(input);
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/midnight-nekomata") {
+      const input = await readJson(req);
+      const result = await runMidnightNekomata(input);
       sendJson(res, 200, result);
       return;
     }

@@ -22,6 +22,11 @@ const defaultConfig = {
     model: "seed-audio-1.0",
     apiKey: ""
   },
+  grok: {
+    baseUrl: "https://api.x.ai/v1/chat/completions",
+    model: "grok-4.3",
+    apiKey: ""
+  },
   network: {
     profile: "china",
     relayBaseUrl: "",
@@ -46,6 +51,7 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const playerBgKey = "playerBackgroundImage";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const voiceRefsKey = "voiceReferences";
+const midnightUnlockKey = "midnightNekomataUnlocked";
 const editorState = {
   audioContext: null,
   sourceBuffer: null,
@@ -55,6 +61,103 @@ const editorState = {
   pickNext: "start",
   clipTimer: null,
   renderedUrl: ""
+};
+const recorderState = {
+  stream: null,
+  recorder: null,
+  chunks: [],
+  dataUrl: "",
+  mimeType: "audio/webm"
+};
+
+const apiHelp = {
+  "gpt.baseUrl": {
+    title: "GPT 接口地址",
+    url: "https://platform.openai.com/docs",
+    text: "官网在 OpenAI Platform。默认填写 /v1/chat/completions；如果你用兼容 OpenAI 的中转服务，也填它提供的 chat completions 地址。"
+  },
+  "gpt.model": {
+    title: "GPT 模型 ID",
+    url: "https://platform.openai.com/docs/models",
+    text: "在 OpenAI 模型列表或你的中转后台查看模型 ID。用于故事骨架、剧本整理和提示词拆分。"
+  },
+  "gpt.apiKey": {
+    title: "GPT API Key",
+    url: "https://platform.openai.com/api-keys",
+    text: "进入 OpenAI API Keys 页面创建 Key。不要把 Key 发给陌生人；本 App 目前只保存在本机。"
+  },
+  "gemini.model": {
+    title: "Gemini 模型 ID",
+    url: "https://aistudio.google.com/",
+    text: "在 Google AI Studio 选择可用 Gemini 模型。用于扩展场景、补足冲突和细节。"
+  },
+  "gemini.apiKey": {
+    title: "Gemini API Key",
+    url: "https://aistudio.google.com/app/apikey",
+    text: "进入 Google AI Studio 的 API Key 页面创建 Key。大陆用户通常需要系统 VPN 或中转线路。"
+  },
+  "gemini.endpoint": {
+    title: "Gemini 自定义接口",
+    url: "https://ai.google.dev/gemini-api/docs",
+    text: "可留空，App 会按官方 generateContent 地址拼接；如果用代理或中转服务，在这里填完整接口。"
+  },
+  "doubao.baseUrl": {
+    title: "豆包文本接口",
+    url: "https://console.volcengine.com/ark/",
+    text: "在火山方舟开通文本模型。默认地址是 cn-beijing 的 chat completions 兼容接口。"
+  },
+  "doubao.model": {
+    title: "豆包文本模型 ID",
+    url: "https://console.volcengine.com/ark/",
+    text: "在火山方舟模型接入页面复制模型 ID，用于中文台词润色和角色语气统一。"
+  },
+  "doubao.apiKey": {
+    title: "豆包文本 API Key",
+    url: "https://console.volcengine.com/ark/",
+    text: "在火山方舟创建 API Key，填入后才能调用真实文本模型。"
+  },
+  "audio.mode": {
+    title: "豆包音频模式",
+    url: "https://www.volcengine.com/docs/6561/2550782?lang=zh",
+    text: "演示模式会生成占位音频；HTTP 模式会调用 Doubao-Seed-Audio 1.0 生成真实音频。"
+  },
+  "audio.endpoint": {
+    title: "豆包音频接口地址",
+    url: "https://www.volcengine.com/docs/6561/2550782?lang=zh",
+    text: "当前默认接口为 https://openspeech.bytedance.com/api/v3/tts/create，使用 X-Api-Key 鉴权。"
+  },
+  "audio.model": {
+    title: "豆包音频模型 ID",
+    url: "https://www.volcengine.com/docs/6561/1816214?lang=zh",
+    text: "Doubao-Seed-Audio 1.0 当前填 seed-audio-1.0。建议单段提示词控制在 30-90 秒。"
+  },
+  "audio.apiKey": {
+    title: "豆包音频 API Key",
+    url: "https://console.volcengine.com/",
+    text: "在火山引擎语音服务或相关控制台创建 Key。真实生成音频前请先确认额度和计费。"
+  },
+  "grok.baseUrl": {
+    title: "Grok 接口地址",
+    url: "https://docs.x.ai/developers/rest-api-reference/inference/chat",
+    text: "xAI 官方 OpenAI 兼容地址为 https://api.x.ai/v1/chat/completions。"
+  },
+  "grok.model": {
+    title: "Grok 模型 ID",
+    url: "https://docs.x.ai/developers/quickstart",
+    text: "xAI 文档示例使用 grok-4.3；也可填你账号中可用的其他 Grok 模型 ID。"
+  },
+  "grok.apiKey": {
+    title: "Grok API Key",
+    url: "https://console.x.ai/",
+    text: "进入 xAI Console 创建 API Key。午夜猫娘只做合规的成年人成熟向氛围改编。"
+  }
+};
+
+const quizAnswers = {
+  consent: ["clear", "coercion", "renew"],
+  sti: ["screening", "condom", "hpv"],
+  pregnancy: ["ec", "implant", "double"],
+  law: ["minor", "force", "exploit"]
 };
 
 function deepMerge(base, extra) {
@@ -109,6 +212,30 @@ function loadPlayerBackground() {
   setPlayerBackground(localStorage.getItem(playerBgKey));
 }
 
+function decorateApiHelpFields() {
+  $$("[data-config]").forEach((field) => {
+    const help = apiHelp[field.dataset.config];
+    const label = field.closest("label");
+    if (!help || !label || label.dataset.helpReady) return;
+    label.dataset.helpReady = "true";
+    const row = document.createElement("div");
+    row.className = "api-input-row";
+    label.insertBefore(row, field);
+    row.appendChild(field);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "api-help-button";
+    button.dataset.apiHelp = field.dataset.config;
+    button.textContent = "?";
+    row.appendChild(button);
+    const panel = document.createElement("div");
+    panel.className = "api-help hidden";
+    panel.dataset.apiHelpPanel = field.dataset.config;
+    panel.innerHTML = `<strong>${help.title}</strong><br />${help.text}<br /><a href="${help.url}" target="_blank" rel="noreferrer">打开官网/文档</a>`;
+    label.appendChild(panel);
+  });
+}
+
 function playInApp(src, title) {
   const player = $("#mainPlayer");
   const playerTitle = $("#playerTitle");
@@ -127,6 +254,105 @@ function fileToDataUrl(file) {
     reader.addEventListener("error", () => reject(reader.error));
     reader.readAsDataURL(file);
   });
+}
+
+async function startVoiceRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("当前环境不支持录音，请改用上传参考音频。");
+    return;
+  }
+  const role = $("#voiceRoleInput").value.trim();
+  if (!role) {
+    alert("请先填写角色名，再开始录音。");
+    return;
+  }
+  recorderState.chunks = [];
+  recorderState.dataUrl = "";
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  });
+  const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+    ? "audio/webm;codecs=opus"
+    : "audio/webm";
+  const recorder = new MediaRecorder(stream, { mimeType });
+  recorderState.stream = stream;
+  recorderState.recorder = recorder;
+  recorderState.mimeType = mimeType;
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data?.size) recorderState.chunks.push(event.data);
+  });
+  recorder.addEventListener("stop", async () => {
+    const blob = new Blob(recorderState.chunks, { type: recorderState.mimeType });
+    recorderState.dataUrl = await fileToDataUrl(blob);
+    $("#voiceRecordPreview").src = recorderState.dataUrl;
+    $("#saveVoiceRecord").disabled = false;
+    $("#voiceRecordStatus").textContent = "录音完成，可以试听并保存为参考音色。";
+    recorderState.stream?.getTracks().forEach((track) => track.stop());
+    recorderState.stream = null;
+  });
+  recorder.start();
+  $("#startVoiceRecord").disabled = true;
+  $("#stopVoiceRecord").disabled = false;
+  $("#saveVoiceRecord").disabled = true;
+  $("#voiceRecordStatus").textContent = "录音中，请保持 5-20 秒清晰干声。";
+}
+
+function stopVoiceRecording() {
+  if (recorderState.recorder?.state === "recording") {
+    recorderState.recorder.stop();
+  }
+  $("#startVoiceRecord").disabled = false;
+  $("#stopVoiceRecord").disabled = true;
+}
+
+function saveRecordedVoiceReference() {
+  const role = $("#voiceRoleInput").value.trim();
+  if (!role) {
+    alert("请先填写角色名。");
+    return;
+  }
+  if (!recorderState.dataUrl) {
+    alert("还没有可保存的录音。");
+    return;
+  }
+  const references = getVoiceReferences();
+  references.unshift({
+    id: `voice-record-${Date.now()}`,
+    role,
+    fileName: `${role}-录音参考.webm`,
+    mimeType: recorderState.mimeType,
+    dataUrl: recorderState.dataUrl
+  });
+  saveVoiceReferences(references);
+  $("#voiceRecordStatus").textContent = "录音已保存为参考音色。";
+}
+
+function openBluetoothSettings() {
+  $("#bluetoothStatus").textContent = "正在尝试打开系统蓝牙设置；如果没有跳转，请从手机系统设置里配对音箱。";
+  try {
+    window.location.href = "intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end";
+  } catch {
+    $("#bluetoothStatus").textContent = "当前环境不能直接打开蓝牙设置，请从系统设置手动连接蓝牙音箱。";
+  }
+}
+
+function testBluetoothAudio() {
+  const context = getEditorAudioContext();
+  const duration = 0.8;
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.frequency.value = 660;
+  gain.gain.setValueAtTime(0.0001, context.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.18, context.currentTime + 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+  oscillator.connect(gain).connect(context.destination);
+  oscillator.start();
+  oscillator.stop(context.currentTime + duration);
+  $("#bluetoothStatus").textContent = "已播放测试音。如果蓝牙音箱已配对，声音会从系统当前输出设备播放。";
 }
 
 function formatSeconds(value) {
@@ -759,6 +985,153 @@ async function testNetworkRoutes() {
   `).join("");
 }
 
+function isMidnightUnlocked() {
+  return localStorage.getItem(midnightUnlockKey) === "yes";
+}
+
+function setMidnightModal(open) {
+  $("#midnightModal").classList.toggle("hidden", !open);
+  updateMidnightState();
+}
+
+function updateMidnightState() {
+  const unlocked = isMidnightUnlocked();
+  $("#midnightGate")?.classList.toggle("hidden", unlocked);
+  $("#midnightUnlocked")?.classList.toggle("hidden", !unlocked);
+  $("#grokProvider")?.classList.toggle("locked", !unlocked);
+  $$("[data-config^='grok.']").forEach((field) => {
+    field.disabled = !unlocked;
+  });
+  const configButton = $("#openMidnightGateFromConfig");
+  if (configButton) configButton.textContent = unlocked ? "已解锁" : "打开门禁";
+}
+
+function selectedQuizValues(key) {
+  return $$(`[data-quiz="${key}"] input:checked`).map((input) => input.value).sort();
+}
+
+function sameValues(a, b) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function submitMidnightQuiz() {
+  const passed = Object.entries(quizAnswers).every(([key, answers]) =>
+    sameValues(selectedQuizValues(key), [...answers].sort())
+  );
+  if (!passed) {
+    $("#midnightQuizResult").innerHTML = "<p class=\"fail\">答案不完整或有误。请重新阅读题目：这个功能只面向成年人，必须理解同意、避孕、感染预防和内容边界。</p>";
+    return;
+  }
+  localStorage.setItem(midnightUnlockKey, "yes");
+  $("#midnightQuizResult").innerHTML = "<p class=\"ok\">门禁已通过。请继续填写 Grok API Key，并只用于合规的成年人成熟向氛围改编。</p>";
+  updateMidnightState();
+}
+
+function lockMidnightMode() {
+  localStorage.removeItem(midnightUnlockKey);
+  $("#midnightResult").classList.add("hidden");
+  $("#midnightResult").textContent = "";
+  updateMidnightState();
+}
+
+function getMidnightSource() {
+  return $("#midnightSource").value.trim()
+    || $("#directPromptInput")?.value.trim()
+    || $("#novelInput")?.value.trim()
+    || "";
+}
+
+function midnightSystemPrompt() {
+  return [
+    "你是广播剧成人向氛围改编顾问。",
+    "只允许处理虚构、成年、明确自愿的角色关系。",
+    "输出应偏向成熟关系张力、边界沟通、声场氛围、音乐、呼吸、停顿和情绪推进。",
+    "禁止露骨性行为细节、未成年人、年龄不明、胁迫、醉酒/失去意识、药物控制、剥削、违法或隐私侵犯内容。",
+    "如果素材存在风险，先拒绝风险部分，再改写为健康、合规、非露骨的成熟向氛围提示词。",
+    "输出格式：标题、适用前提、角色年龄与同意声明、分段音频提示词、禁止事项。"
+  ].join("\n");
+}
+
+async function callGrokRewrite(source, config) {
+  try {
+    const response = await fetch("/api/midnight-nekomata", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source, config })
+    });
+    if (response.ok) return response.json();
+  } catch {
+    // Android packaged app has no local Node service; fall back to direct API below.
+  }
+  const grok = config.grok || {};
+  const response = await fetch(grok.baseUrl || defaultConfig.grok.baseUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${grok.apiKey}`
+    },
+    body: JSON.stringify({
+      model: grok.model,
+      temperature: 0.55,
+      messages: [
+        { role: "system", content: midnightSystemPrompt() },
+        {
+          role: "user",
+          content: `请把以下素材改写为合规的“午夜猫娘”成熟向广播剧音频提示词。所有角色必须是虚构成年人并明确自愿；不要输出露骨性行为细节。\n\n${source.slice(0, 12000)}`
+        }
+      ]
+    })
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Grok 调用失败：${response.status} ${text.slice(0, 300)}`);
+  const data = JSON.parse(text);
+  return {
+    text: data.choices?.[0]?.message?.content?.trim() || JSON.stringify(data, null, 2)
+  };
+}
+
+async function runMidnightRewrite() {
+  if (!isMidnightUnlocked()) {
+    setMidnightModal(true);
+    return;
+  }
+  const source = getMidnightSource();
+  if (!source) {
+    alert("请先粘贴改编素材，或在创作页/直接提示词里填入内容。");
+    return;
+  }
+  const config = getConfig();
+  if (!config.grok?.apiKey || !config.grok?.model) {
+    alert("请先在 API 页面填写 Grok API Key 和模型 ID。");
+    showView("config");
+    return;
+  }
+  $("#runMidnightRewrite").disabled = true;
+  $("#midnightResult").classList.add("hidden");
+  try {
+    const result = await callGrokRewrite(source, config);
+    const text = result.text || "";
+    $("#midnightResult").classList.remove("hidden");
+    $("#midnightResult").innerHTML = `
+      <strong>午夜猫娘已生成：</strong><br />
+      <textarea class="short-textarea">${text.replace(/</g, "&lt;")}</textarea>
+      <div class="actions">
+        <button id="useMidnightPrompt" class="primary">放入直接提示词</button>
+      </div>
+    `;
+    $("#useMidnightPrompt").addEventListener("click", () => {
+      $("#directPromptInput").value = text;
+      setMidnightModal(false);
+      showView("create");
+    });
+  } catch (error) {
+    $("#midnightResult").classList.remove("hidden");
+    $("#midnightResult").innerHTML = `<strong>生成失败：</strong>${error.message}`;
+  } finally {
+    $("#runMidnightRewrite").disabled = false;
+  }
+}
+
 function renderStages(active = false, doneCount = 0) {
   const list = $("#stageList");
   list.innerHTML = "";
@@ -929,6 +1302,13 @@ function bindEvents() {
   $("#runButton").addEventListener("click", runPipeline);
   $("#addVoiceRef").addEventListener("click", addVoiceReference);
   $("#clearVoiceRefs").addEventListener("click", () => saveVoiceReferences([]));
+  $("#startVoiceRecord").addEventListener("click", () => startVoiceRecording().catch((error) => {
+    $("#voiceRecordStatus").textContent = `录音失败：${error.message}`;
+    $("#startVoiceRecord").disabled = false;
+    $("#stopVoiceRecord").disabled = true;
+  }));
+  $("#stopVoiceRecord").addEventListener("click", stopVoiceRecording);
+  $("#saveVoiceRecord").addEventListener("click", saveRecordedVoiceReference);
   $("#fillDirectPromptDemo").addEventListener("click", fillDirectPromptDemo);
   $("#runDirectAudioButton").addEventListener("click", runDirectAudio);
   $("#refreshHistory").addEventListener("click", loadHistory);
@@ -993,8 +1373,23 @@ function bindEvents() {
   $("#applyChinaNetwork").addEventListener("click", () => applyNetworkPreset("china"));
   $("#applyVpnNetwork").addEventListener("click", () => applyNetworkPreset("vpn"));
   $("#testNetwork").addEventListener("click", testNetworkRoutes);
+  $("#openBluetoothSettings").addEventListener("click", openBluetoothSettings);
+  $("#testBluetoothAudio").addEventListener("click", testBluetoothAudio);
+  $("#midnightCatButton").addEventListener("click", () => setMidnightModal(true));
+  $("#openMidnightGateFromConfig").addEventListener("click", () => setMidnightModal(true));
+  $("#closeMidnightModal").addEventListener("click", () => setMidnightModal(false));
+  $("#submitMidnightQuiz").addEventListener("click", submitMidnightQuiz);
+  $("#lockMidnightMode").addEventListener("click", lockMidnightMode);
+  $("#runMidnightRewrite").addEventListener("click", runMidnightRewrite);
   window.addEventListener("resize", renderWaveform);
   document.addEventListener("click", (event) => {
+    const helpButton = event.target.closest("[data-api-help]");
+    if (helpButton) {
+      const key = helpButton.dataset.apiHelp;
+      const panel = $(`[data-api-help-panel="${key}"]`);
+      panel?.classList.toggle("hidden");
+      return;
+    }
     const removeVoiceRefButton = event.target.closest("[data-remove-voice-ref]");
     if (removeVoiceRefButton) {
       saveVoiceReferences(getVoiceReferences().filter((item) => item.id !== removeVoiceRefButton.dataset.removeVoiceRef));
@@ -1046,6 +1441,7 @@ function bindEvents() {
   });
 }
 
+decorateApiHelpFields();
 loadConfigIntoForm();
 loadPlayerBackground();
 renderVoiceReferences();
@@ -1053,4 +1449,5 @@ renderClipList();
 renderWaveform();
 loadPlan();
 renderStages();
+updateMidnightState();
 bindEvents();

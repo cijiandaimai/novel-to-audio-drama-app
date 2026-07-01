@@ -141,6 +141,19 @@
                 </label>
                 <button id="addVoiceRef" class="primary">添加音色参考</button>
               </div>
+              <div class="recorder-card">
+                <div>
+                  <strong>录自己的声音</strong>
+                  <p>录 5-20 秒清晰干声，可直接保存为当前角色的参考音色。</p>
+                </div>
+                <div class="actions">
+                  <button id="startVoiceRecord" class="secondary">开始录音</button>
+                  <button id="stopVoiceRecord" class="secondary" disabled>停止录音</button>
+                  <button id="saveVoiceRecord" class="primary" disabled>保存录音</button>
+                </div>
+                <audio id="voiceRecordPreview" controls></audio>
+                <p id="voiceRecordStatus" class="hint">录音前请先填写角色名，并确保已获得本人授权。</p>
+              </div>
               <div id="voiceRefList" class="voice-ref-list"></div>
               <p class="hint">建议每个角色上传 5-20 秒清晰干声；不要上传未授权真人声音。</p>
             </section>
@@ -307,6 +320,20 @@
               <div id="networkStatus" class="network-status"></div>
               <div class="tutorial">提示：Android 上系统 VPN 会自动接管 App 流量。若 OpenAI/Gemini 无法直连，建议开启系统 VPN 后再测；若仍失败，可把接口地址改成自己的 HTTPS 中转服务。</div>
             </section>
+
+            <section class="panel provider mature-provider" id="grokProvider">
+              <div class="panel-title-row">
+                <div>
+                  <h3>Grok：午夜猫娘</h3>
+                  <p>用于成熟向关系张力与氛围提示词改编。必须通过成年人知识门禁后才能启用。</p>
+                </div>
+                <button id="openMidnightGateFromConfig" class="secondary">打开门禁</button>
+              </div>
+              <label>接口地址<input data-config="grok.baseUrl" placeholder="https://api.x.ai/v1/chat/completions" /></label>
+              <label>模型 ID<input data-config="grok.model" placeholder="grok-4.3" /></label>
+              <label>API Key<input data-config="grok.apiKey" type="password" placeholder="xAI API Key" /></label>
+              <div class="tutorial">仅允许成年、虚构、明确自愿的成熟向氛围改编；不允许未成年人、强迫、剥削、违法或露骨性行为细节。</div>
+            </section>
           </div>
         </section>
 
@@ -325,6 +352,7 @@
 
       <section class="player-dock" id="playerDock">
         <div class="player-art" id="playerArt">
+          <button id="midnightCatButton" class="midnight-cat-button" title="午夜猫娘" aria-label="午夜猫娘">午夜猫娘</button>
           <div class="player-shade">
             <div>
               <p class="eyebrow">应用内播放器</p>
@@ -339,10 +367,78 @@
               <input id="playerBgUrl" type="url" placeholder="或粘贴图片链接" />
               <button id="applyBgUrl" class="secondary">应用</button>
               <button id="clearBg" class="secondary">清除</button>
+              <button id="openBluetoothSettings" class="secondary">蓝牙音箱</button>
+              <button id="testBluetoothAudio" class="secondary">测试播放</button>
+              <p id="bluetoothStatus" class="hint">请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。</p>
             </div>
           </div>
         </div>
       </section>
+    </div>
+
+    <div id="midnightModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="midnightTitle">
+      <div class="modal-panel midnight-panel">
+        <div class="panel-title-row">
+          <div>
+            <p class="eyebrow">成年人门禁</p>
+            <h3 id="midnightTitle">午夜猫娘</h3>
+            <p>通过性教育与边界知识多选题后，才可启用 Grok 成熟向氛围改编。</p>
+          </div>
+          <button id="closeMidnightModal" class="secondary">关闭</button>
+        </div>
+
+        <div id="midnightGate">
+          <div class="quiz-list">
+            <fieldset class="quiz-question" data-quiz="consent">
+              <legend>1. 关于同意，哪些说法正确？（多选）</legend>
+              <label><input type="checkbox" value="clear" /> 同意必须清醒、明确、可撤回，并且针对具体行为。</label>
+              <label><input type="checkbox" value="silence" /> 沉默、没有反抗或关系亲密本身就等于同意。</label>
+              <label><input type="checkbox" value="coercion" /> 威胁、胁迫、醉酒或意识不清状态下的“同意”无效。</label>
+              <label><input type="checkbox" value="renew" /> 之前同意过，不代表之后每一次都自动同意。</label>
+            </fieldset>
+
+            <fieldset class="quiz-question" data-quiz="sti">
+              <legend>2. 关于性传播感染和保护，哪些说法正确？（多选）</legend>
+              <label><input type="checkbox" value="screening" /> 不能只靠外观判断是否感染，检测和坦诚沟通很重要。</label>
+              <label><input type="checkbox" value="condom" /> 安全套可显著降低风险，但不能消除所有风险。</label>
+              <label><input type="checkbox" value="symptom" /> 没有症状就一定没有感染。</label>
+              <label><input type="checkbox" value="hpv" /> HPV 疫苗不能替代必要筛查，但可降低相关疾病风险。</label>
+            </fieldset>
+
+            <fieldset class="quiz-question" data-quiz="pregnancy">
+              <legend>3. 关于避孕和紧急避孕，哪些说法正确？（多选）</legend>
+              <label><input type="checkbox" value="ec" /> 紧急避孕越早使用通常越有效，但不能当作常规避孕方式。</label>
+              <label><input type="checkbox" value="implant" /> 已经着床的妊娠不是常规紧急避孕药的目标。</label>
+              <label><input type="checkbox" value="double" /> 预防意外妊娠和感染常需要“双重保护”思路。</label>
+              <label><input type="checkbox" value="myth" /> 体外排精是可靠且足够的避孕方法。</label>
+            </fieldset>
+
+            <fieldset class="quiz-question" data-quiz="law">
+              <legend>4. 哪些内容绝不能进入成人向创作？（多选）</legend>
+              <label><input type="checkbox" value="minor" /> 未成年人或年龄不明但被描写成未成年。</label>
+              <label><input type="checkbox" value="force" /> 强迫、胁迫、失去意识、药物控制或无法表达同意。</label>
+              <label><input type="checkbox" value="exploit" /> 剥削、交易胁迫、隐私侵犯或偷拍视频式内容。</label>
+              <label><input type="checkbox" value="adult" /> 成年虚构角色在明确自愿边界下的非露骨亲密氛围。</label>
+            </fieldset>
+          </div>
+          <div class="actions">
+            <button id="submitMidnightQuiz" class="primary">提交答案</button>
+          </div>
+          <div id="midnightQuizResult" class="network-status"></div>
+        </div>
+
+        <div id="midnightUnlocked" class="hidden">
+          <label class="field">
+            <span>改编素材</span>
+            <textarea id="midnightSource" class="short-textarea" placeholder="可粘贴小说片段，或留空使用创作页/直接提示词中的内容。"></textarea>
+          </label>
+          <div class="actions">
+            <button id="runMidnightRewrite" class="primary">用 Grok 生成成熟向提示词</button>
+            <button id="lockMidnightMode" class="secondary">重新锁定</button>
+          </div>
+          <div id="midnightResult" class="result-box hidden"></div>
+        </div>
+      </div>
     </div>
 
     <script src="/app.js" type="module"></script>
