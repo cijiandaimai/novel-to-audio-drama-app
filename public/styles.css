@@ -107,61 +107,15 @@ button {
   display: grid;
   place-items: center;
   border-radius: 14px;
-  color: var(--accent);
+  overflow: hidden;
   background: #efe3cb;
   box-shadow: inset 0 0 0 1px rgba(111, 31, 27, 0.22), var(--brush-shadow);
 }
 
-.brand-mark svg {
-  width: 34px;
-  height: 34px;
-}
-
-.seal-paper {
-  fill: rgba(255, 250, 238, 0.86);
-  stroke: var(--accent);
-  stroke-width: 4;
-}
-
-.seal-wave,
-.seal-sound {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 4.4;
-  stroke-linecap: round;
-}
-
-.seal-dot {
-  fill: var(--accent);
-}
-
-.panda-face {
-  fill: #fff9ec;
-  stroke: #1f211f;
-  stroke-width: 3.5;
-}
-
-.panda-ear,
-.panda-patch,
-.panda-eye,
-.panda-nose {
-  fill: #1f211f;
-}
-
-.panda-smile,
-.panda-headset {
-  fill: none;
-  stroke-linecap: round;
-}
-
-.panda-smile {
-  stroke: #1f211f;
-  stroke-width: 3;
-}
-
-.panda-headset {
-  stroke: var(--accent);
-  stroke-width: 4;
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .brand h1,
