@@ -21,6 +21,12 @@ const defaultConfig = {
     endpoint: "https://openspeech.bytedance.com/api/v3/tts/create",
     model: "seed-audio-1.0",
     apiKey: ""
+  },
+  network: {
+    profile: "china",
+    relayBaseUrl: "",
+    timeoutSeconds: "120",
+    retryCount: "1"
   }
 };
 
@@ -40,6 +46,16 @@ const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const playerBgKey = "playerBackgroundImage";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const voiceRefsKey = "voiceReferences";
+const editorState = {
+  audioContext: null,
+  sourceBuffer: null,
+  sourceUrl: "",
+  sourceName: "",
+  clips: [],
+  pickNext: "start",
+  clipTimer: null,
+  renderedUrl: ""
+};
 
 function deepMerge(base, extra) {
   const out = structuredClone(base);
@@ -111,6 +127,408 @@ function fileToDataUrl(file) {
     reader.addEventListener("error", () => reject(reader.error));
     reader.readAsDataURL(file);
   });
+}
+
+function formatSeconds(value) {
+  const safeValue = Math.max(0, Number(value) || 0);
+  const minutes = Math.floor(safeValue / 60);
+  const seconds = safeValue - minutes * 60;
+  return `${minutes}:${seconds.toFixed(2).padStart(5, "0")}`;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, Number(value) || 0));
+}
+
+function getEditorAudioContext() {
+  if (!editorState.audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    editorState.audioContext = new AudioContextClass();
+  }
+  return editorState.audioContext;
+}
+
+function getEditorDuration() {
+  return editorState.sourceBuffer?.duration || 0;
+}
+
+function setClipInputs(start, end) {
+  const duration = getEditorDuration();
+  $("#clipStart").value = clamp(start, 0, duration).toFixed(2);
+  $("#clipEnd").value = clamp(end, 0, duration).toFixed(2);
+  renderWaveform();
+}
+
+function getClipInputs() {
+  const duration = getEditorDuration();
+  const start = clamp($("#clipStart").value, 0, duration);
+  const end = clamp($("#clipEnd").value, 0, duration);
+  return { start: Math.min(start, end), end: Math.max(start, end) };
+}
+
+function updateEditorSourceInfo() {
+  const info = $("#editorSourceInfo");
+  if (!info) return;
+  if (!editorState.sourceBuffer) {
+    info.textContent = "还没有载入音频。";
+    return;
+  }
+  const duration = editorState.sourceBuffer.duration;
+  info.textContent = `${editorState.sourceName}｜${formatSeconds(duration)}｜${editorState.sourceBuffer.numberOfChannels} 声道｜${editorState.sourceBuffer.sampleRate} Hz`;
+}
+
+async function setEditorSource({ arrayBuffer, url, name }) {
+  const context = getEditorAudioContext();
+  const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
+  if (editorState.sourceUrl && editorState.sourceUrl.startsWith("blob:")) {
+    URL.revokeObjectURL(editorState.sourceUrl);
+  }
+  editorState.sourceBuffer = buffer;
+  editorState.sourceUrl = url;
+  editorState.sourceName = name || "未命名音频";
+  editorState.clips = [];
+  $("#editorPreview").src = url;
+  setClipInputs(0, Math.min(buffer.duration, 30));
+  updateEditorSourceInfo();
+  renderClipList();
+  renderWaveform();
+}
+
+async function loadEditorFile(file) {
+  if (!file) return;
+  const arrayBuffer = await file.arrayBuffer();
+  const url = URL.createObjectURL(file);
+  await setEditorSource({ arrayBuffer, url, name: file.name });
+}
+
+async function loadEditorFromPlayer() {
+  const player = $("#mainPlayer");
+  if (!player?.src) {
+    alert("播放器里还没有可导入的音频。");
+    return;
+  }
+  try {
+    const response = await fetch(player.src);
+    const arrayBuffer = await response.arrayBuffer();
+    await setEditorSource({
+      arrayBuffer,
+      url: player.src,
+      name: $("#playerTitle")?.textContent?.trim() || "播放器音频"
+    });
+    showView("editor");
+  } catch {
+    alert("这个音频地址无法直接导入。请先下载到本机，再从剪辑工作台上传。");
+  }
+}
+
+async function loadDemoEditorAudio() {
+  const context = getEditorAudioContext();
+  const sampleRate = 44100;
+  const duration = 8;
+  const buffer = context.createBuffer(1, sampleRate * duration, sampleRate);
+  const channel = buffer.getChannelData(0);
+  for (let i = 0; i < channel.length; i++) {
+    const time = i / sampleRate;
+    const tone = Math.sin(2 * Math.PI * 220 * time) * 0.16 + Math.sin(2 * Math.PI * 440 * time) * 0.08;
+    const pulse = Math.sin(2 * Math.PI * 2 * time) > 0 ? 1 : 0.45;
+    const fade = Math.min(1, time / 0.4, (duration - time) / 0.6);
+    channel[i] = tone * pulse * Math.max(0, fade);
+  }
+  const blob = audioBufferToWav(buffer);
+  const url = URL.createObjectURL(blob);
+  await setEditorSource({
+    arrayBuffer: await blob.arrayBuffer(),
+    url,
+    name: "演示音频.wav"
+  });
+}
+
+function renderWaveform() {
+  const canvas = $("#waveformCanvas");
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const ratio = window.devicePixelRatio || 1;
+  const width = Math.max(320, Math.floor(rect.width * ratio));
+  const height = Math.max(160, Math.floor(rect.height * ratio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(255, 250, 238, 0.86)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(49, 95, 76, 0.16)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < width; x += 64 * ratio) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(31, 33, 31, 0.18)";
+  ctx.beginPath();
+  ctx.moveTo(0, height / 2);
+  ctx.lineTo(width, height / 2);
+  ctx.stroke();
+
+  const buffer = editorState.sourceBuffer;
+  if (!buffer) {
+    ctx.fillStyle = "rgba(116, 111, 99, 0.78)";
+    ctx.font = `${14 * ratio}px Microsoft YaHei, sans-serif`;
+    ctx.fillText("上传音频后这里会显示波形", 18 * ratio, 34 * ratio);
+    return;
+  }
+
+  const data = buffer.getChannelData(0);
+  const samplesPerPixel = Math.max(1, Math.floor(data.length / width));
+  ctx.strokeStyle = "#315f4c";
+  ctx.lineWidth = Math.max(1, ratio);
+  ctx.beginPath();
+  for (let x = 0; x < width; x++) {
+    let min = 1;
+    let max = -1;
+    const start = x * samplesPerPixel;
+    for (let i = 0; i < samplesPerPixel && start + i < data.length; i++) {
+      const sample = data[start + i];
+      if (sample < min) min = sample;
+      if (sample > max) max = sample;
+    }
+    const y1 = ((1 - max) * height) / 2;
+    const y2 = ((1 - min) * height) / 2;
+    ctx.moveTo(x, y1);
+    ctx.lineTo(x, y2);
+  }
+  ctx.stroke();
+
+  const { start, end } = getClipInputs();
+  if (end > start) {
+    const x1 = (start / buffer.duration) * width;
+    const x2 = (end / buffer.duration) * width;
+    ctx.fillStyle = "rgba(111, 31, 27, 0.16)";
+    ctx.fillRect(x1, 0, Math.max(2, x2 - x1), height);
+    ctx.strokeStyle = "rgba(111, 31, 27, 0.72)";
+    ctx.lineWidth = 2 * ratio;
+    ctx.strokeRect(x1, 0, Math.max(2, x2 - x1), height);
+  }
+}
+
+function addEditorClip(start, end) {
+  if (!editorState.sourceBuffer) {
+    alert("请先上传或导入音频。");
+    return;
+  }
+  const duration = getEditorDuration();
+  const safeStart = clamp(start, 0, duration);
+  const safeEnd = clamp(end, 0, duration);
+  if (safeEnd - safeStart < 0.1) {
+    alert("片段太短，请至少保留 0.1 秒。");
+    return;
+  }
+  editorState.clips.push({
+    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: `片段 ${editorState.clips.length + 1}`,
+    start: safeStart,
+    end: safeEnd,
+    volume: 1,
+    fadeIn: 0,
+    fadeOut: 0,
+    muted: false
+  });
+  renderClipList();
+}
+
+function renderClipList() {
+  const list = $("#clipList");
+  if (!list) return;
+  if (!editorState.clips.length) {
+    list.innerHTML = "<p class=\"clip-empty\">还没有剪辑片段。选择起点和终点后点“添加片段”。</p>";
+    return;
+  }
+  list.innerHTML = "";
+  editorState.clips.forEach((clip, index) => {
+    const duration = Math.max(0, clip.end - clip.start);
+    const article = document.createElement("article");
+    article.className = "clip-item";
+    article.dataset.clipId = clip.id;
+    article.innerHTML = `
+      <div class="clip-head">
+        <div>
+          <strong>${index + 1}. ${clip.name}</strong>
+          <span>${formatSeconds(clip.start)} - ${formatSeconds(clip.end)}｜${formatSeconds(duration)}</span>
+        </div>
+        <label><input type="checkbox" data-clip-field="muted" ${clip.muted ? "checked" : ""} /> 静音</label>
+      </div>
+      <div class="clip-fields">
+        <label>起点<input type="number" step="0.01" min="0" data-clip-field="start" value="${clip.start.toFixed(2)}" /></label>
+        <label>终点<input type="number" step="0.01" min="0" data-clip-field="end" value="${clip.end.toFixed(2)}" /></label>
+        <label>音量<input type="number" step="0.05" min="0" max="2" data-clip-field="volume" value="${clip.volume.toFixed(2)}" /></label>
+        <label>淡入<input type="number" step="0.1" min="0" data-clip-field="fadeIn" value="${clip.fadeIn.toFixed(1)}" /></label>
+        <label>淡出<input type="number" step="0.1" min="0" data-clip-field="fadeOut" value="${clip.fadeOut.toFixed(1)}" /></label>
+      </div>
+      <div class="clip-actions">
+        <button class="secondary" data-clip-action="preview">试听</button>
+        <button class="secondary" data-clip-action="select">选中范围</button>
+        <button class="secondary" data-clip-action="up">上移</button>
+        <button class="secondary" data-clip-action="down">下移</button>
+        <button class="secondary" data-clip-action="remove">删除</button>
+      </div>
+    `;
+    list.appendChild(article);
+  });
+}
+
+function updateClipField(clipId, field, value, checked) {
+  const clip = editorState.clips.find((item) => item.id === clipId);
+  if (!clip) return;
+  if (field === "muted") {
+    clip.muted = checked;
+  } else {
+    const duration = getEditorDuration();
+    const numeric = Number(value);
+    if (field === "start") clip.start = clamp(numeric, 0, Math.max(0, clip.end - 0.1));
+    if (field === "end") clip.end = clamp(numeric, Math.min(duration, clip.start + 0.1), duration);
+    if (field === "volume") clip.volume = clamp(numeric, 0, 2);
+    if (field === "fadeIn") clip.fadeIn = clamp(numeric, 0, Math.max(0, clip.end - clip.start));
+    if (field === "fadeOut") clip.fadeOut = clamp(numeric, 0, Math.max(0, clip.end - clip.start));
+  }
+  renderClipList();
+}
+
+function moveClip(clipId, direction) {
+  const index = editorState.clips.findIndex((item) => item.id === clipId);
+  const nextIndex = index + direction;
+  if (index < 0 || nextIndex < 0 || nextIndex >= editorState.clips.length) return;
+  const [clip] = editorState.clips.splice(index, 1);
+  editorState.clips.splice(nextIndex, 0, clip);
+  renderClipList();
+}
+
+function playEditorClip(clipId) {
+  const clip = editorState.clips.find((item) => item.id === clipId);
+  const preview = $("#editorPreview");
+  if (!clip || !preview) return;
+  clearTimeout(editorState.clipTimer);
+  preview.currentTime = clip.start;
+  preview.play();
+  editorState.clipTimer = setTimeout(() => preview.pause(), Math.max(120, (clip.end - clip.start) * 1000));
+}
+
+function handleClipAction(clipId, action) {
+  const clip = editorState.clips.find((item) => item.id === clipId);
+  if (!clip) return;
+  if (action === "preview") playEditorClip(clipId);
+  if (action === "select") setClipInputs(clip.start, clip.end);
+  if (action === "up") moveClip(clipId, -1);
+  if (action === "down") moveClip(clipId, 1);
+  if (action === "remove") {
+    editorState.clips = editorState.clips.filter((item) => item.id !== clipId);
+    renderClipList();
+  }
+}
+
+function audioBufferToWav(buffer) {
+  const numberOfChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const sampleCount = buffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = numberOfChannels * bytesPerSample;
+  const dataSize = sampleCount * blockAlign;
+  const arrayBuffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(arrayBuffer);
+  const writeString = (offset, value) => {
+    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numberOfChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+  let offset = 44;
+  const channels = Array.from({ length: numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
+  for (let i = 0; i < sampleCount; i++) {
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][i] || 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([arrayBuffer], { type: "audio/wav" });
+}
+
+async function exportEditorMix() {
+  if (!editorState.sourceBuffer) {
+    alert("请先上传或导入音频。");
+    return;
+  }
+  if (!editorState.clips.length) {
+    alert("请先添加至少一个片段。");
+    return;
+  }
+  $("#exportMix").disabled = true;
+  $("#editorResult").classList.add("hidden");
+  try {
+    const sourceBuffer = editorState.sourceBuffer;
+    const sampleRate = sourceBuffer.sampleRate;
+    const channels = sourceBuffer.numberOfChannels;
+    const totalDuration = editorState.clips.reduce((sum, clip) => sum + Math.max(0, clip.end - clip.start), 0);
+    const offline = new OfflineAudioContext(channels, Math.ceil(totalDuration * sampleRate), sampleRate);
+    let offset = 0;
+    for (const clip of editorState.clips) {
+      const duration = Math.max(0, clip.end - clip.start);
+      if (duration <= 0) continue;
+      const source = offline.createBufferSource();
+      const gain = offline.createGain();
+      source.buffer = sourceBuffer;
+      const volume = clip.muted ? 0 : clamp(clip.volume, 0, 2);
+      const fadeIn = Math.min(duration, Math.max(0, clip.fadeIn || 0));
+      const fadeOut = Math.min(duration, Math.max(0, clip.fadeOut || 0));
+      gain.gain.setValueAtTime(fadeIn > 0 ? 0 : volume, offset);
+      if (fadeIn > 0) gain.gain.linearRampToValueAtTime(volume, offset + fadeIn);
+      gain.gain.setValueAtTime(volume, Math.max(offset, offset + duration - fadeOut));
+      if (fadeOut > 0) gain.gain.linearRampToValueAtTime(0, offset + duration);
+      source.connect(gain).connect(offline.destination);
+      source.start(offset, clip.start, duration);
+      offset += duration;
+    }
+    const rendered = await offline.startRendering();
+    const blob = audioBufferToWav(rendered);
+    if (editorState.renderedUrl) URL.revokeObjectURL(editorState.renderedUrl);
+    editorState.renderedUrl = URL.createObjectURL(blob);
+    const fileName = `${(editorState.sourceName || "广播剧剪辑").replace(/\.[^.]+$/, "")}-剪辑版.wav`;
+    $("#editorResult").classList.remove("hidden");
+    $("#editorResult").innerHTML = `
+      <strong>合成完成：</strong>${fileName}<br />
+      <audio controls src="${editorState.renderedUrl}"></audio>
+      <div class="actions">
+        <button data-play-src="${editorState.renderedUrl}" data-play-title="${fileName}">送到播放器</button>
+        <a download="${fileName}" href="${editorState.renderedUrl}">下载 WAV</a>
+      </div>
+    `;
+    playInApp(editorState.renderedUrl, fileName);
+    if (blob.size <= 3500000) {
+      saveLocalHistory({
+        jobId: `edit-${Date.now()}`,
+        title: fileName,
+        createdAt: new Date().toISOString(),
+        finalAudioDataUrl: await fileToDataUrl(blob),
+        manifest: ""
+      });
+    }
+  } catch (error) {
+    $("#editorResult").classList.remove("hidden");
+    $("#editorResult").innerHTML = `<strong>导出失败：</strong>${error.message}`;
+  } finally {
+    $("#exportMix").disabled = false;
+  }
 }
 
 function getVoiceReferences() {
@@ -259,6 +677,86 @@ function saveConfigFromForm() {
   });
   localStorage.setItem("apiConfig", JSON.stringify(config));
   alert("配置已保存在本机浏览器。真实产品中建议改为服务端加密保存。");
+}
+
+function saveConfigObject(config) {
+  localStorage.setItem("apiConfig", JSON.stringify(config));
+  loadConfigIntoForm();
+}
+
+function applyNetworkPreset(profile) {
+  const config = getConfig();
+  config.network ||= {};
+  config.network.profile = profile;
+  config.network.timeoutSeconds = profile === "vpn" ? "180" : "120";
+  config.network.retryCount = profile === "vpn" ? "2" : "1";
+  if (profile === "china") {
+    config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+    config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
+    config.audio.model = "seed-audio-1.0";
+  }
+  if (profile === "vpn") {
+    config.gpt.baseUrl = "https://api.openai.com/v1/chat/completions";
+    config.gemini.endpoint = "";
+    config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+    config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
+  }
+  saveConfigObject(config);
+  const label = profile === "vpn" ? "系统 VPN 优先" : "中国大陆优先";
+  $("#networkStatus").innerHTML = `<p class="ok">已套用「${label}」线路预设，记得保存或继续填写 API Key。</p>`;
+}
+
+function getProbeUrl(label, config) {
+  if (label === "GPT") return config.gpt?.baseUrl || defaultConfig.gpt.baseUrl;
+  if (label === "Gemini") return config.gemini?.endpoint || "https://generativelanguage.googleapis.com/";
+  if (label === "豆包文本") return config.doubao?.baseUrl || defaultConfig.doubao.baseUrl;
+  if (label === "豆包音频") return config.audio?.endpoint || defaultConfig.audio.endpoint;
+  if (label === "中转服务") return config.network?.relayBaseUrl || "";
+  return "";
+}
+
+async function probeNetwork(label, url, timeoutMs) {
+  if (!url) return { label, ok: false, message: "未填写地址，已跳过" };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const startedAt = Date.now();
+  try {
+    const target = new URL(url);
+    await fetch(target.href, {
+      method: "GET",
+      mode: "no-cors",
+      cache: "no-store",
+      signal: controller.signal
+    });
+    return {
+      label,
+      ok: true,
+      message: `${target.host} 可发起连接，约 ${Date.now() - startedAt}ms`
+    };
+  } catch (error) {
+    return {
+      label,
+      ok: false,
+      message: `${error.name === "AbortError" ? "连接超时" : "当前网络不可达"}：${url}`
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function testNetworkRoutes() {
+  const config = getConfig();
+  $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
+  const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
+  const labels = ["GPT", "Gemini", "豆包文本", "豆包音频"];
+  if (config.network?.relayBaseUrl) labels.push("中转服务");
+  const results = [];
+  for (const label of labels) {
+    results.push(await probeNetwork(label, getProbeUrl(label, config), timeoutMs));
+  }
+  $("#networkStatus").innerHTML = results.map((item) => `
+    <p class="${item.ok ? "ok" : "fail"}"><strong>${item.label}</strong>：${item.message}</p>
+  `).join("");
 }
 
 function renderStages(active = false, doneCount = 0) {
@@ -434,6 +932,68 @@ function bindEvents() {
   $("#fillDirectPromptDemo").addEventListener("click", fillDirectPromptDemo);
   $("#runDirectAudioButton").addEventListener("click", runDirectAudio);
   $("#refreshHistory").addEventListener("click", loadHistory);
+  $("#loadPlayerAudio").addEventListener("click", loadEditorFromPlayer);
+  $("#editorAudioFile").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      await loadEditorFile(file);
+    } catch (error) {
+      alert(`音频读取失败：${error.message}`);
+    }
+  });
+  $("#clipStart").addEventListener("input", renderWaveform);
+  $("#clipEnd").addEventListener("input", renderWaveform);
+  $("#waveformCanvas").addEventListener("click", (event) => {
+    if (!editorState.sourceBuffer) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const time = ((event.clientX - rect.left) / rect.width) * getEditorDuration();
+    const { start, end } = getClipInputs();
+    if (editorState.pickNext === "start") {
+      setClipInputs(Math.min(time, end), end || Math.min(getEditorDuration(), time + 30));
+      editorState.pickNext = "end";
+    } else {
+      setClipInputs(start, Math.max(time, start + 0.1));
+      editorState.pickNext = "start";
+    }
+  });
+  $("#setClipStartFromPlayer").addEventListener("click", () => {
+    const preview = $("#editorPreview");
+    const { end } = getClipInputs();
+    setClipInputs(preview.currentTime || 0, end);
+  });
+  $("#setClipEndFromPlayer").addEventListener("click", () => {
+    const preview = $("#editorPreview");
+    const { start } = getClipInputs();
+    setClipInputs(start, preview.currentTime || 0);
+  });
+  $("#addClip").addEventListener("click", () => {
+    const { start, end } = getClipInputs();
+    addEditorClip(start, end);
+  });
+  $("#addWholeClip").addEventListener("click", () => addEditorClip(0, getEditorDuration()));
+  $("#loadDemoAudio").addEventListener("click", loadDemoEditorAudio);
+  $("#clearClips").addEventListener("click", () => {
+    editorState.clips = [];
+    renderClipList();
+  });
+  $("#clipList").addEventListener("change", (event) => {
+    const field = event.target.dataset.clipField;
+    if (!field) return;
+    const clipId = event.target.closest("[data-clip-id]")?.dataset.clipId;
+    updateClipField(clipId, field, event.target.value, event.target.checked);
+  });
+  $("#clipList").addEventListener("click", (event) => {
+    const action = event.target.dataset.clipAction;
+    if (!action) return;
+    const clipId = event.target.closest("[data-clip-id]")?.dataset.clipId;
+    handleClipAction(clipId, action);
+  });
+  $("#exportMix").addEventListener("click", exportEditorMix);
+  $("#applyChinaNetwork").addEventListener("click", () => applyNetworkPreset("china"));
+  $("#applyVpnNetwork").addEventListener("click", () => applyNetworkPreset("vpn"));
+  $("#testNetwork").addEventListener("click", testNetworkRoutes);
+  window.addEventListener("resize", renderWaveform);
   document.addEventListener("click", (event) => {
     const removeVoiceRefButton = event.target.closest("[data-remove-voice-ref]");
     if (removeVoiceRefButton) {
@@ -489,6 +1049,8 @@ function bindEvents() {
 loadConfigIntoForm();
 loadPlayerBackground();
 renderVoiceReferences();
+renderClipList();
+renderWaveform();
 loadPlan();
 renderStages();
 bindEvents();

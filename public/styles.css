@@ -80,7 +80,7 @@ button {
   bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 80;
-  width: min(760px, calc(100vw - 28px));
+  width: min(860px, calc(100vw - 28px));
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 22px;
@@ -135,6 +135,35 @@ button {
   fill: var(--accent);
 }
 
+.panda-face {
+  fill: #fff9ec;
+  stroke: #1f211f;
+  stroke-width: 3.5;
+}
+
+.panda-ear,
+.panda-patch,
+.panda-eye,
+.panda-nose {
+  fill: #1f211f;
+}
+
+.panda-smile,
+.panda-headset {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.panda-smile {
+  stroke: #1f211f;
+  stroke-width: 3;
+}
+
+.panda-headset {
+  stroke: var(--accent);
+  stroke-width: 4;
+}
+
 .brand h1,
 .brand p,
 .page-head h2,
@@ -162,7 +191,7 @@ button {
 
 .nav {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
 }
 
@@ -204,6 +233,13 @@ button {
 .nav-icon-create {
   border-radius: 55% 40% 62% 38%;
   background: linear-gradient(90deg, transparent 45%, currentColor 46% 54%, transparent 55%);
+}
+
+.nav-icon-editor {
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, transparent 18%, currentColor 19% 25%, transparent 26% 74%, currentColor 75% 81%, transparent 82%),
+    radial-gradient(circle at 50% 50%, currentColor 0 14%, transparent 15%);
 }
 
 .nav-icon-config {
@@ -523,6 +559,155 @@ textarea {
   width: 100%;
 }
 
+.editor-grid {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.05fr) minmax(360px, 0.95fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.editor-source-info {
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--muted);
+  background: rgba(255, 253, 247, 0.58);
+  line-height: 1.7;
+}
+
+#editorPreview {
+  margin: 14px 0;
+}
+
+.waveform-wrap {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 250, 238, 0.85), rgba(223, 232, 223, 0.55)),
+    repeating-linear-gradient(90deg, rgba(49, 95, 76, 0.08) 0 1px, transparent 1px 64px);
+}
+
+#waveformCanvas {
+  display: block;
+  width: 100%;
+  height: 220px;
+  cursor: crosshair;
+}
+
+.editor-selection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.clip-list {
+  display: grid;
+  gap: 12px;
+  min-height: 180px;
+}
+
+.clip-empty {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.8;
+}
+
+.clip-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 253, 247, 0.78);
+  display: grid;
+  gap: 10px;
+}
+
+.clip-item.selected {
+  border-color: rgba(111, 31, 27, 0.38);
+  box-shadow: 0 0 0 3px rgba(111, 31, 27, 0.08);
+}
+
+.clip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.clip-head strong {
+  display: block;
+}
+
+.clip-head span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.clip-fields {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.clip-fields label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.clip-fields input {
+  min-height: 38px;
+  padding: 8px;
+}
+
+.clip-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.clip-actions button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.editor-export-row {
+  margin-top: 16px;
+}
+
+.network-panel {
+  grid-column: 1 / -1;
+}
+
+.network-status {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.network-status p {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.network-status .ok {
+  color: var(--moss);
+  border-color: rgba(49, 95, 76, 0.28);
+}
+
+.network-status .fail {
+  color: var(--accent-dark);
+  border-color: rgba(111, 31, 27, 0.26);
+}
+
 .status-panel {
   min-height: 520px;
 }
@@ -752,6 +937,7 @@ textarea {
   .sample-grid,
   .config-grid,
   .creator-layout,
+  .editor-grid,
   .voice-ref-form,
   .voice-ref-item {
     grid-template-columns: 1fr;
@@ -791,7 +977,7 @@ textarea {
 
   .nav-item {
     min-height: 56px;
-    font-size: 12px;
+    font-size: 11px;
   }
 
   .page-head h2 {
@@ -815,5 +1001,14 @@ textarea {
   .page-head .primary,
   .page-head .secondary {
     width: 100%;
+  }
+
+  .editor-selection,
+  .clip-fields {
+    grid-template-columns: 1fr;
+  }
+
+  #waveformCanvas {
+    height: 180px;
   }
 }

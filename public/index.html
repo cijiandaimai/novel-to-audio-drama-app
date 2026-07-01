@@ -14,10 +14,16 @@
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 64 64" role="img">
-              <path class="seal-paper" d="M9 8h46v48H9z" />
-              <path class="seal-wave" d="M16 41c7-8 13-12 20-11 5 1 9 5 13 11" />
-              <path class="seal-sound" d="M20 23c6-5 15-6 23 0M24 30c5-3 10-3 16 0" />
-              <path class="seal-dot" d="M31 36h2v2h-2z" />
+              <path class="panda-ear" d="M18 22c-7-9-2-18 8-19 8-1 14 7 11 15" />
+              <path class="panda-ear" d="M46 22c7-9 2-18-8-19-8-1-14 7-11 15" />
+              <circle class="panda-face" cx="32" cy="31" r="20" />
+              <path class="panda-patch" d="M18 30c-4 9 1 18 8 19 6 1 12-5 13-12 1-8-4-14-11-14-5 0-8 3-10 7z" />
+              <path class="panda-patch" d="M46 30c4 9-1 18-8 19-6 1-12-5-13-12-1-8 4-14 11-14 5 0 8 3 10 7z" />
+              <circle class="panda-eye" cx="26" cy="33" r="2.4" />
+              <circle class="panda-eye" cx="38" cy="33" r="2.4" />
+              <path class="panda-nose" d="M30 40c1-2 3-2 4 0 1 1-1 3-2 3s-3-2-2-3z" />
+              <path class="panda-smile" d="M27 46c3 3 7 3 10 0" />
+              <path class="panda-headset" d="M13 33c-4 0-6 3-6 7s2 7 6 7M51 33c4 0 6 3 6 7s-2 7-6 7M12 33c1-19 11-30 20-30s19 11 20 30" />
             </svg>
           </div>
           <div>
@@ -34,9 +40,13 @@
             <span class="nav-icon nav-icon-create"></span>
             创作
           </button>
+          <button class="nav-item" data-view="editor">
+            <span class="nav-icon nav-icon-editor"></span>
+            剪辑
+          </button>
           <button class="nav-item" data-view="config">
             <span class="nav-icon nav-icon-config"></span>
-            API 配置
+            API
           </button>
           <button class="nav-item" data-view="history">
             <span class="nav-icon nav-icon-history"></span>
@@ -170,6 +180,70 @@
           </div>
         </section>
 
+        <section id="editor" class="view">
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">音频工作台</p>
+              <h2>像剪视频一样剪广播剧音频</h2>
+              <p class="page-note">本地完成波形预览、裁剪分段、排序、音量、淡入淡出和合成导出。</p>
+            </div>
+            <button id="loadPlayerAudio" class="secondary">导入播放器音频</button>
+          </header>
+
+          <div class="editor-grid">
+            <section class="panel editor-source-panel">
+              <div class="panel-title-row">
+                <div>
+                  <h3>源音频</h3>
+                  <p>上传一段音频，或从右侧播放器导入刚生成的广播剧。</p>
+                </div>
+              </div>
+              <label class="field">
+                <span>上传音频文件</span>
+                <input id="editorAudioFile" type="file" accept="audio/*" />
+              </label>
+              <div class="editor-source-info" id="editorSourceInfo">还没有载入音频。</div>
+              <audio id="editorPreview" controls></audio>
+              <div class="waveform-wrap">
+                <canvas id="waveformCanvas" width="960" height="240"></canvas>
+              </div>
+              <div class="editor-selection">
+                <label class="field">
+                  <span>起点（秒）</span>
+                  <input id="clipStart" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <label class="field">
+                  <span>终点（秒）</span>
+                  <input id="clipEnd" type="number" min="0" step="0.01" value="0" />
+                </label>
+              </div>
+              <div class="actions">
+                <button id="setClipStartFromPlayer" class="secondary">当前时间设起点</button>
+                <button id="setClipEndFromPlayer" class="secondary">当前时间设终点</button>
+                <button id="addClip" class="primary">添加片段</button>
+                <button id="addWholeClip" class="secondary">整段加入</button>
+                <button id="loadDemoAudio" class="secondary">载入演示音频</button>
+              </div>
+              <p class="hint">点击波形会交替设置起点和终点；拖动播放器可精确定位。</p>
+            </section>
+
+            <section class="panel editor-clips-panel">
+              <div class="panel-title-row">
+                <div>
+                  <h3>剪辑列表</h3>
+                  <p>片段会按列表顺序合并，可单独调整音量和淡入淡出。</p>
+                </div>
+                <button id="clearClips" class="secondary">清空</button>
+              </div>
+              <div id="clipList" class="clip-list"></div>
+              <div class="editor-export-row">
+                <button id="exportMix" class="primary">合成并导出 WAV</button>
+              </div>
+              <div id="editorResult" class="result-box hidden"></div>
+            </section>
+          </div>
+        </section>
+
         <section id="config" class="view">
           <header class="page-head">
             <div>
@@ -221,6 +295,28 @@
               <label>模型 ID<input data-config="audio.model" placeholder="seed-audio-1.0" /></label>
               <label>API Key<input data-config="audio.apiKey" type="password" placeholder="豆包语音 API Key" /></label>
               <div class="tutorial">官方音频生成 HTTP 使用 X-Api-Key 鉴权；模型 ID 当前填 seed-audio-1.0，单段最长 120 秒。</div>
+            </section>
+
+            <section class="panel provider network-panel">
+              <h3>网络与线路：大陆用户友好</h3>
+              <p>App 不内置 VPN；会优先尊重手机系统 VPN、代理和你填写的中转接口。这里用于快速套用线路、设置超时重试和诊断域名是否可达。</p>
+              <label>地区预设
+                <select data-config="network.profile">
+                  <option value="china">中国大陆优先：豆包直连，海外模型走系统 VPN/中转</option>
+                  <option value="vpn">系统 VPN 优先：海外模型按官方地址走系统网络</option>
+                  <option value="custom">自定义：我自己填写全部接口</option>
+                </select>
+              </label>
+              <label>API 中转地址（可选）<input data-config="network.relayBaseUrl" placeholder="例如 https://你的中转服务.example.com" /></label>
+              <label>请求超时（秒）<input data-config="network.timeoutSeconds" type="number" min="10" max="300" placeholder="120" /></label>
+              <label>失败重试次数<input data-config="network.retryCount" type="number" min="0" max="5" placeholder="1" /></label>
+              <div class="actions">
+                <button id="applyChinaNetwork" class="secondary">套用大陆优先</button>
+                <button id="applyVpnNetwork" class="secondary">套用系统 VPN</button>
+                <button id="testNetwork" class="primary">联网诊断</button>
+              </div>
+              <div id="networkStatus" class="network-status"></div>
+              <div class="tutorial">提示：Android 上系统 VPN 会自动接管 App 流量。若 OpenAI/Gemini 无法直连，建议开启系统 VPN 后再测；若仍失败，可把接口地址改成自己的 HTTPS 中转服务。</div>
             </section>
           </div>
         </section>
