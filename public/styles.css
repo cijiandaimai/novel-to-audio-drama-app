@@ -608,6 +608,40 @@ textarea {
   color: var(--muted);
 }
 
+.timeline-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 12px;
+  padding: 10px;
+  border: 1px solid rgba(78, 73, 60, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.62);
+}
+
+.timeline-tools button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+
+.timeline-toggle,
+.timeline-grid {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.timeline-grid input,
+.timeline-grid select {
+  width: 86px;
+  min-height: 32px;
+  padding: 6px 8px;
+}
+
 .waveform-wrap {
   position: relative;
   overflow: hidden;
@@ -1169,6 +1203,7 @@ textarea {
 
   .actions,
   .panel-title-row,
+  .timeline-tools,
   .history-item {
     align-items: stretch;
     flex-direction: column;
@@ -1176,6 +1211,7 @@ textarea {
 
   .actions .primary,
   .actions .secondary,
+  .timeline-tools button,
   .page-head .primary,
   .page-head .secondary {
     width: 100%;

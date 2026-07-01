@@ -70,6 +70,7 @@ const editorState = {
   ],
   activeTrackId: "A",
   selection: { trackId: "A", sourceStart: 0, sourceEnd: 0, timelineStart: 0 },
+  timeline: { zoom: 1, offset: 0, playhead: 0, snap: true, grid: 0.5 },
   drag: null,
   sourceBuffer: null,
   sourceUrl: "",
@@ -78,6 +79,8 @@ const editorState = {
   pickNext: "start",
   clipTimer: null,
   playingNodes: [],
+  undoStack: [],
+  redoStack: [],
   renderedUrl: ""
 };
 const recorderState = {
@@ -403,6 +406,85 @@ function getTimelineDuration() {
   return Math.max(1, clipEnd, trackEnd);
 }
 
+function snapshotEditor() {
+  return JSON.stringify({
+    clips: editorState.clips,
+    selection: editorState.selection,
+    timeline: editorState.timeline
+  });
+}
+
+function restoreEditor(snapshot) {
+  const data = JSON.parse(snapshot);
+  editorState.clips = data.clips || [];
+  editorState.selection = data.selection || editorState.selection;
+  editorState.timeline = { ...editorState.timeline, ...(data.timeline || {}) };
+  syncTimelineControls();
+  renderClipList();
+  renderWaveform();
+}
+
+function pushEditorHistory() {
+  editorState.undoStack.push(snapshotEditor());
+  editorState.undoStack = editorState.undoStack.slice(-80);
+  editorState.redoStack = [];
+  syncTimelineControls();
+}
+
+function undoEditor() {
+  if (!editorState.undoStack.length) return;
+  editorState.redoStack.push(snapshotEditor());
+  restoreEditor(editorState.undoStack.pop());
+}
+
+function redoEditor() {
+  if (!editorState.redoStack.length) return;
+  editorState.undoStack.push(snapshotEditor());
+  restoreEditor(editorState.redoStack.pop());
+}
+
+function snapTime(value) {
+  const safeValue = Math.max(0, Number(value) || 0);
+  if (!editorState.timeline.snap) return safeValue;
+  const grid = Math.max(0.01, Number(editorState.timeline.grid) || 0.5);
+  return Math.round(safeValue / grid) * grid;
+}
+
+function getVisibleTimelineDuration(projectDuration = getTimelineDuration()) {
+  return Math.max(0.5, projectDuration / Math.max(1, editorState.timeline.zoom));
+}
+
+function setTimelineZoom(nextZoom) {
+  const projectDuration = getTimelineDuration();
+  const center = editorState.timeline.offset + getVisibleTimelineDuration(projectDuration) / 2;
+  editorState.timeline.zoom = clamp(nextZoom, 1, 32);
+  const visible = getVisibleTimelineDuration(projectDuration);
+  editorState.timeline.offset = clamp(center - visible / 2, 0, Math.max(0, projectDuration - visible));
+  syncTimelineControls();
+  renderWaveform();
+}
+
+function fitTimeline() {
+  editorState.timeline.zoom = 1;
+  editorState.timeline.offset = 0;
+  syncTimelineControls();
+  renderWaveform();
+}
+
+function setPlayhead(value) {
+  editorState.timeline.playhead = snapTime(clamp(value, 0, getTimelineDuration()));
+  $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
+  renderWaveform();
+}
+
+function syncTimelineControls() {
+  $("#snapTimeline").checked = editorState.timeline.snap;
+  $("#snapGridSize").value = String(editorState.timeline.grid);
+  $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
+  $("#undoEdit").disabled = !editorState.undoStack.length;
+  $("#redoEdit").disabled = !editorState.redoStack.length;
+}
+
 function setActiveTrack(trackId) {
   editorState.activeTrackId = trackId;
   editorState.selection.trackId = trackId;
@@ -542,19 +624,21 @@ function canvasTimelineInfo(canvas) {
   const width = canvas.width;
   const height = canvas.height;
   const laneHeight = height / editorState.tracks.length;
-  const duration = getTimelineDuration();
-  return { ratio, rect, width, height, laneHeight, duration };
+  const projectDuration = getTimelineDuration();
+  const visibleDuration = getVisibleTimelineDuration(projectDuration);
+  editorState.timeline.offset = clamp(editorState.timeline.offset, 0, Math.max(0, projectDuration - visibleDuration));
+  return { ratio, rect, width, height, laneHeight, duration: visibleDuration, projectDuration, offset: editorState.timeline.offset };
 }
 
-function timeToX(time, width, duration) {
-  return (time / Math.max(0.01, duration)) * width;
+function timeToX(time, width, duration, offset = 0) {
+  return ((time - offset) / Math.max(0.01, duration)) * width;
 }
 
-function xToTime(x, width, duration) {
-  return clamp((x / Math.max(1, width)) * duration, 0, duration);
+function xToTime(x, width, duration, offset = 0, projectDuration = duration) {
+  return clamp(offset + (x / Math.max(1, width)) * duration, 0, projectDuration);
 }
 
-function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, projectDuration, ratio) {
+function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDuration, offset, projectDuration, ratio) {
   ctx.fillStyle = track.id === editorState.activeTrackId ? "rgba(255, 253, 247, 0.92)" : "rgba(255, 253, 247, 0.62)";
   ctx.fillRect(0, laneTop, width, laneHeight);
   ctx.fillStyle = "rgba(31, 33, 31, 0.72)";
@@ -572,17 +656,19 @@ function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, projectDurati
     return;
   }
 
-  const drawWidth = Math.max(1, timeToX(track.buffer.duration, width, projectDuration));
+  const visibleStart = Math.max(0, Math.floor((offset / track.buffer.duration) * track.buffer.length));
+  const visibleEnd = Math.min(track.buffer.length, Math.ceil(((offset + visibleDuration) / track.buffer.duration) * track.buffer.length));
   const data = track.buffer.getChannelData(0);
-  const samplesPerPixel = Math.max(1, Math.floor(data.length / drawWidth));
+  if (visibleStart >= visibleEnd) return;
+  const samplesPerPixel = Math.max(1, Math.floor(Math.max(1, visibleEnd - visibleStart) / width));
   ctx.strokeStyle = track.id === "A" ? "#315f4c" : "#6f1f1b";
   ctx.lineWidth = Math.max(1, ratio);
   ctx.beginPath();
-  for (let x = 0; x < drawWidth; x += 1) {
+  for (let x = 0; x < width; x += 1) {
     let min = 1;
     let max = -1;
-    const start = Math.floor(x * samplesPerPixel);
-    for (let i = 0; i < samplesPerPixel && start + i < data.length; i += 1) {
+    const start = visibleStart + Math.floor(x * samplesPerPixel);
+    for (let i = 0; i < samplesPerPixel && start + i < visibleEnd; i += 1) {
       const sample = data[start + i];
       if (sample < min) min = sample;
       if (sample > max) max = sample;
@@ -606,16 +692,17 @@ function renderWaveform() {
     canvas.width = width;
     canvas.height = height;
   }
-  const { laneHeight, duration } = canvasTimelineInfo(canvas);
+  const { laneHeight, duration, projectDuration, offset } = canvasTimelineInfo(canvas);
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "rgba(255, 250, 238, 0.86)";
   ctx.fillRect(0, 0, width, height);
   ctx.strokeStyle = "rgba(49, 95, 76, 0.14)";
   ctx.lineWidth = 1;
-  const gridStep = Math.max(1, duration / 8);
-  for (let time = 0; time <= duration; time += gridStep) {
-    const x = timeToX(time, width, duration);
+  const gridStep = Math.max(Number(editorState.timeline.grid) || 0.5, duration / 8);
+  const firstTick = Math.ceil(offset / gridStep) * gridStep;
+  for (let time = firstTick; time <= offset + duration + 0.001; time += gridStep) {
+    const x = timeToX(time, width, duration, offset);
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, height);
@@ -626,14 +713,16 @@ function renderWaveform() {
   }
 
   editorState.tracks.forEach((track, index) => {
-    drawTrackWaveform(ctx, track, index * laneHeight, laneHeight, width, duration, ratio);
+    drawTrackWaveform(ctx, track, index * laneHeight, laneHeight, width, duration, offset, projectDuration, ratio);
   });
 
   editorState.clips.forEach((clip) => {
     const trackIndex = editorState.tracks.findIndex((track) => track.id === clip.trackId);
     if (trackIndex < 0) return;
-    const x = timeToX(clip.timelineStart, width, duration);
-    const w = Math.max(3 * ratio, timeToX(clip.sourceEnd - clip.sourceStart, width, duration));
+    const clipEnd = clip.timelineStart + clip.sourceEnd - clip.sourceStart;
+    if (clipEnd < offset || clip.timelineStart > offset + duration) return;
+    const x = timeToX(clip.timelineStart, width, duration, offset);
+    const w = Math.max(3 * ratio, ((clip.sourceEnd - clip.sourceStart) / duration) * width);
     const y = trackIndex * laneHeight + laneHeight - 30 * ratio;
     ctx.fillStyle = clip.muted ? "rgba(116, 111, 99, 0.28)" : "rgba(49, 95, 76, 0.2)";
     ctx.strokeStyle = clip.trackId === "A" ? "rgba(49, 95, 76, 0.72)" : "rgba(111, 31, 27, 0.72)";
@@ -645,14 +734,24 @@ function renderWaveform() {
   const track = getTrack(selection.trackId);
   if (track?.buffer && selection.sourceEnd > selection.sourceStart) {
     const trackIndex = editorState.tracks.findIndex((item) => item.id === selection.trackId);
-    const x1 = timeToX(selection.sourceStart, width, duration);
-    const x2 = timeToX(selection.sourceEnd, width, duration);
+    const x1 = timeToX(selection.sourceStart, width, duration, offset);
+    const x2 = timeToX(selection.sourceEnd, width, duration, offset);
     const y = trackIndex * laneHeight;
     ctx.fillStyle = "rgba(111, 31, 27, 0.16)";
     ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), laneHeight);
     ctx.strokeStyle = "rgba(111, 31, 27, 0.82)";
     ctx.lineWidth = 2 * ratio;
     ctx.strokeRect(x1, y + 1 * ratio, Math.max(2 * ratio, x2 - x1), laneHeight - 2 * ratio);
+  }
+
+  const playheadX = timeToX(editorState.timeline.playhead, width, duration, offset);
+  if (playheadX >= 0 && playheadX <= width) {
+    ctx.strokeStyle = "rgba(31, 33, 31, 0.85)";
+    ctx.lineWidth = 2 * ratio;
+    ctx.beginPath();
+    ctx.moveTo(playheadX, 0);
+    ctx.lineTo(playheadX, height);
+    ctx.stroke();
   }
 }
 
@@ -663,8 +762,26 @@ function getCanvasPointer(event) {
   const y = (event.clientY - info.rect.top) * info.ratio;
   const trackIndex = clamp(Math.floor(y / info.laneHeight), 0, editorState.tracks.length - 1);
   const track = editorState.tracks[trackIndex];
-  const time = xToTime(x, info.width, info.duration);
+  const time = xToTime(x, info.width, info.duration, info.offset, info.projectDuration);
   return { canvas, ...info, x, y, trackIndex, track, time };
+}
+
+function hitTestClip(point) {
+  const handleSize = 10 * point.ratio;
+  for (let index = editorState.clips.length - 1; index >= 0; index -= 1) {
+    const clip = editorState.clips[index];
+    if (clip.trackId !== point.track.id) continue;
+    const start = clip.timelineStart;
+    const end = clip.timelineStart + clip.sourceEnd - clip.sourceStart;
+    const x1 = timeToX(start, point.width, point.duration, point.offset);
+    const x2 = timeToX(end, point.width, point.duration, point.offset);
+    const y1 = point.trackIndex * point.laneHeight;
+    const y2 = y1 + point.laneHeight;
+    if (point.x < x1 || point.x > x2 || point.y < y1 || point.y > y2) continue;
+    const edge = Math.abs(point.x - x1) < handleSize ? "clip-left" : Math.abs(point.x - x2) < handleSize ? "clip-right" : "clip-move";
+    return { clip, edge };
+  }
+  return null;
 }
 
 function startTimelineDrag(event) {
@@ -672,10 +789,26 @@ function startTimelineDrag(event) {
   if (!point.track?.buffer) return;
   event.preventDefault();
   setActiveTrack(point.track.id);
+  const hit = hitTestClip(point);
+  if (hit) {
+    pushEditorHistory();
+    editorState.drag = {
+      type: hit.edge,
+      trackId: hit.clip.trackId,
+      clipId: hit.clip.id,
+      startTime: point.time,
+      originalTimelineStart: hit.clip.timelineStart,
+      originalSourceStart: hit.clip.sourceStart,
+      originalSourceEnd: hit.clip.sourceEnd
+    };
+    setPlayhead(point.time);
+    point.canvas.setPointerCapture?.(event.pointerId);
+    return;
+  }
   const selection = editorState.selection;
   const handleSize = 10 * point.ratio;
-  const x1 = timeToX(selection.sourceStart, point.width, point.duration);
-  const x2 = timeToX(selection.sourceEnd, point.width, point.duration);
+  const x1 = timeToX(selection.sourceStart, point.width, point.duration, point.offset);
+  const x2 = timeToX(selection.sourceEnd, point.width, point.duration, point.offset);
   const inside = point.track.id === selection.trackId && point.x >= x1 && point.x <= x2;
   const type = Math.abs(point.x - x1) < handleSize ? "left" : Math.abs(point.x - x2) < handleSize ? "right" : inside ? "move" : "create";
   editorState.drag = {
@@ -685,7 +818,8 @@ function startTimelineDrag(event) {
     originalStart: selection.sourceStart,
     originalEnd: selection.sourceEnd
   };
-  if (type === "create") setClipInputs(point.time, point.time, selection.timelineStart);
+  if (type === "create") setClipInputs(snapTime(point.time), snapTime(point.time), selection.timelineStart);
+  setPlayhead(point.time);
   point.canvas.setPointerCapture?.(event.pointerId);
 }
 
@@ -696,18 +830,39 @@ function moveTimelineDrag(event) {
   const track = getTrack(drag.trackId);
   const maxTime = track.buffer?.duration || 0;
   if (!maxTime) return;
+  if (drag.type.startsWith("clip-")) {
+    const clip = editorState.clips.find((item) => item.id === drag.clipId);
+    if (!clip) return;
+    const delta = snapTime(point.time) - snapTime(drag.startTime);
+    const sourceLength = Math.max(0.1, drag.originalSourceEnd - drag.originalSourceStart);
+    if (drag.type === "clip-move") {
+      clip.timelineStart = Math.max(0, snapTime(drag.originalTimelineStart + delta));
+    } else if (drag.type === "clip-left") {
+      const nextStart = clamp(drag.originalSourceStart + delta, 0, drag.originalSourceEnd - 0.1);
+      const moved = nextStart - drag.originalSourceStart;
+      clip.sourceStart = snapTime(nextStart);
+      clip.timelineStart = Math.max(0, snapTime(drag.originalTimelineStart + moved));
+    } else if (drag.type === "clip-right") {
+      clip.sourceEnd = clamp(snapTime(drag.originalSourceEnd + delta), drag.originalSourceStart + 0.1, maxTime);
+    }
+    setPlayhead(point.time);
+    renderClipList();
+    renderWaveform();
+    return;
+  }
   if (drag.type === "create") {
-    setClipInputs(Math.min(drag.startTime, point.time), Math.max(drag.startTime, point.time), editorState.selection.timelineStart);
+    setClipInputs(Math.min(snapTime(drag.startTime), snapTime(point.time)), Math.max(snapTime(drag.startTime), snapTime(point.time)), editorState.selection.timelineStart);
   } else if (drag.type === "left") {
-    setClipInputs(clamp(point.time, 0, drag.originalEnd - 0.1), drag.originalEnd, editorState.selection.timelineStart);
+    setClipInputs(clamp(snapTime(point.time), 0, drag.originalEnd - 0.1), drag.originalEnd, editorState.selection.timelineStart);
   } else if (drag.type === "right") {
-    setClipInputs(drag.originalStart, clamp(point.time, drag.originalStart + 0.1, maxTime), editorState.selection.timelineStart);
+    setClipInputs(drag.originalStart, clamp(snapTime(point.time), drag.originalStart + 0.1, maxTime), editorState.selection.timelineStart);
   } else if (drag.type === "move") {
     const length = Math.max(0.1, drag.originalEnd - drag.originalStart);
-    const delta = point.time - drag.startTime;
+    const delta = snapTime(point.time) - snapTime(drag.startTime);
     const start = clamp(drag.originalStart + delta, 0, Math.max(0, maxTime - length));
     setClipInputs(start, start + length, editorState.selection.timelineStart);
   }
+  setPlayhead(point.time);
 }
 
 function endTimelineDrag() {
@@ -726,6 +881,7 @@ function addEditorClip(start, end, timelineStart = editorState.selection.timelin
     alert("片段太短，请至少保留 0.1 秒。");
     return;
   }
+  pushEditorHistory();
   editorState.clips.push({
     id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name: `${track.name} 片段 ${editorState.clips.filter((clip) => clip.trackId === trackId).length + 1}`,
@@ -789,6 +945,7 @@ function renderClipList() {
 function updateClipField(clipId, field, value, checked) {
   const clip = editorState.clips.find((item) => item.id === clipId);
   if (!clip) return;
+  pushEditorHistory();
   if (field === "muted") {
     clip.muted = checked;
   } else if (field === "trackId") {
@@ -842,9 +999,106 @@ function handleClipAction(clipId, action) {
     setClipInputs(clip.sourceStart, clip.sourceEnd, clip.timelineStart);
   }
   if (action === "remove") {
+    pushEditorHistory();
     editorState.clips = editorState.clips.filter((item) => item.id !== clipId);
     renderClipList();
     renderWaveform();
+  }
+}
+
+function splitClipAtPlayhead() {
+  const playhead = editorState.timeline.playhead;
+  const clip = editorState.clips.find((item) => {
+    if (item.trackId !== editorState.activeTrackId) return false;
+    const duration = item.sourceEnd - item.sourceStart;
+    return playhead > item.timelineStart + 0.05 && playhead < item.timelineStart + duration - 0.05;
+  });
+  if (!clip) {
+    alert("请把播放头放在当前轨道某个片段内部。");
+    return;
+  }
+  pushEditorHistory();
+  const sourceSplit = clip.sourceStart + (playhead - clip.timelineStart);
+  const right = {
+    ...clip,
+    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: `${clip.name} B`,
+    sourceStart: sourceSplit,
+    timelineStart: playhead
+  };
+  clip.name = `${clip.name} A`;
+  clip.sourceEnd = sourceSplit;
+  editorState.clips.push(right);
+  renderClipList();
+  renderWaveform();
+}
+
+function getRenderableClips() {
+  const loadedTracks = editorState.tracks.filter((track) => track.buffer);
+  if (!loadedTracks.length) throw new Error("请先给至少一条轨道导入音频。");
+  const soloTracks = editorState.tracks.filter((track) => track.solo).map((track) => track.id);
+  const sourceClips = editorState.clips.length
+    ? editorState.clips
+    : loadedTracks.map((track) => ({
+        id: `whole-${track.id}`,
+        name: `${track.name} 整轨`,
+        trackId: track.id,
+        sourceStart: 0,
+        sourceEnd: track.buffer.duration,
+        timelineStart: 0,
+        volume: 1,
+        fadeIn: 0,
+        fadeOut: 0,
+        muted: false
+      }));
+  const clips = sourceClips.filter((clip) => {
+    const track = getTrack(clip.trackId);
+    if (!track?.buffer || clip.muted || track.muted) return false;
+    return !soloTracks.length || soloTracks.includes(track.id);
+  });
+  if (!clips.length) throw new Error("所有轨道或片段都被静音了。");
+  return { clips, loadedTracks };
+}
+
+async function renderEditorMixBuffer() {
+  const { clips, loadedTracks } = getRenderableClips();
+  const sampleRate = loadedTracks[0].buffer.sampleRate || 44100;
+  const totalDuration = clips.reduce((max, clip) => Math.max(max, clip.timelineStart + Math.max(0, clip.sourceEnd - clip.sourceStart)), 0);
+  if (totalDuration <= 0) throw new Error("没有可导出的有效时长。");
+  const offline = new OfflineAudioContext(2, Math.ceil(totalDuration * sampleRate), sampleRate);
+  for (const clip of clips) {
+    const track = getTrack(clip.trackId);
+    const duration = Math.max(0, clip.sourceEnd - clip.sourceStart);
+    if (duration <= 0) continue;
+    const source = offline.createBufferSource();
+    const gain = offline.createGain();
+    source.buffer = track.buffer;
+    const volume = clamp((clip.volume || 1) * (track.volume || 1), 0, 2);
+    const fadeIn = Math.min(duration, Math.max(0, clip.fadeIn || 0));
+    const fadeOut = Math.min(duration, Math.max(0, clip.fadeOut || 0));
+    const startAt = Math.max(0, clip.timelineStart);
+    gain.gain.setValueAtTime(fadeIn > 0 ? 0 : volume, startAt);
+    if (fadeIn > 0) gain.gain.linearRampToValueAtTime(volume, startAt + fadeIn);
+    gain.gain.setValueAtTime(volume, Math.max(startAt, startAt + duration - fadeOut));
+    if (fadeOut > 0) gain.gain.linearRampToValueAtTime(0, startAt + duration);
+    source.connect(gain).connect(offline.destination);
+    source.start(startAt, clip.sourceStart, duration);
+  }
+  return offline.startRendering();
+}
+
+async function previewTimelineMix() {
+  stopEditorPlayback();
+  try {
+    const rendered = await renderEditorMixBuffer();
+    const context = getEditorAudioContext();
+    const source = context.createBufferSource();
+    source.buffer = rendered;
+    source.connect(context.destination);
+    source.start(0, Math.min(editorState.timeline.playhead, Math.max(0, rendered.duration - 0.05)));
+    editorState.playingNodes = [source];
+  } catch (error) {
+    alert(`预听失败：${error.message}`);
   }
 }
 
@@ -886,59 +1140,10 @@ function audioBufferToWav(buffer) {
 }
 
 async function exportEditorMix() {
-  const loadedTracks = editorState.tracks.filter((track) => track.buffer);
-  if (!loadedTracks.length) {
-    alert("请先给至少一条轨道导入音频。");
-    return;
-  }
   $("#exportMix").disabled = true;
   $("#editorResult").classList.add("hidden");
   try {
-    const sampleRate = loadedTracks[0].buffer.sampleRate || 44100;
-    const soloTracks = editorState.tracks.filter((track) => track.solo).map((track) => track.id);
-    const sourceClips = editorState.clips.length
-      ? editorState.clips
-      : loadedTracks.map((track) => ({
-          id: `whole-${track.id}`,
-          name: `${track.name} 整轨`,
-          trackId: track.id,
-          sourceStart: 0,
-          sourceEnd: track.buffer.duration,
-          timelineStart: 0,
-          volume: 1,
-          fadeIn: 0,
-          fadeOut: 0,
-          muted: false
-        }));
-    const clips = sourceClips.filter((clip) => {
-      const track = getTrack(clip.trackId);
-      if (!track?.buffer || clip.muted || track.muted) return false;
-      return !soloTracks.length || soloTracks.includes(track.id);
-    });
-    if (!clips.length) throw new Error("所有轨道或片段都被静音了。");
-    const totalDuration = clips.reduce((max, clip) => Math.max(max, clip.timelineStart + Math.max(0, clip.sourceEnd - clip.sourceStart)), 0);
-    if (totalDuration <= 0) throw new Error("没有可导出的有效时长。");
-    const channels = 2;
-    const offline = new OfflineAudioContext(channels, Math.ceil(totalDuration * sampleRate), sampleRate);
-    for (const clip of clips) {
-      const track = getTrack(clip.trackId);
-      const duration = Math.max(0, clip.sourceEnd - clip.sourceStart);
-      if (duration <= 0) continue;
-      const source = offline.createBufferSource();
-      const gain = offline.createGain();
-      source.buffer = track.buffer;
-      const volume = clamp((clip.volume || 1) * (track.volume || 1), 0, 2);
-      const fadeIn = Math.min(duration, Math.max(0, clip.fadeIn || 0));
-      const fadeOut = Math.min(duration, Math.max(0, clip.fadeOut || 0));
-      const startAt = Math.max(0, clip.timelineStart);
-      gain.gain.setValueAtTime(fadeIn > 0 ? 0 : volume, startAt);
-      if (fadeIn > 0) gain.gain.linearRampToValueAtTime(volume, startAt + fadeIn);
-      gain.gain.setValueAtTime(volume, Math.max(startAt, startAt + duration - fadeOut));
-      if (fadeOut > 0) gain.gain.linearRampToValueAtTime(0, startAt + duration);
-      source.connect(gain).connect(offline.destination);
-      source.start(startAt, clip.sourceStart, duration);
-    }
-    const rendered = await offline.startRendering();
+    const rendered = await renderEditorMixBuffer();
     const blob = audioBufferToWav(rendered);
     if (editorState.renderedUrl) URL.revokeObjectURL(editorState.renderedUrl);
     editorState.renderedUrl = URL.createObjectURL(blob);
@@ -1726,6 +1931,24 @@ function bindEvents() {
   $("#clipStart").addEventListener("input", () => setClipInputs(Number($("#clipStart").value), editorState.selection.sourceEnd, editorState.selection.timelineStart));
   $("#clipEnd").addEventListener("input", () => setClipInputs(editorState.selection.sourceStart, Number($("#clipEnd").value), editorState.selection.timelineStart));
   $("#clipTimelineStart").addEventListener("input", () => setClipInputs(editorState.selection.sourceStart, editorState.selection.sourceEnd, Number($("#clipTimelineStart").value)));
+  $("#undoEdit").addEventListener("click", undoEditor);
+  $("#redoEdit").addEventListener("click", redoEditor);
+  $("#zoomOutTimeline").addEventListener("click", () => setTimelineZoom(editorState.timeline.zoom / 1.35));
+  $("#zoomInTimeline").addEventListener("click", () => setTimelineZoom(editorState.timeline.zoom * 1.35));
+  $("#fitTimeline").addEventListener("click", fitTimeline);
+  $("#snapTimeline").addEventListener("change", (event) => {
+    editorState.timeline.snap = event.target.checked;
+    syncTimelineControls();
+  });
+  $("#snapGridSize").addEventListener("change", (event) => {
+    editorState.timeline.grid = Number(event.target.value) || 0.5;
+    syncTimelineControls();
+    renderWaveform();
+  });
+  $("#playheadInput").addEventListener("input", (event) => setPlayhead(Number(event.target.value)));
+  $("#splitAtPlayhead").addEventListener("click", splitClipAtPlayhead);
+  $("#previewTimelineMix").addEventListener("click", previewTimelineMix);
+  $("#stopTimelineMix").addEventListener("click", stopEditorPlayback);
   $("#waveformCanvas").addEventListener("pointerdown", startTimelineDrag);
   $("#waveformCanvas").addEventListener("pointermove", moveTimelineDrag);
   $("#waveformCanvas").addEventListener("pointerup", endTimelineDrag);
@@ -1751,6 +1974,7 @@ function bindEvents() {
   });
   $("#loadDemoAudio").addEventListener("click", loadDemoEditorAudio);
   $("#clearClips").addEventListener("click", () => {
+    if (editorState.clips.length) pushEditorHistory();
     editorState.clips = [];
     renderClipList();
     renderWaveform();
@@ -1849,3 +2073,4 @@ loadPlan();
 renderStages();
 updateMidnightState();
 bindEvents();
+syncTimelineControls();
