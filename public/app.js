@@ -81,7 +81,9 @@ const editorState = {
   playingNodes: [],
   undoStack: [],
   redoStack: [],
-  renderedUrl: ""
+  renderedUrl: "",
+  pendingDrag: null,
+  longPressTimer: null
 };
 const recorderState = {
   stream: null,
@@ -209,10 +211,12 @@ function getByPath(object, path) {
 }
 
 function showView(name) {
+  document.body.dataset.view = name;
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === name));
   const navView = name === "config" || name === "history" ? "discover" : name;
   $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === navView));
   if (name === "history") loadHistory();
+  if (name === "editor") requestAnimationFrame(renderWaveform);
 }
 
 
@@ -486,6 +490,28 @@ function syncTimelineControls() {
   $("#redoEdit").disabled = !editorState.redoStack.length;
 }
 
+function syncTrackControls(trackId) {
+  const track = getTrack(trackId);
+  $$(`[data-track-volume="${track.id}"]`).forEach((input) => {
+    input.value = String(track.volume);
+  });
+  $$(`[data-track-mute="${track.id}"]`).forEach((input) => {
+    input.checked = track.muted;
+  });
+  $$(`[data-track-solo="${track.id}"]`).forEach((input) => {
+    input.checked = track.solo;
+  });
+}
+
+function setEditorPanel(name = "") {
+  $$("[data-editor-panel]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.editorPanel === name);
+  });
+  $$("[data-editor-drawer]").forEach((drawer) => {
+    drawer.classList.toggle("active", drawer.dataset.editorDrawer === name);
+  });
+}
+
 function setActiveTrack(trackId) {
   editorState.activeTrackId = trackId;
   editorState.selection.trackId = trackId;
@@ -537,6 +563,7 @@ function updateEditorSourceInfo() {
   const active = getActiveTrack();
   $("#editorSourceInfo").textContent = `当前选中：${active.name}｜${active.label}${active.buffer ? `｜${formatSeconds(active.buffer.duration)}` : ""}`;
   $$("[data-track-card]").forEach((card) => card.classList.toggle("active", card.dataset.trackCard === editorState.activeTrackId));
+  editorState.tracks.forEach((track) => syncTrackControls(track.id));
 }
 
 async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.activeTrackId }) {
@@ -785,6 +812,33 @@ function hitTestClip(point) {
   return null;
 }
 
+function setTimelineDragClass(className, enabled) {
+  $(".waveform-wrap")?.classList.toggle(className, enabled);
+}
+
+function beginClipDrag(hit, point) {
+  pushEditorHistory();
+  editorState.drag = {
+    type: hit.edge,
+    trackId: hit.clip.trackId,
+    clipId: hit.clip.id,
+    startTime: point.time,
+    originalTimelineStart: hit.clip.timelineStart,
+    originalSourceStart: hit.clip.sourceStart,
+    originalSourceEnd: hit.clip.sourceEnd
+  };
+  setTimelineDragClass("long-press-armed", false);
+  setTimelineDragClass("dragging", true);
+  setPlayhead(point.time);
+}
+
+function clearPendingTimelineDrag() {
+  clearTimeout(editorState.longPressTimer);
+  editorState.longPressTimer = null;
+  editorState.pendingDrag = null;
+  setTimelineDragClass("long-press-armed", false);
+}
+
 function startTimelineDrag(event) {
   const point = getCanvasPointer(event);
   if (!point.track?.buffer) return;
@@ -792,18 +846,19 @@ function startTimelineDrag(event) {
   setActiveTrack(point.track.id);
   const hit = hitTestClip(point);
   if (hit) {
-    pushEditorHistory();
-    editorState.drag = {
-      type: hit.edge,
-      trackId: hit.clip.trackId,
-      clipId: hit.clip.id,
-      startTime: point.time,
-      originalTimelineStart: hit.clip.timelineStart,
-      originalSourceStart: hit.clip.sourceStart,
-      originalSourceEnd: hit.clip.sourceEnd
-    };
-    setPlayhead(point.time);
     point.canvas.setPointerCapture?.(event.pointerId);
+    if (event.pointerType !== "mouse") {
+      clearPendingTimelineDrag();
+      editorState.pendingDrag = { hit, point, pointerId: event.pointerId, x: point.x, y: point.y };
+      setTimelineDragClass("long-press-armed", true);
+      editorState.longPressTimer = setTimeout(() => {
+        if (!editorState.pendingDrag) return;
+        beginClipDrag(editorState.pendingDrag.hit, editorState.pendingDrag.point);
+        editorState.pendingDrag = null;
+      }, 320);
+      return;
+    }
+    beginClipDrag(hit, point);
     return;
   }
   const selection = editorState.selection;
@@ -825,6 +880,13 @@ function startTimelineDrag(event) {
 }
 
 function moveTimelineDrag(event) {
+  if (editorState.pendingDrag && !editorState.drag) {
+    const point = getCanvasPointer(event);
+    if (Math.hypot(point.x - editorState.pendingDrag.x, point.y - editorState.pendingDrag.y) > 14 * point.ratio) {
+      clearPendingTimelineDrag();
+    }
+    return;
+  }
   if (!editorState.drag) return;
   const point = getCanvasPointer(event);
   const drag = editorState.drag;
@@ -867,7 +929,9 @@ function moveTimelineDrag(event) {
 }
 
 function endTimelineDrag() {
+  clearPendingTimelineDrag();
   editorState.drag = null;
+  setTimelineDragClass("dragging", false);
 }
 
 function addEditorClip(start, end, timelineStart = editorState.selection.timelineStart, trackId = editorState.selection.trackId) {
@@ -1895,6 +1959,12 @@ function bindEvents() {
   $("#runDirectAudioButton").addEventListener("click", runDirectAudio);
   $("#refreshHistory").addEventListener("click", loadHistory);
   $("#loadPlayerAudio").addEventListener("click", loadEditorFromPlayer);
+  $$("[data-editor-panel]").forEach((button) => {
+    button.addEventListener("click", () => setEditorPanel(button.dataset.editorPanel));
+  });
+  $$("[data-close-editor-drawer]").forEach((button) => {
+    button.addEventListener("click", () => setEditorPanel(""));
+  });
   $("#editorAudioFileA").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1916,13 +1986,17 @@ function bindEvents() {
   $$("[data-select-track]").forEach((button) => button.addEventListener("click", () => setActiveTrack(button.dataset.selectTrack)));
   $$("[data-track-volume]").forEach((input) => input.addEventListener("input", () => {
     getTrack(input.dataset.trackVolume).volume = Number(input.value) || 0;
+    syncTrackControls(input.dataset.trackVolume);
+    renderWaveform();
   }));
   $$("[data-track-mute]").forEach((input) => input.addEventListener("change", () => {
     getTrack(input.dataset.trackMute).muted = input.checked;
+    syncTrackControls(input.dataset.trackMute);
     renderWaveform();
   }));
   $$("[data-track-solo]").forEach((input) => input.addEventListener("change", () => {
     getTrack(input.dataset.trackSolo).solo = input.checked;
+    syncTrackControls(input.dataset.trackSolo);
     renderWaveform();
   }));
   $("#clipStart").addEventListener("input", () => setClipInputs(Number($("#clipStart").value), editorState.selection.sourceEnd, editorState.selection.timelineStart));
@@ -2061,6 +2135,7 @@ function bindEvents() {
 }
 
 decorateApiHelpFields();
+document.body.dataset.view = "discover";
 loadConfigIntoForm();
 loadPlayerBackground();
 renderVoiceReferences();

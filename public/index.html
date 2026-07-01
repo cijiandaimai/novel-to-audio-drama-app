@@ -182,41 +182,25 @@
               <p class="eyebrow">音频工作台</p>
               <h2>像剪视频一样剪广播剧音频</h2>
             </div>
-            <div class="editor-head-actions">
-              <button id="loadPlayerAudio" class="secondary">导入播放器音频</button>
-              <button id="loadDemoAudio" class="secondary">载入双轨演示</button>
-            </div>
           </header>
 
           <div class="editor-workbench">
             <section class="panel editor-main-panel">
               <div class="editor-command-bar">
+                <div class="editor-menu-tabs" aria-label="剪辑菜单">
+                  <button class="editor-menu-button" data-editor-panel="import">导入</button>
+                  <button class="editor-menu-button" data-editor-panel="select">选区</button>
+                  <button class="editor-menu-button" data-editor-panel="tracks">轨道</button>
+                  <button class="editor-menu-button" data-editor-panel="clips">片段</button>
+                  <button class="editor-menu-button" data-editor-panel="export">导出</button>
+                </div>
                 <div class="editor-tool-group">
                   <button id="undoEdit" class="secondary">撤销</button>
                   <button id="redoEdit" class="secondary">重做</button>
-                  <button id="zoomOutTimeline" class="secondary">缩小</button>
-                  <button id="zoomInTimeline" class="secondary">放大</button>
-                  <button id="fitTimeline" class="secondary">适应</button>
-                </div>
-                <div class="editor-tool-group">
-                  <label class="timeline-toggle"><input id="snapTimeline" type="checkbox" checked /> 吸附</label>
-                  <label class="timeline-grid">网格
-                    <select id="snapGridSize">
-                      <option value="0.1">0.1s</option>
-                      <option value="0.25">0.25s</option>
-                      <option value="0.5" selected>0.5s</option>
-                      <option value="1">1s</option>
-                    </select>
-                  </label>
-                  <label class="timeline-grid">播放头
-                    <input id="playheadInput" type="number" min="0" step="0.01" value="0" />
-                  </label>
-                </div>
-                <div class="editor-tool-group editor-transport">
                   <button id="splitAtPlayhead" class="secondary">分割</button>
                   <button id="previewTimelineMix" class="secondary">预听</button>
                   <button id="stopTimelineMix" class="secondary">停止</button>
-                  <button id="exportMix" class="primary">导出 WAV</button>
+                  <button class="primary" data-editor-panel="export">导出</button>
                 </div>
               </div>
 
@@ -227,35 +211,17 @@
 
               <div class="waveform-wrap">
                 <canvas id="waveformCanvas" width="960" height="320"></canvas>
+                <div class="waveform-hint">长按时间线片段后拖动，拖边缘可修剪</div>
               </div>
 
-              <div class="editor-selection">
-                <label class="field">
-                  <span>源起点（秒）</span>
-                  <input id="clipStart" type="number" min="0" step="0.01" value="0" />
-                </label>
-                <label class="field">
-                  <span>源终点（秒）</span>
-                  <input id="clipEnd" type="number" min="0" step="0.01" value="0" />
-                </label>
-                <label class="field">
-                  <span>时间线位置（秒）</span>
-                  <input id="clipTimelineStart" type="number" min="0" step="0.01" value="0" />
-                </label>
-              </div>
-
-              <div class="editor-selection-actions">
-                <button id="setClipStartFromPlayer" class="secondary">设起点</button>
-                <button id="setClipEndFromPlayer" class="secondary">设终点</button>
-                <button id="addClip" class="primary">加入选区</button>
-                <button id="addWholeClip" class="secondary">整轨加入</button>
-              </div>
-            </section>
-
-            <aside class="editor-side-panel">
-              <section class="panel editor-mixer-panel">
-                <div class="editor-panel-head">
-                  <h3>轨道</h3>
+              <div class="editor-drawer" data-editor-drawer="import">
+                <div class="editor-drawer-head">
+                  <strong>导入音频</strong>
+                  <button class="secondary" data-close-editor-drawer>收起</button>
+                </div>
+                <div class="editor-quick-row">
+                  <button id="loadPlayerAudio" class="secondary">导入播放器音频</button>
+                  <button id="loadDemoAudio" class="secondary">载入双轨演示</button>
                 </div>
                 <div class="track-import-grid">
                   <article class="track-card active" data-track-card="A">
@@ -286,17 +252,103 @@
                     <div class="editor-source-info" id="trackInfoB">还没有载入音频。</div>
                   </article>
                 </div>
-              </section>
+              </div>
 
-              <section class="panel editor-clips-panel">
-                <div class="editor-panel-head">
-                  <h3>片段</h3>
+              <div class="editor-drawer" data-editor-drawer="select">
+                <div class="editor-drawer-head">
+                  <strong>选区</strong>
+                  <button class="secondary" data-close-editor-drawer>收起</button>
+                </div>
+                <div class="editor-mini-tools">
+                  <button id="zoomOutTimeline" class="secondary">缩小</button>
+                  <button id="zoomInTimeline" class="secondary">放大</button>
+                  <button id="fitTimeline" class="secondary">适应</button>
+                  <label class="timeline-toggle"><input id="snapTimeline" type="checkbox" checked /> 吸附</label>
+                  <label class="timeline-grid">网格
+                    <select id="snapGridSize">
+                      <option value="0.1">0.1s</option>
+                      <option value="0.25">0.25s</option>
+                      <option value="0.5" selected>0.5s</option>
+                      <option value="1">1s</option>
+                    </select>
+                  </label>
+                  <label class="timeline-grid">播放头
+                    <input id="playheadInput" type="number" min="0" step="0.01" value="0" />
+                  </label>
+                </div>
+                <div class="editor-selection">
+                  <label class="field">
+                    <span>源起点（秒）</span>
+                    <input id="clipStart" type="number" min="0" step="0.01" value="0" />
+                  </label>
+                  <label class="field">
+                    <span>源终点（秒）</span>
+                    <input id="clipEnd" type="number" min="0" step="0.01" value="0" />
+                  </label>
+                  <label class="field">
+                    <span>时间线位置（秒）</span>
+                    <input id="clipTimelineStart" type="number" min="0" step="0.01" value="0" />
+                  </label>
+                </div>
+                <div class="editor-selection-actions">
+                  <button id="setClipStartFromPlayer" class="secondary">设起点</button>
+                  <button id="setClipEndFromPlayer" class="secondary">设终点</button>
+                  <button id="addClip" class="primary">加入选区</button>
+                  <button id="addWholeClip" class="secondary">整轨加入</button>
+                </div>
+              </div>
+
+              <div class="editor-drawer" data-editor-drawer="tracks">
+                <div class="editor-drawer-head">
+                  <strong>轨道混音</strong>
+                  <button class="secondary" data-close-editor-drawer>收起</button>
+                </div>
+                <div class="track-import-grid compact-tracks">
+                  <article class="track-card active" data-track-card="A">
+                    <div class="track-head">
+                      <button class="track-select" data-select-track="A">轨道 1</button>
+                      <strong>人声 / 主轨</strong>
+                    </div>
+                    <div class="track-controls">
+                      <label>音量<input data-track-volume="A" type="range" min="0" max="2" step="0.01" value="1" /></label>
+                      <label><input data-track-mute="A" type="checkbox" /> 静音</label>
+                      <label><input data-track-solo="A" type="checkbox" /> 独奏</label>
+                    </div>
+                  </article>
+                  <article class="track-card" data-track-card="B">
+                    <div class="track-head">
+                      <button class="track-select" data-select-track="B">轨道 2</button>
+                      <strong>音乐 / 环境</strong>
+                    </div>
+                    <div class="track-controls">
+                      <label>音量<input data-track-volume="B" type="range" min="0" max="2" step="0.01" value="0.75" /></label>
+                      <label><input data-track-mute="B" type="checkbox" /> 静音</label>
+                      <label><input data-track-solo="B" type="checkbox" /> 独奏</label>
+                    </div>
+                  </article>
+                </div>
+              </div>
+
+              <div class="editor-drawer" data-editor-drawer="clips">
+                <div class="editor-drawer-head">
+                  <strong>时间线片段</strong>
                   <button id="clearClips" class="secondary">清空</button>
+                  <button class="secondary" data-close-editor-drawer>收起</button>
                 </div>
                 <div id="clipList" class="clip-list"></div>
+              </div>
+
+              <div class="editor-drawer" data-editor-drawer="export">
+                <div class="editor-drawer-head">
+                  <strong>导出</strong>
+                  <button class="secondary" data-close-editor-drawer>收起</button>
+                </div>
+                <div class="editor-selection-actions">
+                  <button id="exportMix" class="primary">导出 WAV</button>
+                </div>
                 <div id="editorResult" class="result-box hidden"></div>
-              </section>
-            </aside>
+              </div>
+            </section>
           </div>
 
           <footer class="source-credit">

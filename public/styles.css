@@ -554,15 +554,19 @@ textarea {
 
 .editor-workbench {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.36fr);
-  gap: 18px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
 }
 
 .editor-main-panel {
+  position: relative;
   display: grid;
-  gap: 14px;
+  grid-template-rows: auto auto minmax(320px, 1fr);
+  gap: 10px;
   min-width: 0;
+  min-height: calc(100vh - 250px);
+  overflow: hidden;
 }
 
 .editor-side-panel {
@@ -583,16 +587,35 @@ textarea {
   background: rgba(255, 253, 247, 0.72);
 }
 
-.editor-tool-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 1 auto;
-  flex-wrap: nowrap;
+.editor-menu-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
 }
 
-.editor-transport {
-  justify-content: flex-end;
+.editor-menu-button {
+  min-height: 36px;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 253, 247, 0.8);
+  color: var(--muted);
+  font-weight: 900;
+}
+
+.editor-menu-button.active {
+  color: #fffaf0;
+  background: linear-gradient(180deg, var(--accent), var(--accent-dark));
+  border-color: rgba(111, 31, 27, 0.42);
+}
+
+.editor-tool-group {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, auto));
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 
 .editor-command-bar .timeline-grid {
@@ -603,6 +626,48 @@ textarea {
 .editor-selection-actions button {
   min-height: 34px;
   padding: 7px 10px;
+}
+
+.editor-drawer {
+  position: absolute;
+  z-index: 8;
+  left: 20px;
+  right: 20px;
+  top: 120px;
+  display: none;
+  max-height: min(50vh, 390px);
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid rgba(78, 73, 60, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.96);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.editor-drawer.active {
+  display: grid;
+  gap: 12px;
+}
+
+.editor-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.editor-quick-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.editor-mini-tools {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, auto));
+  gap: 8px;
+  align-items: center;
 }
 
 .editor-panel-head {
@@ -719,9 +784,30 @@ textarea {
 #waveformCanvas {
   display: block;
   width: 100%;
-  height: 320px;
+  height: min(58vh, 560px);
+  min-height: 320px;
   cursor: grab;
   touch-action: none;
+}
+
+.waveform-wrap.long-press-armed #waveformCanvas {
+  cursor: wait;
+}
+
+.waveform-wrap.dragging #waveformCanvas {
+  cursor: grabbing;
+}
+
+.waveform-hint {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(31, 33, 31, 0.66);
+  color: #fffaf0;
+  font-size: 12px;
+  pointer-events: none;
 }
 
 .editor-selection {
@@ -750,7 +836,7 @@ textarea {
 }
 
 .source-credit {
-  margin-top: 14px;
+  margin-top: 10px;
   padding: 12px 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -758,6 +844,19 @@ textarea {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.8;
+}
+
+body[data-view="editor"] .app-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-view="editor"] .player-dock {
+  display: none;
+}
+
+body[data-view="editor"] .main {
+  grid-column: 1 / -1;
+  padding-bottom: 96px;
 }
 
 .source-credit a {
@@ -1338,18 +1437,8 @@ textarea {
     width: 100%;
   }
 
-  .editor-command-bar .editor-tool-group:nth-child(2) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .editor-command-bar .editor-tool-group:nth-child(2) .timeline-grid:last-child,
-  .editor-transport #exportMix {
-    grid-column: 1 / -1;
-  }
-
-  .editor-transport {
+  .editor-mini-tools {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    justify-content: stretch;
   }
 
   .page-head h2 {
