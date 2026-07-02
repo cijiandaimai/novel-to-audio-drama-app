@@ -1428,6 +1428,13 @@ body[data-view="editor"] .main {
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.78);
 }
 
+.player-art:fullscreen .lyric-translation,
+.player-art.is-player-fullscreen .lyric-translation {
+  margin-top: 8px;
+  font-size: clamp(15px, 3.5vw, 28px);
+  color: rgba(255, 250, 238, 0.62);
+}
+
 .player-shade {
   height: 100%;
   display: flex;
@@ -1564,6 +1571,10 @@ body[data-view="editor"] .main {
 }
 
 .lyric-panel p {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
   margin: 0;
   color: rgba(255, 250, 238, 0.58);
   line-height: 1.65;
@@ -1589,6 +1600,23 @@ body[data-view="editor"] .main {
 
 .lyric-text {
   display: inline;
+}
+
+.lyric-panel p.bilingual .lyric-text {
+  display: grid;
+  gap: 2px;
+}
+
+.lyric-translation {
+  display: block;
+  color: rgba(255, 250, 238, 0.54);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+
+.lyric-panel p.active .lyric-translation {
+  color: rgba(239, 215, 170, 0.9);
 }
 
 .lyric-line-fill {

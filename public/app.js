@@ -909,13 +909,64 @@ function buildFallbackWordSegments(text, start, end) {
   return expandTimedText(text, start, end);
 }
 
+function hasCjkText(text) {
+  return /[\u3400-\u9fff]/.test(String(text || ""));
+}
+
+function hasLatinText(text) {
+  return /[a-z]/i.test(String(text || ""));
+}
+
+function isEnglishTranslationPair(primary, secondary) {
+  const primaryText = primary?.text || "";
+  const secondaryText = secondary?.text || "";
+  return (hasLatinText(primaryText) && hasCjkText(secondaryText))
+    || (hasCjkText(primaryText) && hasLatinText(secondaryText));
+}
+
+function mergeBilingualLyricRows(rows) {
+  const merged = [];
+  let bilingualCount = 0;
+  for (let index = 0; index < rows.length; index += 1) {
+    const group = [rows[index]];
+    while (
+      rows[index + 1]
+      && Math.abs(Number(rows[index + 1].time) - Number(group[0].time)) < 0.04
+    ) {
+      group.push(rows[index + 1]);
+      index += 1;
+    }
+    if (group.length < 2) {
+      merged.push(group[0]);
+      continue;
+    }
+    const latin = group.find((line) => hasLatinText(line.text) && !hasCjkText(line.text));
+    const cjk = group.find((line) => hasCjkText(line.text));
+    if (latin && cjk && isEnglishTranslationPair(latin, cjk)) {
+      const translation = group
+        .filter((line) => line !== latin)
+        .map((line) => line.text)
+        .join(" / ");
+      merged.push({ ...latin, translation, bilingual: true });
+      bilingualCount += 1;
+      continue;
+    }
+    const [first, ...rest] = group;
+    merged.push({ ...first, translation: rest.map((line) => line.text).join(" / "), bilingual: true });
+    bilingualCount += 1;
+  }
+  return { rows: merged, bilingualCount };
+}
+
 function finalizeLyrics(rows) {
   const sorted = rows
     .filter((line) => line && Number.isFinite(line.time) && line.text)
     .sort((a, b) => a.time - b.time);
+  const mergedLyrics = mergeBilingualLyricRows(sorted);
+  const merged = mergedLyrics.rows;
 
-  sorted.forEach((line, index) => {
-    const nextLine = sorted[index + 1];
+  merged.forEach((line, index) => {
+    const nextLine = merged[index + 1];
     const textLength = Math.max(1, Array.from(line.text).length);
     const fallbackEnd = line.time + Math.min(10, Math.max(2, textLength * 0.28));
     const timedEnd = line.lineDuration ? line.time + line.lineDuration : fallbackEnd;
@@ -937,7 +988,8 @@ function finalizeLyrics(rows) {
     }
   });
 
-  return sorted;
+  merged.bilingualCount = mergedLyrics.bilingualCount;
+  return merged;
 }
 
 function detectLyricFormat(rawText, fileName = "") {
@@ -998,7 +1050,9 @@ function parseLyrics(rawText, fileName = "") {
   });
   const lines = finalizeLyrics(rows);
   const mode = explicitWordRows ? "word" : "line";
-  const label = explicitWordRows ? format.label.replace("逐行", "逐字") : format.label;
+  const label = lines.bilingualCount
+    ? `${format.type === "lrc" ? "双语 LRC" : format.label}（英文/翻译）`
+    : (explicitWordRows ? format.label.replace("逐行", "逐字") : format.label);
   return { lines, mode, label, type: format.type };
 }
 
@@ -1017,7 +1071,10 @@ function renderLyrics() {
           .map((word, wordIndex) => `<span class="lyric-word${word.text === " " ? " lyric-space" : ""}" data-lyric-word="${wordIndex}" style="--word-fill: 0%">${renderLyricToken(word.text)}</span>`)
           .join("")
         : `<span class="lyric-line-fill" style="--line-fill: 0%">${escapeHtml(line.text)}</span>`;
-      return `<p data-lyric-index="${index}"><span class="lyric-time">${formatLyricTime(line.time)}</span><span class="lyric-text">${words}</span></p>`;
+      const translation = line.translation
+        ? `<span class="lyric-translation">${escapeHtml(line.translation)}</span>`
+        : "";
+      return `<p class="${line.translation ? "bilingual" : ""}" data-lyric-index="${index}"><span class="lyric-time">${formatLyricTime(line.time)}</span><span class="lyric-text">${words}${translation}</span></p>`;
     })
     .join("");
   updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
