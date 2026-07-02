@@ -189,6 +189,7 @@
               <div class="editor-command-bar">
                 <div class="editor-menu-tabs" aria-label="剪辑菜单">
                   <button class="editor-menu-button" data-editor-panel="import">导入</button>
+                  <button class="editor-menu-button" data-editor-panel="toolbox">工具箱</button>
                   <button class="editor-menu-button" data-editor-panel="select">选区</button>
                   <button class="editor-menu-button" data-editor-panel="tracks">轨道</button>
                   <button class="editor-menu-button" data-editor-panel="clips">片段</button>
@@ -275,6 +276,75 @@
                       <button class="secondary" data-clear-track="B">移除音频</button>
                     </div>
                   </article>
+                </div>
+              </div>
+
+              <div class="editor-drawer" data-editor-drawer="toolbox">
+                <div class="editor-drawer-head">
+                  <strong>音频工具箱</strong>
+                  <button class="secondary" data-close-editor-drawer>收起</button>
+                </div>
+                <div class="toolbox-section">
+                  <span>本地工具</span>
+                  <div class="toolbox-grid">
+                    <button class="tool-card" data-editor-panel="import">
+                      <strong>上传 / 录音</strong>
+                      <small>导入音频、麦克风录入到轨道</small>
+                    </button>
+                    <button class="tool-card" data-editor-panel="select">
+                      <strong>剪切 / 修剪</strong>
+                      <small>拖选区、设置起止点、加入片段</small>
+                    </button>
+                    <button class="tool-card" data-editor-panel="clips">
+                      <strong>拆分 / 片段</strong>
+                      <small>分割、删除、试听、调整片段</small>
+                    </button>
+                    <button class="tool-card" data-editor-panel="tracks">
+                      <strong>混音 / 音量</strong>
+                      <small>双轨音量、静音、独奏</small>
+                    </button>
+                    <button class="tool-card" data-editor-panel="export">
+                      <strong>合并导出</strong>
+                      <small>混音后导出 WAV</small>
+                    </button>
+                  </div>
+                </div>
+                <div class="toolbox-section">
+                  <span>在线跳转</span>
+                  <div class="toolbox-grid">
+                    <a class="tool-card external" href="https://audio-convert.com/cn/audio-editor" target="_blank" rel="noreferrer">
+                      <strong>在线音频编辑器</strong>
+                      <small>参考 UI：上传、录音、剪切、混合、下载</small>
+                    </a>
+                    <a class="tool-card external" href="https://ncm.worthsee.com" target="_blank" rel="noreferrer">
+                      <strong>NCM 转 MP3</strong>
+                      <small>格式转换较重，跳转在线工具</small>
+                    </a>
+                    <a class="tool-card external" href="https://vocalremover.org" target="_blank" rel="noreferrer">
+                      <strong>人声 / 伴奏分离</strong>
+                      <small>分离、淡出等在线功能</small>
+                    </a>
+                    <a class="tool-card external" href="https://mvsep.com" target="_blank" rel="noreferrer">
+                      <strong>高质量分轨</strong>
+                      <small>人声、伴奏、多轨分离</small>
+                    </a>
+                    <a class="tool-card external" href="https://app.bakuage.com" target="_blank" rel="noreferrer">
+                      <strong>一键母带</strong>
+                      <small>响度、压缩、母带处理</small>
+                    </a>
+                    <a class="tool-card external" href="https://samplab.com" target="_blank" rel="noreferrer">
+                      <strong>音频转 MIDI</strong>
+                      <small>旋律提取与 MIDI 转换</small>
+                    </a>
+                    <a class="tool-card external" href="https://signal.vercel.app" target="_blank" rel="noreferrer">
+                      <strong>MIDI 转音频</strong>
+                      <small>把 MIDI 快速渲染成音频</small>
+                    </a>
+                    <a class="tool-card external" href="https://huggingface.co/spaces/Plachta/Seed-VC" target="_blank" rel="noreferrer">
+                      <strong>Seed-VC 翻唱</strong>
+                      <small>AI 声音转换，跳转在线空间</small>
+                    </a>
+                  </div>
                 </div>
               </div>
 
@@ -376,7 +446,9 @@
           </div>
 
           <footer class="source-credit">
-            UI 参考：
+            UI 与工具参考：
+            <a href="https://ailoujiwai.com/#online-tools" target="_blank" rel="noreferrer">爱喽叽歪在线工具</a>
+            <a href="https://audio-convert.com/cn/audio-editor" target="_blank" rel="noreferrer">Audio-Convert 在线音频编辑器</a>
             <a href="https://github.com/audacity/audacity" target="_blank" rel="noreferrer">Audacity</a>
             <a href="https://github.com/pkalogiros/audiomass" target="_blank" rel="noreferrer">AudioMass</a>
             <a href="https://github.com/naomiaro/waveform-playlist" target="_blank" rel="noreferrer">Waveform Playlist</a>
