@@ -61,10 +61,14 @@
                   <p id="lyricCurrent">导入 LRC / KRC 歌词后，这里会跟随音频逐字亮起。</p>
                 </div>
                 <audio id="mainPlayer" controls></audio>
+                <div class="player-meta-row">
+                  <span id="playerPathLabel">未导入音频</span>
+                  <span id="lyricModeLabel">歌词未导入</span>
+                </div>
                 <div class="player-actions">
                   <label class="image-picker">
                     导入音频
-                    <input id="playerAudioFile" type="file" accept="audio/*" />
+                    <input id="playerAudioFile" type="file" accept="audio/*" multiple />
                   </label>
                   <label class="image-picker">
                     导入歌词
@@ -86,6 +90,13 @@
                   </div>
                   <p id="bluetoothStatus" class="hint">请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。</p>
                 </details>
+                <section class="player-playlist" aria-label="播放列表">
+                  <div class="player-playlist-head">
+                    <strong>播放列表</strong>
+                    <button id="clearPlaylist" class="secondary">清空</button>
+                  </div>
+                  <div id="playerPlaylist" class="player-playlist-list"></div>
+                </section>
               </div>
             </div>
           </section>

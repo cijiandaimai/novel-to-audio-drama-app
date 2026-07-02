@@ -58,11 +58,18 @@ const viewLabels = {
   history: "创作历史"
 };
 const playerBgKey = "playerBackgroundImage";
+const playerPlaylistKey = "playerPlaylist";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const playerState = {
   audioUrl: "",
+  objectUrl: "",
+  mediaDbPromise: null,
+  currentPlaylistId: "",
+  playlist: [],
   lyrics: [],
   lyricFileName: "",
+  lyricMode: "none",
+  lyricFormatLabel: "",
   activeLyricIndex: -1,
   activeWordIndex: -1,
   lastFullscreenTapAt: 0,
@@ -540,6 +547,198 @@ function loadPlayerBackground() {
   setPlayerBackground(localStorage.getItem(playerBgKey));
 }
 
+function readPlayerPlaylist() {
+  try {
+    const value = JSON.parse(localStorage.getItem(playerPlaylistKey) || "[]");
+    return Array.isArray(value) ? value : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePlayerPlaylist() {
+  localStorage.setItem(playerPlaylistKey, JSON.stringify(playerState.playlist.slice(0, 100)));
+}
+
+function getPlayerMediaDb() {
+  if (!("indexedDB" in window)) return Promise.reject(new Error("当前环境不支持本地媒体库。"));
+  if (playerState.mediaDbPromise) return playerState.mediaDbPromise;
+  playerState.mediaDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open("baize-player-media", 1);
+    request.addEventListener("upgradeneeded", () => {
+      request.result.createObjectStore("audio");
+    });
+    request.addEventListener("success", () => resolve(request.result));
+    request.addEventListener("error", () => reject(request.error || new Error("媒体库打开失败。")));
+  });
+  return playerState.mediaDbPromise;
+}
+
+async function savePlayerMediaBlob(id, blob) {
+  const db = await getPlayerMediaDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("audio", "readwrite");
+    tx.objectStore("audio").put(blob, id);
+    tx.addEventListener("complete", resolve);
+    tx.addEventListener("error", () => reject(tx.error || new Error("音频保存失败。")));
+  });
+}
+
+async function loadPlayerMediaBlob(id) {
+  const db = await getPlayerMediaDb();
+  return new Promise((resolve, reject) => {
+    const request = db.transaction("audio", "readonly").objectStore("audio").get(id);
+    request.addEventListener("success", () => resolve(request.result || null));
+    request.addEventListener("error", () => reject(request.error || new Error("音频读取失败。")));
+  });
+}
+
+async function deletePlayerMediaBlob(id) {
+  if (!id) return;
+  const db = await getPlayerMediaDb().catch(() => null);
+  if (!db) return;
+  await new Promise((resolve) => {
+    const tx = db.transaction("audio", "readwrite");
+    tx.objectStore("audio").delete(id);
+    tx.addEventListener("complete", resolve);
+    tx.addEventListener("error", resolve);
+  });
+}
+
+function getImportedFilePath(file) {
+  return file?.webkitRelativePath || file?.name || "本机音频";
+}
+
+function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = "", persistent = true }) {
+  const id = `audio-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return {
+    id,
+    title: title || file?.name?.replace(/\.[^.]+$/, "") || "未命名音频",
+    src: src || "",
+    blobId,
+    sourceType,
+    persistent,
+    fileName: file?.name || "",
+    fileSize: file?.size || 0,
+    mimeType: file?.type || "",
+    displayPath: file ? `本机导入 / ${getImportedFilePath(file)}` : (src || "临时音频"),
+    createdAt: new Date().toISOString()
+  };
+}
+
+function upsertPlaylistItem(item) {
+  if (!item?.id) return item;
+  const sameIndex = playerState.playlist.findIndex((existing) =>
+    (item.src && existing.src === item.src) || (item.blobId && existing.blobId === item.blobId)
+  );
+  if (sameIndex >= 0) {
+    playerState.playlist[sameIndex] = { ...playerState.playlist[sameIndex], ...item, id: playerState.playlist[sameIndex].id };
+    return playerState.playlist[sameIndex];
+  }
+  playerState.playlist.unshift(item);
+  playerState.playlist = playerState.playlist.slice(0, 100);
+  return item;
+}
+
+function updatePlayerPathLabel(item = null) {
+  const pathLabel = $("#playerPathLabel");
+  if (pathLabel) pathLabel.textContent = item?.displayPath || "未导入音频";
+  const lyricLabel = $("#lyricModeLabel");
+  if (lyricLabel) lyricLabel.textContent = playerState.lyricFormatLabel || "歌词未导入";
+}
+
+function resetPlayerLyrics() {
+  playerState.lyrics = [];
+  playerState.lyricFileName = "";
+  playerState.lyricMode = "none";
+  playerState.lyricFormatLabel = "";
+  playerState.activeLyricIndex = -1;
+  playerState.activeWordIndex = -1;
+  renderLyrics();
+}
+
+function renderPlayerPlaylist() {
+  const list = $("#playerPlaylist");
+  if (!list) return;
+  if (!playerState.playlist.length) {
+    list.innerHTML = `<p class="playlist-empty">导入音频或播放作品后，会自动生成播放列表。</p>`;
+    updatePlayerPathLabel();
+    return;
+  }
+  list.innerHTML = playerState.playlist.map((item) => `
+    <article class="playlist-item${item.id === playerState.currentPlaylistId ? " active" : ""}" data-playlist-id="${item.id}">
+      <button class="playlist-play" data-playlist-action="play">
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(item.displayPath || item.src || "音频")}</span>
+      </button>
+      <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
+    </article>
+  `).join("");
+  updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
+}
+
+function loadPlayerPlaylist() {
+  playerState.playlist = readPlayerPlaylist();
+  renderPlayerPlaylist();
+}
+
+function saveAndRenderPlayerPlaylist() {
+  savePlayerPlaylist();
+  renderPlayerPlaylist();
+}
+
+async function resolvePlaylistSrc(item) {
+  if (!item) return "";
+  if (item.sourceType === "local" && item.blobId) {
+    const blob = await loadPlayerMediaBlob(item.blobId);
+    if (!blob) throw new Error("本机音频缓存不存在，请重新导入。");
+    if (playerState.objectUrl?.startsWith("blob:")) URL.revokeObjectURL(playerState.objectUrl);
+    playerState.objectUrl = URL.createObjectURL(blob);
+    return playerState.objectUrl;
+  }
+  return item.src;
+}
+
+async function playPlaylistItem(id) {
+  const item = playerState.playlist.find((entry) => entry.id === id);
+  if (!item) return;
+  try {
+    const src = await resolvePlaylistSrc(item);
+    playInApp(src, item.title, { playlistItem: item, addToPlaylist: false });
+  } catch (error) {
+    showToast(error.message, "fail");
+  }
+}
+
+function playNextPlaylistItem() {
+  if (!playerState.playlist.length || !playerState.currentPlaylistId) return;
+  const index = playerState.playlist.findIndex((item) => item.id === playerState.currentPlaylistId);
+  if (index < 0 || index >= playerState.playlist.length - 1) return;
+  playPlaylistItem(playerState.playlist[index + 1].id);
+}
+
+async function removePlaylistItem(id) {
+  const item = playerState.playlist.find((entry) => entry.id === id);
+  playerState.playlist = playerState.playlist.filter((entry) => entry.id !== id);
+  if (playerState.currentPlaylistId === id) {
+    playerState.currentPlaylistId = "";
+    updatePlayerPathLabel();
+  }
+  saveAndRenderPlayerPlaylist();
+  if (item?.sourceType === "local") await deletePlayerMediaBlob(item.blobId);
+}
+
+async function clearPlayerPlaylist() {
+  const localBlobIds = playerState.playlist
+    .filter((item) => item.sourceType === "local" && item.blobId)
+    .map((item) => item.blobId);
+  playerState.playlist = [];
+  playerState.currentPlaylistId = "";
+  saveAndRenderPlayerPlaylist();
+  await Promise.all(localBlobIds.map((id) => deletePlayerMediaBlob(id)));
+  showToast("播放列表已清空。", "ok");
+}
+
 function formatLyricTime(seconds) {
   const safe = Math.max(0, Number(seconds) || 0);
   const minute = Math.floor(safe / 60);
@@ -639,8 +838,9 @@ function finalizeLyrics(rows) {
     line.end = Math.max(line.time + 0.35, Math.min(timedEnd, nextEnd || timedEnd));
 
     if (!line.words?.length) {
-      line.words = buildFallbackWordSegments(line.text, line.time, line.end);
+      line.words = line.mode === "word" ? buildFallbackWordSegments(line.text, line.time, line.end) : [];
     } else {
+      line.mode = "word";
       line.words = line.words
         .filter((word) => word.text)
         .map((word, wordIndex, list) => {
@@ -655,8 +855,33 @@ function finalizeLyrics(rows) {
   return sorted;
 }
 
-function parseLyrics(rawText) {
+function detectLyricFormat(rawText, fileName = "") {
+  const raw = String(rawText || "");
+  const lowerName = String(fileName || "").toLowerCase();
+  const hasKrcLine = /\[\d+,\d+\]/.test(raw);
+  const hasKrcWord = /<\d+,\d+(?:,\d+)?>/.test(raw);
+  const hasEnhancedLrc = /<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/.test(raw);
+  const hasLrcLine = /\[\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?\]/.test(raw);
+  if (hasKrcLine || hasKrcWord || lowerName.endsWith(".krc")) {
+    return {
+      type: "krc",
+      mode: hasKrcWord ? "word" : "line",
+      label: hasKrcWord ? "KRC 逐字歌词" : "KRC 逐行歌词"
+    };
+  }
+  if (hasEnhancedLrc) {
+    return { type: "enhanced-lrc", mode: "word", label: "增强 LRC 逐字歌词" };
+  }
+  if (hasLrcLine || lowerName.endsWith(".lrc")) {
+    return { type: "lrc", mode: "line", label: "LRC 逐行歌词" };
+  }
+  return { type: "plain", mode: "line", label: "普通文本歌词" };
+}
+
+function parseLyrics(rawText, fileName = "") {
   const rows = [];
+  const format = detectLyricFormat(rawText, fileName);
+  let explicitWordRows = 0;
   String(rawText || "").split(/\r?\n/).forEach((line) => {
     const lrcTags = Array.from(line.matchAll(/\[(\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?)\]/g));
     const krcTag = line.match(/\[(\d+),(\d+)\]/);
@@ -668,24 +893,28 @@ function parseLyrics(rawText) {
     const words = krcWords.length ? krcWords : enhancedWords;
     const text = words.length ? words.map((word) => word.text).join("").trim() : normalizeLyricText(body);
     if (!text) return;
+    if (words.length) explicitWordRows += 1;
 
     if (krcStart !== null) {
-      rows.push({ time: krcStart, text, words, lineDuration: krcDuration });
+      rows.push({ time: krcStart, text, words, lineDuration: krcDuration, mode: words.length ? "word" : "line" });
       return;
     }
 
     if (words.length) {
       const time = lrcTags.length ? parseLyricTime(lrcTags[0][1]) : words[0].start;
-      if (time !== null) rows.push({ time, text, words });
+      if (time !== null) rows.push({ time, text, words, mode: "word" });
       return;
     }
 
     lrcTags.forEach((tag) => {
       const time = parseLyricTime(tag[1]);
-      if (time !== null) rows.push({ time, text, words: [] });
+      if (time !== null) rows.push({ time, text, words: [], mode: "line" });
     });
   });
-  return finalizeLyrics(rows);
+  const lines = finalizeLyrics(rows);
+  const mode = explicitWordRows ? "word" : "line";
+  const label = explicitWordRows ? format.label.replace("逐行", "逐字") : format.label;
+  return { lines, mode, label, type: format.type };
 }
 
 function renderLyrics() {
@@ -693,16 +922,20 @@ function renderLyrics() {
   if (!panel) return;
   if (!playerState.lyrics.length) {
     panel.innerHTML = `<p id="lyricCurrent">导入 LRC / KRC 歌词后，这里会跟随音频逐字亮起。</p>`;
+    updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
     return;
   }
   panel.innerHTML = playerState.lyrics
     .map((line, index) => {
-      const words = line.words
-        .map((word, wordIndex) => `<span class="lyric-word${word.text === " " ? " lyric-space" : ""}" data-lyric-word="${wordIndex}" style="--word-fill: 0%">${renderLyricToken(word.text)}</span>`)
-        .join("");
+      const words = line.mode === "word" && line.words?.length
+        ? line.words
+          .map((word, wordIndex) => `<span class="lyric-word${word.text === " " ? " lyric-space" : ""}" data-lyric-word="${wordIndex}" style="--word-fill: 0%">${renderLyricToken(word.text)}</span>`)
+          .join("")
+        : `<span class="lyric-line-fill" style="--line-fill: 0%">${escapeHtml(line.text)}</span>`;
       return `<p data-lyric-index="${index}"><span class="lyric-time">${formatLyricTime(line.time)}</span><span class="lyric-text">${words}</span></p>`;
     })
     .join("");
+  updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
 }
 
 function getActiveWordIndex(line, currentTime) {
@@ -716,6 +949,12 @@ function getActiveWordIndex(line, currentTime) {
 
 function updateLyricWordFill(lineElement, line, currentTime) {
   const wordElements = Array.from(lineElement.querySelectorAll("[data-lyric-word]"));
+  const lineFill = lineElement.querySelector(".lyric-line-fill");
+  if (lineFill) {
+    const duration = Math.max(0.35, line.end - line.time);
+    const progress = Math.max(0, Math.min(1, (currentTime - line.time) / duration));
+    lineFill.style.setProperty("--line-fill", `${Math.round(progress * 100)}%`);
+  }
   wordElements.forEach((element, index) => {
     const word = line.words[index];
     if (!word) return;
@@ -748,33 +987,50 @@ function syncLyrics(currentTime = 0) {
   });
 }
 
-async function importPlayerAudio(file) {
+async function importPlayerAudio(file, { play = true } = {}) {
   if (!file) return;
-  if (playerState.audioUrl?.startsWith("blob:")) URL.revokeObjectURL(playerState.audioUrl);
-  playerState.audioUrl = URL.createObjectURL(file);
-  playerState.lyrics = [];
-  playerState.lyricFileName = "";
-  renderLyrics();
-  playInApp(playerState.audioUrl, file.name.replace(/\.[^.]+$/, ""));
-  showToast(`已导入音频：${file.name}`, "ok");
+  const blobId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const item = createPlaylistItem({
+    title: file.name.replace(/\.[^.]+$/, ""),
+    file,
+    sourceType: "local",
+    blobId
+  });
+  try {
+    await savePlayerMediaBlob(blobId, file);
+  } catch {
+    item.sourceType = "session";
+    item.persistent = false;
+    item.src = URL.createObjectURL(file);
+    item.displayPath = `本次导入 / ${getImportedFilePath(file)}`;
+  }
+  const saved = upsertPlaylistItem(item);
+  saveAndRenderPlayerPlaylist();
+  if (play) await playPlaylistItem(saved.id);
+  showToast(`已加入播放列表：${file.name}`, "ok");
 }
 
 async function importLyrics(file) {
   if (!file) return;
   const text = await file.text();
-  const lines = parseLyrics(text);
+  const parsed = parseLyrics(text, file.name);
+  const lines = parsed.lines;
   playerState.lyrics = lines;
   playerState.lyricFileName = file.name;
+  playerState.lyricMode = parsed.mode;
+  playerState.lyricFormatLabel = parsed.label;
   playerState.activeLyricIndex = -1;
   playerState.activeWordIndex = -1;
   renderLyrics();
   if (!lines.length) {
     $("#lyricPanel").innerHTML = `<p id="lyricCurrent">没有识别到可同步的时间戳。当前支持普通 LRC、逐字 LRC 和明文 KRC，部分加密 KRC 需要先转换成文本。</p>`;
+    playerState.lyricFormatLabel = "歌词未识别";
+    updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
     showToast("没有识别到可同步歌词，请检查 LRC/KRC 时间戳。", "fail");
     return;
   }
   syncLyrics($("#mainPlayer")?.currentTime || 0);
-  showToast(`已导入歌词：${file.name}，共 ${lines.length} 行。`, "ok");
+  showToast(`已导入${parsed.label}：${file.name}，共 ${lines.length} 行。`, "ok");
 }
 
 function togglePlayerFullscreen() {
@@ -924,12 +1180,37 @@ function decorateApiHelpFields() {
   });
 }
 
-function playInApp(src, title) {
+function playInApp(src, title, options = {}) {
   const player = $("#mainPlayer");
   const playerTitle = $("#playerTitle");
   if (!player || !src) return;
+  const previousPlaylistId = playerState.currentPlaylistId;
   player.src = src;
+  playerState.audioUrl = src;
   playerTitle.textContent = title || "正在播放广播剧";
+  let playlistItem = options.playlistItem || null;
+  if (!playlistItem && options.addToPlaylist !== false) {
+    const sourceType = src.startsWith("blob:") ? "session" : "remote";
+    playlistItem = upsertPlaylistItem(createPlaylistItem({
+      title: title || "广播剧",
+      src,
+      sourceType,
+      persistent: sourceType !== "session"
+    }));
+    saveAndRenderPlayerPlaylist();
+  }
+  if (playlistItem) {
+    playerState.currentPlaylistId = playlistItem.id;
+    if (playlistItem.id !== previousPlaylistId && options.keepLyrics !== true) {
+      playerState.lyrics = [];
+      playerState.lyricFileName = "";
+      playerState.lyricMode = "none";
+      playerState.lyricFormatLabel = "";
+      renderLyrics();
+    }
+    updatePlayerPathLabel(playlistItem);
+    renderPlayerPlaylist();
+  }
   playerState.activeLyricIndex = -1;
   playerState.activeWordIndex = -1;
   syncLyrics(0);
@@ -3119,9 +3400,11 @@ function bindEvents() {
     event.target.value = "";
   });
   $("#playerAudioFile").addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    await importPlayerAudio(file);
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    for (const [index, file] of files.entries()) {
+      await importPlayerAudio(file, { play: index === 0 });
+    }
     event.target.value = "";
   });
   $("#lyricFile").addEventListener("change", async (event) => {
@@ -3131,6 +3414,14 @@ function bindEvents() {
     event.target.value = "";
   });
   $("#fullScreenPlayer").addEventListener("click", togglePlayerFullscreen);
+  $("#playerPlaylist").addEventListener("click", (event) => {
+    const action = event.target.closest("[data-playlist-action]")?.dataset.playlistAction;
+    if (!action) return;
+    const itemId = event.target.closest("[data-playlist-id]")?.dataset.playlistId;
+    if (action === "play") playPlaylistItem(itemId);
+    if (action === "remove") removePlaylistItem(itemId);
+  });
+  $("#clearPlaylist").addEventListener("click", clearPlayerPlaylist);
   $("#playerArt").addEventListener("pointerdown", startPlayerFullscreenGesture);
   $("#playerArt").addEventListener("mousedown", startPlayerFullscreenGesture);
   $("#playerArt").addEventListener("touchstart", startPlayerFullscreenTouch, { passive: true });
@@ -3147,6 +3438,7 @@ function bindEvents() {
     routeSwipe = null;
   }, { passive: true });
   $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
+  $("#mainPlayer").addEventListener("ended", playNextPlaylistItem);
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
     if (!value) {
@@ -3192,6 +3484,7 @@ decorateApiHelpFields();
 document.body.dataset.view = "discover";
 loadConfigIntoForm();
 loadPlayerBackground();
+loadPlayerPlaylist();
 renderVoiceReferences();
 renderClipList();
 renderWaveform();
