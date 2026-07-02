@@ -55,7 +55,8 @@ const playerState = {
   lyrics: [],
   lyricFileName: "",
   activeLyricIndex: -1,
-  activeWordIndex: -1
+  activeWordIndex: -1,
+  lastFullscreenTapAt: 0
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -480,11 +481,44 @@ async function importLyrics(file) {
 function togglePlayerFullscreen() {
   const target = $("#playerArt");
   if (!target) return;
-  if (document.fullscreenElement) {
-    document.exitFullscreen?.();
+  if (isPlayerFullscreen(target)) {
+    exitPlayerFullscreen();
     return;
   }
-  target.requestFullscreen?.();
+  if (!target.requestFullscreen) {
+    target.classList.add("is-player-fullscreen");
+    return;
+  }
+  target.requestFullscreen().catch(() => {
+    target.classList.add("is-player-fullscreen");
+  });
+}
+
+function isPlayerFullscreen(target = $("#playerArt")) {
+  return document.fullscreenElement === target || target?.classList.contains("is-player-fullscreen");
+}
+
+function exitPlayerFullscreen() {
+  const target = $("#playerArt");
+  target?.classList.remove("is-player-fullscreen");
+  if (document.fullscreenElement === target) document.exitFullscreen?.();
+}
+
+function exitPlayerFullscreenOnDoubleTap(event) {
+  const target = $("#playerArt");
+  if (!isPlayerFullscreen(target)) return;
+  if (event.type === "dblclick") {
+    exitPlayerFullscreen();
+    return;
+  }
+  if (event.pointerType !== "touch") return;
+  const now = Date.now();
+  if (now - playerState.lastFullscreenTapAt < 320) {
+    playerState.lastFullscreenTapAt = 0;
+    exitPlayerFullscreen();
+    return;
+  }
+  playerState.lastFullscreenTapAt = now;
 }
 
 function decorateApiHelpFields() {
@@ -2513,6 +2547,8 @@ function bindEvents() {
     await importLyrics(file);
   });
   $("#fullScreenPlayer").addEventListener("click", togglePlayerFullscreen);
+  $("#playerArt").addEventListener("dblclick", exitPlayerFullscreenOnDoubleTap);
+  $("#playerArt").addEventListener("pointerup", exitPlayerFullscreenOnDoubleTap);
   $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();

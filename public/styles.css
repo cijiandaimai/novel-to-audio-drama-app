@@ -1222,11 +1222,79 @@ body[data-view="editor"] .main {
   box-shadow: var(--shadow);
 }
 
-.player-art:fullscreen {
+.player-art:fullscreen,
+.player-art.is-player-fullscreen {
   width: 100vw;
   height: 100vh;
   min-height: 100vh;
   border-radius: 0;
+  cursor: pointer;
+}
+
+.player-art.is-player-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
+.player-art:fullscreen .midnight-cat-button,
+.player-art:fullscreen .speaker-now,
+.player-art:fullscreen #mainPlayer,
+.player-art:fullscreen .player-actions,
+.player-art:fullscreen .player-more,
+.player-art.is-player-fullscreen .midnight-cat-button,
+.player-art.is-player-fullscreen .speaker-now,
+.player-art.is-player-fullscreen #mainPlayer,
+.player-art.is-player-fullscreen .player-actions,
+.player-art.is-player-fullscreen .player-more {
+  display: none;
+}
+
+.player-art:fullscreen .player-shade,
+.player-art.is-player-fullscreen .player-shade {
+  justify-content: center;
+  padding: max(28px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(28px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0.12), rgba(0, 0, 0, 0.56)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.48));
+}
+
+.player-art:fullscreen .lyric-panel,
+.player-art.is-player-fullscreen .lyric-panel {
+  width: min(920px, 94vw);
+  min-height: 0;
+  max-height: 82vh;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: hidden;
+  text-align: center;
+}
+
+.player-art:fullscreen .lyric-panel p,
+.player-art.is-player-fullscreen .lyric-panel p {
+  font-size: clamp(18px, 4.4vw, 32px);
+  line-height: 1.75;
+  color: rgba(255, 250, 238, 0.4);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.72);
+}
+
+.player-art:fullscreen .lyric-panel p.active,
+.player-art.is-player-fullscreen .lyric-panel p.active {
+  font-size: clamp(28px, 7.2vw, 58px);
+  transform: none;
+}
+
+.player-art:fullscreen .lyric-time,
+.player-art.is-player-fullscreen .lyric-time {
+  display: none;
+}
+
+.player-art:fullscreen .lyric-word,
+.player-art.is-player-fullscreen .lyric-word {
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.78);
 }
 
 .player-shade {
