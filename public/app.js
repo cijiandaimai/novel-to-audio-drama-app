@@ -50,6 +50,12 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const playerBgKey = "playerBackgroundImage";
 const defaultPlayerBg = "/assets/player-default-bg.png";
+const playerState = {
+  audioUrl: "",
+  lyrics: [],
+  lyricFileName: "",
+  activeLyricIndex: -1
+};
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
 const midnightFailKey = "midnightNekomataFailCount";
@@ -236,6 +242,106 @@ function loadPlayerBackground() {
   setPlayerBackground(localStorage.getItem(playerBgKey));
 }
 
+function formatLyricTime(seconds) {
+  const safe = Math.max(0, Number(seconds) || 0);
+  const minute = Math.floor(safe / 60);
+  const second = Math.floor(safe % 60);
+  return `${minute}:${String(second).padStart(2, "0")}`;
+}
+
+function parseLyricTime(raw) {
+  const match = String(raw || "").match(/(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?/);
+  if (!match) return null;
+  const fraction = match[3] ? Number(`0.${match[3].padEnd(3, "0").slice(0, 3)}`) : 0;
+  return Number(match[1]) * 60 + Number(match[2]) + fraction;
+}
+
+function normalizeLyricText(text) {
+  return String(text || "")
+    .replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, "")
+    .replace(/\[\d+,\d+\]/g, "")
+    .replace(/\{[^}]+\}/g, "")
+    .trim();
+}
+
+function parseLyrics(rawText) {
+  const rows = [];
+  String(rawText || "").split(/\r?\n/).forEach((line) => {
+    const tags = Array.from(line.matchAll(/\[(\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?)\]/g));
+    if (!tags.length) return;
+    const text = normalizeLyricText(line.replace(/\[[^\]]+\]/g, ""));
+    if (!text) return;
+    tags.forEach((tag) => {
+      const time = parseLyricTime(tag[1]);
+      if (time !== null) rows.push({ time, text });
+    });
+  });
+  return rows.sort((a, b) => a.time - b.time);
+}
+
+function renderLyrics() {
+  const panel = $("#lyricPanel");
+  if (!panel) return;
+  if (!playerState.lyrics.length) {
+    panel.innerHTML = `<p id="lyricCurrent">导入 LRC / KRC 歌词后，这里会跟随音频滚动。</p>`;
+    return;
+  }
+  panel.innerHTML = playerState.lyrics
+    .map((line, index) => `<p data-lyric-index="${index}"><span>${formatLyricTime(line.time)}</span>${line.text}</p>`)
+    .join("");
+}
+
+function syncLyrics(currentTime = 0) {
+  if (!playerState.lyrics.length) return;
+  let activeIndex = 0;
+  for (let index = 0; index < playerState.lyrics.length; index += 1) {
+    if (playerState.lyrics[index].time <= currentTime + 0.15) activeIndex = index;
+    else break;
+  }
+  if (activeIndex === playerState.activeLyricIndex) return;
+  playerState.activeLyricIndex = activeIndex;
+  $$("[data-lyric-index]").forEach((line) => {
+    const active = Number(line.dataset.lyricIndex) === activeIndex;
+    line.classList.toggle("active", active);
+    if (active) line.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
+}
+
+async function importPlayerAudio(file) {
+  if (!file) return;
+  if (playerState.audioUrl?.startsWith("blob:")) URL.revokeObjectURL(playerState.audioUrl);
+  playerState.audioUrl = URL.createObjectURL(file);
+  playerState.lyrics = [];
+  playerState.lyricFileName = "";
+  renderLyrics();
+  playInApp(playerState.audioUrl, file.name.replace(/\.[^.]+$/, ""));
+}
+
+async function importLyrics(file) {
+  if (!file) return;
+  const text = await file.text();
+  const lines = parseLyrics(text);
+  playerState.lyrics = lines;
+  playerState.lyricFileName = file.name;
+  playerState.activeLyricIndex = -1;
+  renderLyrics();
+  if (!lines.length) {
+    $("#lyricPanel").innerHTML = `<p id="lyricCurrent">没有识别到可同步的时间戳。当前支持明文 LRC / KRC，部分加密 KRC 需要先转换成文本。</p>`;
+    return;
+  }
+  syncLyrics($("#mainPlayer")?.currentTime || 0);
+}
+
+function togglePlayerFullscreen() {
+  const target = $("#playerArt");
+  if (!target) return;
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.();
+    return;
+  }
+  target.requestFullscreen?.();
+}
+
 function decorateApiHelpFields() {
   $$("[data-config]").forEach((field) => {
     const help = apiHelp[field.dataset.config];
@@ -266,6 +372,8 @@ function playInApp(src, title) {
   if (!player || !src) return;
   player.src = src;
   playerTitle.textContent = title || "正在播放广播剧";
+  playerState.activeLyricIndex = -1;
+  syncLyrics(0);
   player.play().catch(() => {
     playerTitle.textContent = `${title || "广播剧"}（点击播放）`;
   });
@@ -2248,6 +2356,18 @@ function bindEvents() {
     });
     reader.readAsDataURL(file);
   });
+  $("#playerAudioFile").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await importPlayerAudio(file);
+  });
+  $("#lyricFile").addEventListener("change", async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    await importLyrics(file);
+  });
+  $("#fullScreenPlayer").addEventListener("click", togglePlayerFullscreen);
+  $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
     if (!value) return;

@@ -71,7 +71,7 @@ button {
   position: relative;
   min-height: 100vh;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sidebar {
@@ -393,6 +393,24 @@ audio {
   min-height: 48px;
   font-size: 15px;
   background: rgba(255, 252, 244, 0.9);
+}
+
+.speaker-head {
+  min-height: auto;
+  margin-bottom: 16px;
+}
+
+.speaker-stage {
+  margin-bottom: 18px;
+}
+
+.speaker-stage .player-art {
+  height: min(72vh, 760px);
+  min-height: 560px;
+}
+
+.speaker-samples {
+  margin-top: 18px;
 }
 
 .workflow-strip h3 {
@@ -1204,6 +1222,13 @@ body[data-view="editor"] .main {
   box-shadow: var(--shadow);
 }
 
+.player-art:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  min-height: 100vh;
+  border-radius: 0;
+}
+
 .player-shade {
   height: 100%;
   display: flex;
@@ -1215,6 +1240,13 @@ body[data-view="editor"] .main {
   background:
     linear-gradient(180deg, rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.7)),
     linear-gradient(35deg, rgba(111, 31, 27, 0.36), transparent 42%);
+}
+
+.speaker-now {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .player-shade .eyebrow {
@@ -1231,9 +1263,47 @@ body[data-view="editor"] .main {
   width: 100%;
 }
 
+.lyric-panel {
+  min-height: 150px;
+  max-height: 34vh;
+  overflow: auto;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid rgba(255, 250, 238, 0.2);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  scroll-behavior: smooth;
+}
+
+.lyric-panel p {
+  margin: 0;
+  color: rgba(255, 250, 238, 0.58);
+  line-height: 1.65;
+  font-size: 15px;
+  transition: color 160ms ease, transform 160ms ease, font-size 160ms ease;
+}
+
+.lyric-panel p.active {
+  color: #fffaf0;
+  font-size: 20px;
+  font-weight: 900;
+  transform: translateX(4px);
+}
+
+.lyric-panel span {
+  display: inline-block;
+  min-width: 52px;
+  margin-right: 10px;
+  color: rgba(239, 215, 170, 0.8);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .player-actions {
   display: grid;
-  grid-template-columns: 1fr 0.72fr 0.72fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -1416,6 +1486,11 @@ body[data-view="editor"] .main {
     height: auto;
     min-height: 380px;
   }
+
+  .speaker-stage .player-art {
+    height: auto;
+    min-height: 560px;
+  }
 }
 
 @media (max-width: 980px) {
@@ -1488,6 +1563,25 @@ body[data-view="editor"] .main {
 
   .player-actions {
     grid-template-columns: 1fr;
+  }
+
+  .speaker-stage .player-art {
+    min-height: 640px;
+  }
+
+  .speaker-now {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lyric-panel {
+    min-height: 170px;
+    max-height: 240px;
+    padding: 12px;
+  }
+
+  .lyric-panel p.active {
+    font-size: 18px;
   }
 
   .editor-command-bar {

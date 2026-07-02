@@ -23,7 +23,7 @@
         <nav class="nav" aria-label="主导航">
           <button class="nav-item active" data-view="discover">
             <span class="nav-icon nav-icon-discover"></span>
-            小屋
+            音箱
           </button>
           <button class="nav-item" data-view="create">
             <span class="nav-icon nav-icon-create"></span>
@@ -38,15 +38,59 @@
 
       <main class="main">
         <section id="discover" class="view active">
-          <header class="page-head ink-hero">
+          <header class="page-head speaker-head">
             <div>
-              <p class="eyebrow">免费试听</p>
-              <h2>把章节磨成声场，把人物放进耳边</h2>
+              <p class="eyebrow">音箱</p>
+              <h2>播放、歌词、外部音频</h2>
             </div>
             <button class="primary" data-jump="create">开始创作</button>
           </header>
 
-          <div class="sample-grid">
+          <section class="speaker-stage">
+            <div class="player-art" id="playerArt">
+              <button id="midnightCatButton" class="midnight-cat-button" title="午夜猫娘" aria-label="午夜猫娘">午夜猫娘</button>
+              <div class="player-shade">
+                <div class="speaker-now">
+                  <div>
+                    <p class="eyebrow">正在播放</p>
+                    <h3 id="playerTitle">选择一段广播剧开始收听</h3>
+                  </div>
+                  <button id="fullScreenPlayer" class="secondary">全屏</button>
+                </div>
+                <div class="lyric-panel" id="lyricPanel">
+                  <p id="lyricCurrent">导入 LRC / KRC 歌词后，这里会跟随音频滚动。</p>
+                </div>
+                <audio id="mainPlayer" controls></audio>
+                <div class="player-actions">
+                  <label class="image-picker">
+                    导入音频
+                    <input id="playerAudioFile" type="file" accept="audio/*" />
+                  </label>
+                  <label class="image-picker">
+                    导入歌词
+                    <input id="lyricFile" type="file" accept=".lrc,.krc,text/plain" />
+                  </label>
+                  <label class="image-picker">
+                    换背景
+                    <input id="playerBgFile" type="file" accept="image/*" />
+                  </label>
+                </div>
+                <details class="player-more">
+                  <summary>更多设置</summary>
+                  <input id="playerBgUrl" type="url" placeholder="粘贴图片链接" />
+                  <div class="actions">
+                    <button id="applyBgUrl" class="secondary">应用链接</button>
+                    <button id="clearBg" class="secondary">恢复默认</button>
+                    <button id="openBluetoothSettings" class="secondary">蓝牙</button>
+                    <button id="testBluetoothAudio" class="secondary">测试</button>
+                  </div>
+                  <p id="bluetoothStatus" class="hint">请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。</p>
+                </details>
+              </div>
+            </div>
+          </section>
+
+          <div class="sample-grid speaker-samples">
             <article class="sample-card sample-night">
               <div class="sample-visual" aria-hidden="true"></div>
               <span>悬疑</span>
@@ -69,7 +113,7 @@
               <audio controls src=""></audio>
             </article>
           </div>
-          <div class="home-actions" aria-label="小屋快捷入口">
+          <div class="home-actions" aria-label="音箱快捷入口">
             <button class="secondary" data-jump="config">API 配置</button>
             <button class="secondary" data-jump="history">创作历史</button>
           </div>
@@ -559,35 +603,6 @@
         </section>
       </main>
 
-      <section class="player-dock" id="playerDock">
-        <div class="player-art" id="playerArt">
-          <button id="midnightCatButton" class="midnight-cat-button" title="午夜猫娘" aria-label="午夜猫娘">午夜猫娘</button>
-          <div class="player-shade">
-            <div>
-              <p class="eyebrow">应用内播放器</p>
-              <h3 id="playerTitle">选择一段广播剧开始收听</h3>
-            </div>
-            <audio id="mainPlayer" controls></audio>
-            <div class="player-actions">
-              <label class="image-picker">
-                换背景
-                <input id="playerBgFile" type="file" accept="image/*" />
-              </label>
-              <button id="openBluetoothSettings" class="secondary">蓝牙</button>
-              <button id="testBluetoothAudio" class="secondary">测试</button>
-            </div>
-            <details class="player-more">
-              <summary>更多设置</summary>
-              <input id="playerBgUrl" type="url" placeholder="粘贴图片链接" />
-              <div class="actions">
-                <button id="applyBgUrl" class="secondary">应用链接</button>
-                <button id="clearBg" class="secondary">恢复默认</button>
-              </div>
-              <p id="bluetoothStatus" class="hint">请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。</p>
-            </details>
-          </div>
-        </div>
-      </section>
     </div>
 
     <div id="midnightModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="midnightTitle">
