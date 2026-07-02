@@ -87,6 +87,10 @@
                     <input id="playerAudioFile" type="file" accept="audio/*" multiple />
                   </label>
                   <label class="image-picker">
+                    导入文件夹
+                    <input id="playerFolderInput" type="file" accept="audio/*,.lrc,.krc,text/plain" multiple webkitdirectory />
+                  </label>
+                  <label class="image-picker">
                     导入歌词
                     <input id="lyricFile" type="file" accept=".lrc,.krc,text/plain" />
                   </label>
@@ -95,6 +99,7 @@
                     <input id="playerBgFile" type="file" accept="image/*" />
                   </label>
                 </div>
+                <div class="player-import-memory" id="playerLastImportLabel">尚未记录导入位置</div>
                 <details class="player-more">
                   <summary>更多设置</summary>
                   <input id="playerBgUrl" type="url" placeholder="粘贴图片链接" />

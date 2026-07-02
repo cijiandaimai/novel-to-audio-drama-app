@@ -59,6 +59,7 @@ const viewLabels = {
 };
 const playerBgKey = "playerBackgroundImage";
 const playerPlaylistKey = "playerPlaylist";
+const playerLastImportKey = "playerLastImportLocation";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const playerState = {
   audioUrl: "",
@@ -74,6 +75,7 @@ const playerState = {
   activeWordIndex: -1,
   seeking: false,
   lastLyricScrollIndex: -1,
+  lyricScrollFrame: 0,
   lastFullscreenTapAt: 0,
   fullscreenPointerStartY: 0
 };
@@ -611,7 +613,53 @@ function getImportedFilePath(file) {
   return file?.webkitRelativePath || file?.name || "本机音频";
 }
 
-function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = "", persistent = true }) {
+function getImportFolderLabel(file) {
+  const relativePath = file?.webkitRelativePath || "";
+  if (relativePath.includes("/")) return relativePath.split("/").slice(0, -1).join("/");
+  return file?.name ? "最近一次文件选择" : "未记录导入位置";
+}
+
+function rememberPlayerImportLocation(file, type = "导入") {
+  const label = getImportFolderLabel(file);
+  if (!label) return;
+  localStorage.setItem(playerLastImportKey, JSON.stringify({
+    label,
+    type,
+    updatedAt: new Date().toISOString()
+  }));
+  renderPlayerImportLocation();
+}
+
+function renderPlayerImportLocation() {
+  const target = $("#playerLastImportLabel");
+  if (!target) return;
+  const fallback = "尚未记录导入位置";
+  try {
+    const value = JSON.parse(localStorage.getItem(playerLastImportKey) || "null");
+    target.textContent = value?.label ? `上次${value.type || "导入"}：${value.label}` : fallback;
+  } catch {
+    target.textContent = fallback;
+  }
+}
+
+function normalizeMediaBaseName(fileName = "") {
+  return String(fileName || "")
+    .split(/[\\/]/)
+    .pop()
+    .replace(/\.[^.]+$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isAudioFile(file) {
+  return file?.type?.startsWith("audio/") || /\.(mp3|m4a|aac|wav|flac|ogg|opus)$/i.test(file?.name || "");
+}
+
+function isLyricFile(file) {
+  return /\.(lrc|krc|txt)$/i.test(file?.name || "") || /^text\//.test(file?.type || "");
+}
+
+function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = "", persistent = true, lyricText = "", lyricFileName = "" }) {
   const id = `audio-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return {
     id,
@@ -624,6 +672,8 @@ function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = 
     fileSize: file?.size || 0,
     mimeType: file?.type || "",
     displayPath: file ? `本机导入 / ${getImportedFilePath(file)}` : (src || "临时音频"),
+    lyricText,
+    lyricFileName,
     createdAt: new Date().toISOString()
   };
 }
@@ -1080,6 +1130,28 @@ function renderLyrics() {
   updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
 }
 
+function applyLyricText(rawText, fileName = "") {
+  const parsed = parseLyrics(rawText, fileName);
+  playerState.lyrics = parsed.lines;
+  playerState.lyricFileName = fileName;
+  playerState.lyricMode = parsed.mode;
+  playerState.lyricFormatLabel = parsed.lines.length ? parsed.label : "歌词未识别";
+  playerState.activeLyricIndex = -1;
+  playerState.activeWordIndex = -1;
+  playerState.lastLyricScrollIndex = -1;
+  renderLyrics();
+  return parsed;
+}
+
+function attachLyricsToCurrentItem(rawText, fileName = "") {
+  if (!playerState.currentPlaylistId || !rawText) return;
+  const item = playerState.playlist.find((entry) => entry.id === playerState.currentPlaylistId);
+  if (!item) return;
+  item.lyricText = rawText;
+  item.lyricFileName = fileName;
+  saveAndRenderPlayerPlaylist();
+}
+
 function getActiveWordIndex(line, currentTime) {
   if (!line?.words?.length) return -1;
   let activeWordIndex = -1;
@@ -1111,11 +1183,22 @@ function updateLyricWordFill(lineElement, line, currentTime) {
 function scrollActiveLyric(lineElement) {
   const panel = $("#lyricPanel");
   if (!panel || !lineElement) return;
-  const targetTop = lineElement.offsetTop - (panel.clientHeight / 2) + (lineElement.offsetHeight / 2);
-  const maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
-  panel.scrollTo({
-    top: Math.max(0, Math.min(maxTop, targetTop)),
-    behavior: "smooth"
+  cancelAnimationFrame(playerState.lyricScrollFrame);
+  playerState.lyricScrollFrame = requestAnimationFrame(() => {
+    const panelRect = panel.getBoundingClientRect();
+    const lineRect = lineElement.getBoundingClientRect();
+    const safeZone = Math.min(72, panel.clientHeight * 0.24);
+    const alreadyComfortable = lineRect.top >= panelRect.top + safeZone
+      && lineRect.bottom <= panelRect.bottom - safeZone;
+    if (alreadyComfortable) return;
+    const targetTop = panel.scrollTop
+      + (lineRect.top - panelRect.top)
+      - ((panel.clientHeight - lineRect.height) / 2);
+    const maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
+    panel.scrollTo({
+      top: Math.max(0, Math.min(maxTop, targetTop)),
+      behavior: "smooth"
+    });
   });
 }
 
@@ -1143,14 +1226,16 @@ function syncLyrics(currentTime = 0) {
   });
 }
 
-async function importPlayerAudio(file, { play = false, select = false } = {}) {
+async function importPlayerAudio(file, { play = false, select = false, lyricText = "", lyricFileName = "", notify = true } = {}) {
   if (!file) return;
   const blobId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const item = createPlaylistItem({
     title: file.name.replace(/\.[^.]+$/, ""),
     file,
     sourceType: "local",
-    blobId
+    blobId,
+    lyricText,
+    lyricFileName
   });
   try {
     await savePlayerMediaBlob(blobId, file);
@@ -1164,31 +1249,54 @@ async function importPlayerAudio(file, { play = false, select = false } = {}) {
   saveAndRenderPlayerPlaylist();
   if (play) await playPlaylistItem(saved.id);
   else if (select || !playerState.currentPlaylistId) await loadPlaylistItem(saved.id, { autoplay: false });
-  showToast(`已加入播放列表：${file.name}`, "ok");
+  rememberPlayerImportLocation(file, "音频");
+  if (notify) showToast(`已加入播放列表：${file.name}`, "ok");
+}
+
+async function importPlayerFolder(files) {
+  const fileList = Array.from(files || []);
+  if (!fileList.length) return;
+  const audioFiles = fileList.filter(isAudioFile);
+  const lyricFiles = fileList.filter(isLyricFile);
+  const lyricsByName = new Map();
+  await Promise.all(lyricFiles.map(async (file) => {
+    lyricsByName.set(normalizeMediaBaseName(file.name), {
+      text: await file.text(),
+      name: file.name
+    });
+  }));
+  for (const [index, file] of audioFiles.entries()) {
+    const lyric = lyricsByName.get(normalizeMediaBaseName(file.name));
+    await importPlayerAudio(file, {
+      play: false,
+      select: index === 0,
+      lyricText: lyric?.text || "",
+      lyricFileName: lyric?.name || "",
+      notify: false
+    });
+  }
+  if (!audioFiles.length && lyricFiles[0]) {
+    await importLyrics(lyricFiles[0]);
+  }
+  rememberPlayerImportLocation(fileList[0], "文件夹");
+  showToast(`文件夹导入完成：${audioFiles.length} 个音频，${lyricFiles.length} 个歌词。`, "ok");
 }
 
 async function importLyrics(file) {
   if (!file) return;
   const text = await file.text();
-  const parsed = parseLyrics(text, file.name);
-  const lines = parsed.lines;
-  playerState.lyrics = lines;
-  playerState.lyricFileName = file.name;
-  playerState.lyricMode = parsed.mode;
-  playerState.lyricFormatLabel = parsed.label;
-  playerState.activeLyricIndex = -1;
-  playerState.activeWordIndex = -1;
-  playerState.lastLyricScrollIndex = -1;
-  renderLyrics();
-  if (!lines.length) {
+  const parsed = applyLyricText(text, file.name);
+  rememberPlayerImportLocation(file, "歌词");
+  if (!parsed.lines.length) {
     $("#lyricPanel").innerHTML = `<p id="lyricCurrent">没有识别到可同步的时间戳。当前支持普通 LRC、逐字 LRC 和明文 KRC，部分加密 KRC 需要先转换成文本。</p>`;
     playerState.lyricFormatLabel = "歌词未识别";
     updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
     showToast("没有识别到可同步歌词，请检查 LRC/KRC 时间戳。", "fail");
     return;
   }
+  attachLyricsToCurrentItem(text, file.name);
   syncLyrics($("#mainPlayer")?.currentTime || 0);
-  showToast(`已导入${parsed.label}：${file.name}，共 ${lines.length} 行。`, "ok");
+  showToast(`已导入${parsed.label}：${file.name}，共 ${parsed.lines.length} 行。`, "ok");
 }
 
 function togglePlayerFullscreen() {
@@ -1361,11 +1469,15 @@ function playInApp(src, title, options = {}) {
   if (playlistItem) {
     playerState.currentPlaylistId = playlistItem.id;
     if (playlistItem.id !== previousPlaylistId && options.keepLyrics !== true) {
-      playerState.lyrics = [];
-      playerState.lyricFileName = "";
-      playerState.lyricMode = "none";
-      playerState.lyricFormatLabel = "";
-      renderLyrics();
+      if (playlistItem.lyricText) {
+        applyLyricText(playlistItem.lyricText, playlistItem.lyricFileName || `${playlistItem.title}.lrc`);
+      } else {
+        playerState.lyrics = [];
+        playerState.lyricFileName = "";
+        playerState.lyricMode = "none";
+        playerState.lyricFormatLabel = "";
+        renderLyrics();
+      }
     }
     updatePlayerPathLabel(playlistItem);
     renderPlayerPlaylist();
@@ -3577,6 +3689,10 @@ function bindEvents() {
     }
     event.target.value = "";
   });
+  $("#playerFolderInput").addEventListener("change", async (event) => {
+    await importPlayerFolder(event.target.files);
+    event.target.value = "";
+  });
   $("#lyricFile").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -3681,6 +3797,7 @@ document.body.dataset.view = "discover";
 loadConfigIntoForm();
 loadPlayerBackground();
 loadPlayerPlaylist();
+renderPlayerImportLocation();
 renderVoiceReferences();
 renderClipList();
 renderWaveform();

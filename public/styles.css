@@ -1560,14 +1560,13 @@ body[data-view="editor"] .main {
   min-height: 150px;
   max-height: 34vh;
   overflow: auto;
-  display: grid;
-  align-content: center;
   gap: 8px;
-  padding: 16px;
+  padding: 44px 16px;
   border: 1px solid rgba(255, 250, 238, 0.2);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.22);
   scroll-behavior: smooth;
+  scroll-padding-block: 48px;
 }
 
 .lyric-panel p {
@@ -1580,6 +1579,11 @@ body[data-view="editor"] .main {
   line-height: 1.65;
   font-size: 15px;
   transition: color 160ms ease, transform 160ms ease, font-size 160ms ease;
+  scroll-margin-block: 56px;
+}
+
+.lyric-panel p + p {
+  margin-top: 8px;
 }
 
 .lyric-panel p.active {
@@ -1653,8 +1657,21 @@ body[data-view="editor"] .main {
 
 .player-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
+}
+
+.player-import-memory {
+  overflow: hidden;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 250, 238, 0.18);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.16);
+  color: rgba(255, 250, 238, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .image-picker {
