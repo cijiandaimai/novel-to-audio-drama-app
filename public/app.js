@@ -48,6 +48,7 @@ const stageNames = [
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+const homeView = "discover";
 const routeViews = ["discover", "create", "editor", "config", "history"];
 const viewLabels = {
   discover: "音箱",
@@ -114,6 +115,8 @@ const recorderState = {
   dataUrl: "",
   mimeType: "audio/webm"
 };
+
+let lastHomeBackAt = 0;
 
 const apiHelp = {
   "gpt.baseUrl": {
@@ -269,7 +272,7 @@ function readLocalHistory() {
 }
 
 function normalizeView(name) {
-  return routeViews.includes(name) ? name : "discover";
+  return routeViews.includes(name) ? name : homeView;
 }
 
 function getViewFromLocation() {
@@ -283,30 +286,41 @@ function getRouteHref(name) {
   const url = new URL(window.location.href);
   url.searchParams.delete("view");
   const view = normalizeView(name);
-  url.hash = view === "discover" ? "" : view;
+  url.hash = view === homeView ? "" : view;
   return url.href;
 }
 
 function syncRoute(name, mode = "push") {
   if (!window.history?.pushState) return;
-  const href = getRouteHref(name);
-  if (href === window.location.href) return;
-  window.history[mode === "replace" ? "replaceState" : "pushState"]({ view: normalizeView(name) }, "", href);
+  const view = normalizeView(name);
+  const href = getRouteHref(view);
+  const sameRoute = window.history.state?.appRoute && window.history.state?.view === view;
+  if (href === window.location.href && (mode !== "replace" || sameRoute)) return;
+  window.history[mode === "replace" ? "replaceState" : "pushState"]({ appRoute: true, view }, "", href);
 }
 
 function closeTransientSurfaces() {
-  if (isPlayerFullscreen()) exitPlayerFullscreen();
+  let closed = false;
+  if (isPlayerFullscreen()) {
+    exitPlayerFullscreen();
+    closed = true;
+  }
   const midnightModal = $("#midnightModal");
-  if (midnightModal && !midnightModal.classList.contains("hidden")) setMidnightModal(false);
-  if (document.body.dataset.view === "editor" && $("[data-editor-drawer].active")) setEditorPanel("");
+  if (midnightModal && !midnightModal.classList.contains("hidden")) {
+    setMidnightModal(false);
+    closed = true;
+  }
+  if (document.body.dataset.view === "editor" && $("[data-editor-drawer].active")) {
+    setEditorPanel("");
+    closed = true;
+  }
+  return closed;
 }
 
 function showView(name, options = {}) {
   const viewName = normalizeView(name);
-  if (options.updateHistory !== false) syncRoute(viewName);
+  if (options.updateHistory !== false) syncRoute(viewName, options.historyMode || "push");
   closeTransientSurfaces();
-  if (isPlayerFullscreen()) exitPlayerFullscreen();
-  if (document.body.dataset.view === "editor") setEditorPanel("");
   document.body.dataset.view = viewName;
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === viewName));
   const navView = viewName === "config" || viewName === "history" ? "discover" : viewName;
@@ -328,11 +342,58 @@ function showView(name, options = {}) {
 function initRouteNavigation() {
   if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
   const initialView = getViewFromLocation();
-  syncRoute(initialView, "replace");
+  if (initialView === homeView) {
+    syncRoute(homeView, "replace");
+  } else if (window.history?.pushState) {
+    window.history.replaceState({ appRoute: true, view: homeView }, "", getRouteHref(homeView));
+    window.history.pushState({ appRoute: true, view: initialView }, "", getRouteHref(initialView));
+  }
   showView(initialView, { updateHistory: false });
   window.addEventListener("popstate", () => {
     showView(getViewFromLocation(), { updateHistory: false, announce: true });
   });
+  window.addEventListener("hashchange", () => {
+    const nextView = getViewFromLocation();
+    if (nextView !== document.body.dataset.view) {
+      showView(nextView, { updateHistory: false, announce: true });
+    }
+  });
+}
+
+function getCapacitorAppPlugin() {
+  return window.Capacitor?.Plugins?.App || window.Capacitor?.App;
+}
+
+function goHomeFromBack() {
+  showView(homeView, { historyMode: "replace", announce: true });
+}
+
+function handleNativeBackButton(event = {}) {
+  if (closeTransientSurfaces()) return;
+  const currentView = normalizeView(document.body.dataset.view);
+  if (currentView !== homeView) {
+    if (event.canGoBack && window.history.length > 1) {
+      window.history.back();
+    } else {
+      goHomeFromBack();
+    }
+    return;
+  }
+
+  const now = Date.now();
+  const app = getCapacitorAppPlugin();
+  if (now - lastHomeBackAt < 1600 && app?.exitApp) {
+    app.exitApp();
+    return;
+  }
+  lastHomeBackAt = now;
+  showToast("已在首页，再按一次返回退出。");
+}
+
+function registerNativeBackHandler() {
+  const app = getCapacitorAppPlugin();
+  if (!app?.addListener) return;
+  app.addListener("backButton", handleNativeBackButton);
 }
 
 
@@ -2900,5 +2961,6 @@ loadPlan();
 updateMidnightState();
 bindEvents();
 initRouteNavigation();
+registerNativeBackHandler();
 syncPlayerFullscreenUi();
 syncTimelineControls();
