@@ -1292,13 +1292,41 @@ body[data-view="editor"] .main {
   transform: translateX(4px);
 }
 
-.lyric-panel span {
+.lyric-time {
   display: inline-block;
   min-width: 52px;
   margin-right: 10px;
   color: rgba(239, 215, 170, 0.8);
   font-size: 12px;
   font-weight: 800;
+}
+
+.lyric-text {
+  display: inline;
+}
+
+.lyric-word {
+  display: inline-block;
+  min-width: 0.05em;
+  color: rgba(255, 250, 238, 0.42);
+  background: linear-gradient(90deg, #fffaf0 var(--word-fill, 0%), rgba(255, 250, 238, 0.42) var(--word-fill, 0%));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  transition: filter 120ms ease, transform 120ms ease;
+}
+
+.lyric-word.current {
+  filter: drop-shadow(0 0 8px rgba(239, 215, 170, 0.5));
+  transform: translateY(-1px);
+}
+
+.lyric-word.played {
+  color: #fffaf0;
+}
+
+.lyric-space {
+  min-width: 0.35em;
 }
 
 .player-actions {

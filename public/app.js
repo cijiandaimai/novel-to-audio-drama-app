@@ -54,7 +54,8 @@ const playerState = {
   audioUrl: "",
   lyrics: [],
   lyricFileName: "",
-  activeLyricIndex: -1
+  activeLyricIndex: -1,
+  activeWordIndex: -1
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -256,39 +257,177 @@ function parseLyricTime(raw) {
   return Number(match[1]) * 60 + Number(match[2]) + fraction;
 }
 
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;"
+  })[char]);
+}
+
+function renderLyricToken(value) {
+  const escaped = escapeHtml(value);
+  return escaped === " " ? "&nbsp;" : escaped;
+}
+
 function normalizeLyricText(text) {
   return String(text || "")
     .replace(/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/g, "")
+    .replace(/<\d+,\d+(?:,\d+)?>/g, "")
     .replace(/\[\d+,\d+\]/g, "")
     .replace(/\{[^}]+\}/g, "")
     .trim();
 }
 
+function expandTimedText(text, start, end) {
+  const chars = Array.from(String(text || ""));
+  if (!chars.length) return [];
+  const safeStart = Number(start) || 0;
+  const safeEnd = Math.max(safeStart + 0.08, Number(end) || safeStart + chars.length * 0.18);
+  const step = (safeEnd - safeStart) / chars.length;
+  return chars.map((char, index) => ({
+    text: char,
+    start: safeStart + step * index,
+    end: safeStart + step * (index + 1)
+  }));
+}
+
+function parseKrcWordSegments(text, lineStart = 0) {
+  const matches = Array.from(String(text || "").matchAll(/<(\d+),(\d+)(?:,\d+)?>/g));
+  if (!matches.length) return [];
+  return matches.flatMap((match, index) => {
+    const next = matches[index + 1];
+    const rawText = String(text).slice(match.index + match[0].length, next?.index ?? String(text).length);
+    const cleanedText = normalizeLyricText(rawText);
+    if (!cleanedText) return [];
+    const start = lineStart + Number(match[1]) / 1000;
+    const end = start + Number(match[2]) / 1000;
+    return expandTimedText(cleanedText, start, end);
+  });
+}
+
+function parseEnhancedLrcWordSegments(text) {
+  const matches = Array.from(String(text || "").matchAll(/<(\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?)>/g));
+  if (!matches.length) return [];
+  const raw = String(text || "");
+  return matches.flatMap((match, index) => {
+    const next = matches[index + 1];
+    const rawText = raw.slice(match.index + match[0].length, next?.index ?? raw.length);
+    const cleanedText = normalizeLyricText(rawText);
+    if (!cleanedText) return [];
+    const start = parseLyricTime(match[1]);
+    const end = next ? parseLyricTime(next[1]) : null;
+    if (start === null) return [];
+    return expandTimedText(cleanedText, start, end ?? start + Array.from(cleanedText).length * 0.22);
+  });
+}
+
+function buildFallbackWordSegments(text, start, end) {
+  return expandTimedText(text, start, end);
+}
+
+function finalizeLyrics(rows) {
+  const sorted = rows
+    .filter((line) => line && Number.isFinite(line.time) && line.text)
+    .sort((a, b) => a.time - b.time);
+
+  sorted.forEach((line, index) => {
+    const nextLine = sorted[index + 1];
+    const textLength = Math.max(1, Array.from(line.text).length);
+    const fallbackEnd = line.time + Math.min(10, Math.max(2, textLength * 0.28));
+    const timedEnd = line.lineDuration ? line.time + line.lineDuration : fallbackEnd;
+    const nextEnd = nextLine ? nextLine.time - 0.04 : timedEnd;
+    line.end = Math.max(line.time + 0.35, Math.min(timedEnd, nextEnd || timedEnd));
+
+    if (!line.words?.length) {
+      line.words = buildFallbackWordSegments(line.text, line.time, line.end);
+    } else {
+      line.words = line.words
+        .filter((word) => word.text)
+        .map((word, wordIndex, list) => {
+          const start = Math.max(line.time, Number(word.start) || line.time);
+          const nextWord = list[wordIndex + 1];
+          const end = Math.max(start + 0.05, Number(word.end) || nextWord?.start || line.end);
+          return { ...word, start, end };
+        });
+    }
+  });
+
+  return sorted;
+}
+
 function parseLyrics(rawText) {
   const rows = [];
   String(rawText || "").split(/\r?\n/).forEach((line) => {
-    const tags = Array.from(line.matchAll(/\[(\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?)\]/g));
-    if (!tags.length) return;
-    const text = normalizeLyricText(line.replace(/\[[^\]]+\]/g, ""));
+    const lrcTags = Array.from(line.matchAll(/\[(\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?)\]/g));
+    const krcTag = line.match(/\[(\d+),(\d+)\]/);
+    const body = line.replace(/\[[^\]]+\]/g, "");
+    const krcStart = krcTag ? Number(krcTag[1]) / 1000 : null;
+    const krcDuration = krcTag ? Number(krcTag[2]) / 1000 : null;
+    const krcWords = krcStart !== null ? parseKrcWordSegments(body, krcStart) : [];
+    const enhancedWords = krcWords.length ? [] : parseEnhancedLrcWordSegments(body);
+    const words = krcWords.length ? krcWords : enhancedWords;
+    const text = words.length ? words.map((word) => word.text).join("").trim() : normalizeLyricText(body);
     if (!text) return;
-    tags.forEach((tag) => {
+
+    if (krcStart !== null) {
+      rows.push({ time: krcStart, text, words, lineDuration: krcDuration });
+      return;
+    }
+
+    if (words.length) {
+      const time = lrcTags.length ? parseLyricTime(lrcTags[0][1]) : words[0].start;
+      if (time !== null) rows.push({ time, text, words });
+      return;
+    }
+
+    lrcTags.forEach((tag) => {
       const time = parseLyricTime(tag[1]);
-      if (time !== null) rows.push({ time, text });
+      if (time !== null) rows.push({ time, text, words: [] });
     });
   });
-  return rows.sort((a, b) => a.time - b.time);
+  return finalizeLyrics(rows);
 }
 
 function renderLyrics() {
   const panel = $("#lyricPanel");
   if (!panel) return;
   if (!playerState.lyrics.length) {
-    panel.innerHTML = `<p id="lyricCurrent">导入 LRC / KRC 歌词后，这里会跟随音频滚动。</p>`;
+    panel.innerHTML = `<p id="lyricCurrent">导入 LRC / KRC 歌词后，这里会跟随音频逐字亮起。</p>`;
     return;
   }
   panel.innerHTML = playerState.lyrics
-    .map((line, index) => `<p data-lyric-index="${index}"><span>${formatLyricTime(line.time)}</span>${line.text}</p>`)
+    .map((line, index) => {
+      const words = line.words
+        .map((word, wordIndex) => `<span class="lyric-word${word.text === " " ? " lyric-space" : ""}" data-lyric-word="${wordIndex}" style="--word-fill: 0%">${renderLyricToken(word.text)}</span>`)
+        .join("");
+      return `<p data-lyric-index="${index}"><span class="lyric-time">${formatLyricTime(line.time)}</span><span class="lyric-text">${words}</span></p>`;
+    })
     .join("");
+}
+
+function getActiveWordIndex(line, currentTime) {
+  if (!line?.words?.length) return -1;
+  let activeWordIndex = -1;
+  line.words.forEach((word, index) => {
+    if (currentTime >= word.start - 0.03) activeWordIndex = index;
+  });
+  return activeWordIndex;
+}
+
+function updateLyricWordFill(lineElement, line, currentTime) {
+  const wordElements = Array.from(lineElement.querySelectorAll("[data-lyric-word]"));
+  wordElements.forEach((element, index) => {
+    const word = line.words[index];
+    if (!word) return;
+    const duration = Math.max(0.05, word.end - word.start);
+    const progress = Math.max(0, Math.min(1, (currentTime - word.start) / duration));
+    element.style.setProperty("--word-fill", `${Math.round(progress * 100)}%`);
+    element.classList.toggle("played", progress >= 1);
+    element.classList.toggle("current", progress > 0 && progress < 1);
+  });
 }
 
 function syncLyrics(currentTime = 0) {
@@ -298,12 +437,17 @@ function syncLyrics(currentTime = 0) {
     if (playerState.lyrics[index].time <= currentTime + 0.15) activeIndex = index;
     else break;
   }
-  if (activeIndex === playerState.activeLyricIndex) return;
+  const activeWordIndex = getActiveWordIndex(playerState.lyrics[activeIndex], currentTime);
+  const lyricChanged = activeIndex !== playerState.activeLyricIndex;
   playerState.activeLyricIndex = activeIndex;
+  playerState.activeWordIndex = activeWordIndex;
   $$("[data-lyric-index]").forEach((line) => {
-    const active = Number(line.dataset.lyricIndex) === activeIndex;
+    const lineIndex = Number(line.dataset.lyricIndex);
+    const active = lineIndex === activeIndex;
+    const lyricLine = playerState.lyrics[lineIndex];
     line.classList.toggle("active", active);
-    if (active) line.scrollIntoView({ block: "center", behavior: "smooth" });
+    updateLyricWordFill(line, lyricLine, active ? currentTime : (lineIndex < activeIndex ? Number.POSITIVE_INFINITY : 0));
+    if (active && lyricChanged) line.scrollIntoView({ block: "center", behavior: "smooth" });
   });
 }
 
@@ -324,9 +468,10 @@ async function importLyrics(file) {
   playerState.lyrics = lines;
   playerState.lyricFileName = file.name;
   playerState.activeLyricIndex = -1;
+  playerState.activeWordIndex = -1;
   renderLyrics();
   if (!lines.length) {
-    $("#lyricPanel").innerHTML = `<p id="lyricCurrent">没有识别到可同步的时间戳。当前支持明文 LRC / KRC，部分加密 KRC 需要先转换成文本。</p>`;
+    $("#lyricPanel").innerHTML = `<p id="lyricCurrent">没有识别到可同步的时间戳。当前支持普通 LRC、逐字 LRC 和明文 KRC，部分加密 KRC 需要先转换成文本。</p>`;
     return;
   }
   syncLyrics($("#mainPlayer")?.currentTime || 0);
@@ -373,6 +518,7 @@ function playInApp(src, title) {
   player.src = src;
   playerTitle.textContent = title || "正在播放广播剧";
   playerState.activeLyricIndex = -1;
+  playerState.activeWordIndex = -1;
   syncLyrics(0);
   player.play().catch(() => {
     playerTitle.textContent = `${title || "广播剧"}（点击播放）`;
