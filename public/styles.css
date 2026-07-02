@@ -34,6 +34,11 @@ body {
   font-family: "Microsoft YaHei", "PingFang SC", "Noto Serif SC", Arial, sans-serif;
 }
 
+body.player-fullscreen-lock {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 body::before {
   content: "";
   position: fixed;
@@ -1229,6 +1234,8 @@ body[data-view="editor"] .main {
   min-height: 100vh;
   border-radius: 0;
   cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
 }
 
 .player-art.is-player-fullscreen {

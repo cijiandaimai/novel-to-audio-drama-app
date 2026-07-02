@@ -56,7 +56,8 @@ const playerState = {
   lyricFileName: "",
   activeLyricIndex: -1,
   activeWordIndex: -1,
-  lastFullscreenTapAt: 0
+  lastFullscreenTapAt: 0,
+  fullscreenPointerStartY: 0
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -224,6 +225,7 @@ function getByPath(object, path) {
 }
 
 function showView(name) {
+  if (isPlayerFullscreen()) exitPlayerFullscreen();
   document.body.dataset.view = name;
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === name));
   const navView = name === "config" || name === "history" ? "discover" : name;
@@ -486,11 +488,11 @@ function togglePlayerFullscreen() {
     return;
   }
   if (!target.requestFullscreen) {
-    target.classList.add("is-player-fullscreen");
+    enterPlayerFullscreenFallback(target);
     return;
   }
   target.requestFullscreen().catch(() => {
-    target.classList.add("is-player-fullscreen");
+    enterPlayerFullscreenFallback(target);
   });
 }
 
@@ -498,10 +500,53 @@ function isPlayerFullscreen(target = $("#playerArt")) {
   return document.fullscreenElement === target || target?.classList.contains("is-player-fullscreen");
 }
 
+function enterPlayerFullscreenFallback(target = $("#playerArt")) {
+  target?.classList.add("is-player-fullscreen");
+  syncPlayerFullscreenUi();
+}
+
 function exitPlayerFullscreen() {
   const target = $("#playerArt");
   target?.classList.remove("is-player-fullscreen");
-  if (document.fullscreenElement === target) document.exitFullscreen?.();
+  if (document.fullscreenElement === target) {
+    document.exitFullscreen?.().catch(() => {}).finally(syncPlayerFullscreenUi);
+    return;
+  }
+  syncPlayerFullscreenUi();
+}
+
+function syncPlayerFullscreenUi() {
+  const active = isPlayerFullscreen();
+  document.body.classList.toggle("player-fullscreen-lock", active);
+  const button = $("#fullScreenPlayer");
+  if (button) {
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+    button.textContent = active ? "退出" : "全屏";
+  }
+  if (!active) {
+    playerState.lastFullscreenTapAt = 0;
+    playerState.fullscreenPointerStartY = 0;
+  }
+}
+
+function startPlayerFullscreenGesture(event) {
+  if (!isPlayerFullscreen()) return;
+  playerState.fullscreenPointerStartY = event.clientY;
+}
+
+function startPlayerFullscreenTouch(event) {
+  if (!isPlayerFullscreen()) return;
+  playerState.fullscreenPointerStartY = event.touches?.[0]?.clientY || 0;
+}
+
+function exitPlayerFullscreenOnSwipe(endY) {
+  const swipeDistance = endY - playerState.fullscreenPointerStartY;
+  if (swipeDistance > 96) {
+    playerState.lastFullscreenTapAt = 0;
+    exitPlayerFullscreen();
+    return true;
+  }
+  return false;
 }
 
 function exitPlayerFullscreenOnDoubleTap(event) {
@@ -511,6 +556,7 @@ function exitPlayerFullscreenOnDoubleTap(event) {
     exitPlayerFullscreen();
     return;
   }
+  if (exitPlayerFullscreenOnSwipe(event.clientY)) return;
   if (event.pointerType !== "touch") return;
   const now = Date.now();
   if (now - playerState.lastFullscreenTapAt < 320) {
@@ -519,6 +565,28 @@ function exitPlayerFullscreenOnDoubleTap(event) {
     return;
   }
   playerState.lastFullscreenTapAt = now;
+}
+
+function exitPlayerFullscreenOnTouchEnd(event) {
+  const target = $("#playerArt");
+  if (!isPlayerFullscreen(target)) return;
+  const endY = event.changedTouches?.[0]?.clientY || 0;
+  if (exitPlayerFullscreenOnSwipe(endY)) return;
+  const now = Date.now();
+  if (now - playerState.lastFullscreenTapAt < 320) {
+    playerState.lastFullscreenTapAt = 0;
+    exitPlayerFullscreen();
+    return;
+  }
+  playerState.lastFullscreenTapAt = now;
+}
+
+function handlePlayerFullscreenKey(event) {
+  if (!isPlayerFullscreen()) return;
+  if (event.key === "Escape" || event.key === "Backspace") {
+    event.preventDefault();
+    exitPlayerFullscreen();
+  }
 }
 
 function decorateApiHelpFields() {
@@ -2547,8 +2615,15 @@ function bindEvents() {
     await importLyrics(file);
   });
   $("#fullScreenPlayer").addEventListener("click", togglePlayerFullscreen);
+  $("#playerArt").addEventListener("pointerdown", startPlayerFullscreenGesture);
+  $("#playerArt").addEventListener("mousedown", startPlayerFullscreenGesture);
+  $("#playerArt").addEventListener("touchstart", startPlayerFullscreenTouch, { passive: true });
   $("#playerArt").addEventListener("dblclick", exitPlayerFullscreenOnDoubleTap);
   $("#playerArt").addEventListener("pointerup", exitPlayerFullscreenOnDoubleTap);
+  $("#playerArt").addEventListener("mouseup", exitPlayerFullscreenOnDoubleTap);
+  $("#playerArt").addEventListener("touchend", exitPlayerFullscreenOnTouchEnd);
+  document.addEventListener("fullscreenchange", syncPlayerFullscreenUi);
+  document.addEventListener("keydown", handlePlayerFullscreenKey);
   $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
@@ -2591,4 +2666,5 @@ renderWaveform();
 loadPlan();
 updateMidnightState();
 bindEvents();
+syncPlayerFullscreenUi();
 syncTimelineControls();
