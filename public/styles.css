@@ -688,6 +688,81 @@ textarea {
   white-space: nowrap;
 }
 
+.editor-fast-workflow {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(78, 73, 60, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.84);
+}
+
+.editor-track-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.simple-track {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.82);
+  color: var(--ink);
+  text-align: left;
+}
+
+.simple-track strong {
+  white-space: nowrap;
+}
+
+.simple-track span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.simple-track.active {
+  border-color: rgba(49, 95, 76, 0.48);
+  box-shadow: 0 0 0 3px rgba(49, 95, 76, 0.08);
+  background: rgba(243, 250, 240, 0.88);
+}
+
+.editor-fast-actions {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-fast-actions button {
+  min-height: 38px;
+  padding: 7px 8px;
+}
+
+.editor-fast-status {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.editor-fast-status span {
+  overflow: hidden;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(31, 33, 31, 0.05);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .editor-tool-group button,
 .editor-selection-actions button {
   min-height: 34px;
@@ -1660,9 +1735,18 @@ body[data-view="editor"] .main {
   .creator-layout,
   .editor-workbench,
   .editor-command-bar,
+  .editor-fast-actions,
   .track-import-grid,
   .voice-ref-form,
   .voice-ref-item {
+    grid-template-columns: 1fr;
+  }
+
+  .editor-fast-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .editor-fast-status {
     grid-template-columns: 1fr;
   }
 
@@ -1747,6 +1831,19 @@ body[data-view="editor"] .main {
 
   .editor-mini-tools {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body[data-view="editor"] .page-head {
+    display: none;
+  }
+
+  body[data-view="editor"] .editor-tool-group {
+    display: none;
+  }
+
+  .editor-track-strip,
+  .editor-fast-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .editor-quick-row,

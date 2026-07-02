@@ -1187,6 +1187,7 @@ function fitTimeline() {
 function setPlayhead(value) {
   editorState.timeline.playhead = snapTime(clamp(value, 0, getTimelineDuration()));
   $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
+  syncEditorQuickState();
   renderWaveform();
 }
 
@@ -1196,6 +1197,7 @@ function syncTimelineControls() {
   $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
   $("#undoEdit").disabled = !editorState.undoStack.length && !getActiveTrack().sourceHistory?.length;
   $("#redoEdit").disabled = !editorState.redoStack.length;
+  syncEditorQuickState();
 }
 
 function syncTrackControls(trackId) {
@@ -1209,6 +1211,41 @@ function syncTrackControls(trackId) {
   $$(`[data-track-solo="${track.id}"]`).forEach((input) => {
     input.checked = track.solo;
   });
+}
+
+function syncEditorQuickState() {
+  editorState.tracks.forEach((track) => {
+    const status = $(`#simpleTrackStatus${track.id}`);
+    if (status) {
+      status.textContent = track.buffer
+        ? `${track.fileName || "已导入"}｜${formatSeconds(track.buffer.duration)}`
+        : "空轨";
+    }
+  });
+  $$(".simple-track").forEach((button) => {
+    const selected = button.dataset.trackCard === editorState.activeTrackId;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  const selectionLength = Math.max(0, editorState.selection.sourceEnd - editorState.selection.sourceStart);
+  const selectionInfo = $("#quickSelectionInfo");
+  if (selectionInfo) selectionInfo.textContent = `选区 ${formatSeconds(selectionLength)}`;
+  const clipCount = $("#quickClipCount");
+  if (clipCount) clipCount.textContent = `片段 ${editorState.clips.length}`;
+  const playhead = $("#quickPlayheadInfo");
+  if (playhead) playhead.textContent = `播放头 ${formatSeconds(editorState.timeline.playhead)}`;
+  const micToggle = $("#quickMicToggle");
+  if (micToggle) {
+    const recording = editorState.micRecorder?.state === "recording";
+    micToggle.textContent = recording ? "停止录音" : "录音";
+    micToggle.classList.toggle("primary", recording);
+    micToggle.classList.toggle("secondary", !recording);
+  }
+  const active = getActiveTrack();
+  const undoImport = $("#quickUndoImport");
+  if (undoImport) undoImport.disabled = !active.sourceHistory?.length;
+  const clearTrack = $("#quickClearTrack");
+  if (clearTrack) clearTrack.disabled = !active.buffer && !active.url;
 }
 
 function setEditorPanel(name = "") {
@@ -1252,6 +1289,7 @@ function setClipInputs(start, end, timelineStart = editorState.selection.timelin
   $("#clipStart").value = editorState.selection.sourceStart.toFixed(2);
   $("#clipEnd").value = editorState.selection.sourceEnd.toFixed(2);
   $("#clipTimelineStart").value = editorState.selection.timelineStart.toFixed(2);
+  syncEditorQuickState();
   renderWaveform();
 }
 
@@ -1282,6 +1320,7 @@ function updateEditorSourceInfo() {
     card.setAttribute("aria-selected", selected ? "true" : "false");
   });
   editorState.tracks.forEach((track) => syncTrackControls(track.id));
+  syncEditorQuickState();
 }
 
 function snapshotTrackSource(track) {
@@ -1342,6 +1381,24 @@ function clearTrackSource(trackId) {
   showToast(`已移除 ${track.name} 音频，可撤销。`, "ok");
 }
 
+function createWholeTrackClip(trackId) {
+  const track = getTrack(trackId);
+  if (!track?.buffer) return;
+  editorState.clips = editorState.clips.filter((clip) => clip.trackId !== trackId);
+  editorState.clips.push({
+    id: `clip-${Date.now()}-${trackId}-${Math.random().toString(16).slice(2)}`,
+    name: `${track.name} 整轨`,
+    trackId,
+    sourceStart: 0,
+    sourceEnd: track.buffer.duration,
+    timelineStart: 0,
+    volume: 1,
+    fadeIn: 0,
+    fadeOut: 0,
+    muted: false
+  });
+}
+
 async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.activeTrackId, remember = true }) {
   const context = getEditorAudioContext();
   const track = getTrack(trackId);
@@ -1355,6 +1412,7 @@ async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.a
   editorState.sourceName = track.fileName;
   setActiveTrack(trackId);
   setClipInputs(0, Math.min(buffer.duration, 30), 0);
+  createWholeTrackClip(trackId);
   updateEditorSourceInfo();
   renderClipList();
   renderWaveform();
@@ -1366,6 +1424,7 @@ async function loadEditorFile(file, trackId = editorState.activeTrackId) {
   const arrayBuffer = await file.arrayBuffer();
   const url = URL.createObjectURL(file);
   await setEditorSource({ arrayBuffer, url, name: file.name, trackId });
+  setEditorPanel("");
   showToast(`已导入到 ${getTrack(trackId).name}：${file.name}`, "ok");
 }
 
@@ -1406,7 +1465,7 @@ async function startEditorMicRecording() {
         trackId: editorState.micTrackId
       });
       $("#editorMicStatus").textContent = `录音已导入 ${getTrack(editorState.micTrackId).name}。`;
-      setEditorPanel("import");
+      setEditorPanel("");
       showToast("麦克风录音已导入轨道。", "ok");
     } catch (error) {
       $("#editorMicStatus").textContent = `录音导入失败：${error.message}`;
@@ -1417,12 +1476,14 @@ async function startEditorMicRecording() {
       editorState.micRecorder = null;
       $("#startEditorMic").disabled = false;
       $("#stopEditorMic").disabled = true;
+      syncEditorQuickState();
     }
   });
   recorder.start();
   $("#startEditorMic").disabled = true;
   $("#stopEditorMic").disabled = false;
   $("#editorMicStatus").textContent = `正在录音到 ${getTrack(trackId).name}，停止后会自动导入。`;
+  syncEditorQuickState();
   showToast(`正在录音到 ${getTrack(trackId).name}。`);
 }
 
@@ -1447,6 +1508,7 @@ async function loadEditorFromPlayer() {
       name: $("#playerTitle")?.textContent?.trim() || "播放器音频",
       trackId: editorState.activeTrackId
     });
+    setEditorPanel("");
     showView("editor");
     showToast("已把播放器音频导入剪辑轨道。", "ok");
   } catch {
@@ -1486,6 +1548,7 @@ async function loadDemoEditorAudio() {
   editorState.clips = [];
   addEditorClip(0, Math.min(6, getEditorDuration("A")), 0, "A");
   addEditorClip(0, Math.min(8, getEditorDuration("B")), 0, "B");
+  setEditorPanel("");
 }
 
 function canvasTimelineInfo(canvas) {
@@ -1593,11 +1656,17 @@ function renderWaveform() {
     if (clipEnd < offset || clip.timelineStart > offset + duration) return;
     const x = timeToX(clip.timelineStart, width, duration, offset);
     const w = Math.max(3 * ratio, ((clip.sourceEnd - clip.sourceStart) / duration) * width);
-    const y = trackIndex * laneHeight + laneHeight - 30 * ratio;
+    const clipHeight = Math.min(40 * ratio, Math.max(24 * ratio, laneHeight - 44 * ratio));
+    const y = trackIndex * laneHeight + laneHeight - clipHeight - 10 * ratio;
     ctx.fillStyle = clip.muted ? "rgba(116, 111, 99, 0.28)" : "rgba(49, 95, 76, 0.2)";
     ctx.strokeStyle = clip.trackId === "A" ? "rgba(49, 95, 76, 0.72)" : "rgba(111, 31, 27, 0.72)";
-    ctx.fillRect(x, y, w, 20 * ratio);
-    ctx.strokeRect(x, y, w, 20 * ratio);
+    ctx.fillRect(x, y, w, clipHeight);
+    ctx.strokeRect(x, y, w, clipHeight);
+    if (w > 70 * ratio) {
+      ctx.fillStyle = "rgba(31, 33, 31, 0.72)";
+      ctx.font = `${11 * ratio}px Microsoft YaHei, sans-serif`;
+      ctx.fillText(clip.name, x + 8 * ratio, y + 23 * ratio);
+    }
   });
 
   const selection = editorState.selection;
@@ -1637,7 +1706,7 @@ function getCanvasPointer(event) {
 }
 
 function hitTestClip(point) {
-  const handleSize = 10 * point.ratio;
+  const handleSize = 18 * point.ratio;
   for (let index = editorState.clips.length - 1; index >= 0; index -= 1) {
     const clip = editorState.clips[index];
     if (clip.trackId !== point.track.id) continue;
@@ -1689,22 +1758,11 @@ function startTimelineDrag(event) {
   const hit = hitTestClip(point);
   if (hit) {
     point.canvas.setPointerCapture?.(event.pointerId);
-    if (event.pointerType !== "mouse") {
-      clearPendingTimelineDrag();
-      editorState.pendingDrag = { hit, point, pointerId: event.pointerId, x: point.x, y: point.y };
-      setTimelineDragClass("long-press-armed", true);
-      editorState.longPressTimer = setTimeout(() => {
-        if (!editorState.pendingDrag) return;
-        beginClipDrag(editorState.pendingDrag.hit, editorState.pendingDrag.point);
-        editorState.pendingDrag = null;
-      }, 320);
-      return;
-    }
     beginClipDrag(hit, point);
     return;
   }
   const selection = editorState.selection;
-  const handleSize = 10 * point.ratio;
+  const handleSize = 18 * point.ratio;
   const x1 = timeToX(selection.sourceStart, point.width, point.duration, point.offset);
   const x2 = timeToX(selection.sourceEnd, point.width, point.duration, point.offset);
   const inside = point.track.id === selection.trackId && point.x >= x1 && point.x <= x2;
@@ -1812,6 +1870,7 @@ function renderClipList() {
   if (!list) return;
   if (!editorState.clips.length) {
     list.innerHTML = "<p class=\"clip-empty\">还没有时间线片段。拖拽轨道选区后点“加入选区”，或直接导出整轨混音。</p>";
+    syncEditorQuickState();
     return;
   }
   list.innerHTML = "";
@@ -1849,6 +1908,7 @@ function renderClipList() {
       `;
       list.appendChild(article);
     });
+  syncEditorQuickState();
 }
 
 function updateClipField(clipId, field, value, checked) {
@@ -2851,6 +2911,33 @@ function bindEvents() {
   $("#runDirectAudioButton").addEventListener("click", runDirectAudio);
   $("#refreshHistory").addEventListener("click", loadHistory);
   $("#loadPlayerAudio").addEventListener("click", loadEditorFromPlayer);
+  $("#quickImportA")?.addEventListener("click", () => $("#editorAudioFileA")?.click());
+  $("#quickImportB")?.addEventListener("click", () => $("#editorAudioFileB")?.click());
+  $("#quickMicToggle")?.addEventListener("click", () => {
+    if (editorState.micRecorder?.state === "recording") {
+      stopEditorMicRecording();
+      return;
+    }
+    startEditorMicRecording().catch((error) => {
+      $("#editorMicStatus").textContent = `录音失败：${error.message}`;
+      showToast(`录音失败：${error.message}`, "fail");
+      $("#startEditorMic").disabled = false;
+      $("#stopEditorMic").disabled = true;
+      editorState.micStream?.getTracks().forEach((track) => track.stop());
+      editorState.micStream = null;
+      editorState.micRecorder = null;
+      syncEditorQuickState();
+    });
+  });
+  $("#quickUndoImport")?.addEventListener("click", () => undoTrackImport(editorState.activeTrackId));
+  $("#quickClearTrack")?.addEventListener("click", () => clearTrackSource(editorState.activeTrackId));
+  $("#quickAddSelection")?.addEventListener("click", () => {
+    const { start, end, timelineStart, trackId } = getClipInputs();
+    addEditorClip(start, end, timelineStart, trackId);
+  });
+  $("#quickSplitClip")?.addEventListener("click", splitClipAtPlayhead);
+  $("#quickPreviewMix")?.addEventListener("click", previewTimelineMix);
+  $("#quickExportMix")?.addEventListener("click", exportEditorMix);
   $$("[data-editor-panel]").forEach((button) => {
     button.addEventListener("click", () => setEditorPanel(button.dataset.editorPanel));
   });

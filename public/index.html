@@ -233,11 +233,11 @@
               <div class="editor-command-bar">
                 <div class="editor-menu-tabs" aria-label="剪辑菜单">
                   <button class="editor-menu-button" data-editor-panel="import">导入</button>
-                  <button class="editor-menu-button" data-editor-panel="toolbox">工具箱</button>
-                  <button class="editor-menu-button" data-editor-panel="select">选区</button>
-                  <button class="editor-menu-button" data-editor-panel="tracks">轨道</button>
+                  <button class="editor-menu-button" data-editor-panel="select">修剪</button>
+                  <button class="editor-menu-button" data-editor-panel="tracks">混音</button>
                   <button class="editor-menu-button" data-editor-panel="clips">片段</button>
                   <button class="editor-menu-button" data-editor-panel="export">导出</button>
+                  <button class="editor-menu-button" data-editor-panel="toolbox">更多</button>
                 </div>
                 <div class="editor-tool-group">
                   <button id="undoEdit" class="secondary">撤销</button>
@@ -249,6 +249,35 @@
                 </div>
               </div>
 
+              <div class="editor-fast-workflow" aria-label="快捷剪辑台">
+                <div class="editor-track-strip">
+                  <button class="simple-track active" data-track-card="A" data-select-track="A">
+                    <strong>轨道 1</strong>
+                    <span id="simpleTrackStatusA">空轨</span>
+                  </button>
+                  <button class="simple-track" data-track-card="B" data-select-track="B">
+                    <strong>轨道 2</strong>
+                    <span id="simpleTrackStatusB">空轨</span>
+                  </button>
+                </div>
+                <div class="editor-fast-actions">
+                  <button id="quickImportA" class="primary">导入 1</button>
+                  <button id="quickImportB" class="primary">导入 2</button>
+                  <button id="quickMicToggle" class="secondary">录音</button>
+                  <button id="quickUndoImport" class="secondary">撤导</button>
+                  <button id="quickClearTrack" class="secondary">移除</button>
+                  <button id="quickAddSelection" class="secondary">加入</button>
+                  <button id="quickSplitClip" class="secondary">分割</button>
+                  <button id="quickPreviewMix" class="secondary">预听</button>
+                  <button id="quickExportMix" class="primary">导出</button>
+                </div>
+                <div class="editor-fast-status">
+                  <span id="quickSelectionInfo">选区 0.00s</span>
+                  <span id="quickClipCount">片段 0</span>
+                  <span id="quickPlayheadInfo">播放头 0.00s</span>
+                </div>
+              </div>
+
               <div class="timeline-toolbar">
                 <div id="editorSourceInfo">当前选中：轨道 1</div>
                 <audio id="editorPreview" controls></audio>
@@ -256,7 +285,7 @@
 
               <div class="waveform-wrap">
                 <canvas id="waveformCanvas" width="960" height="320"></canvas>
-                <div class="waveform-hint">长按时间线片段后拖动，拖边缘可修剪</div>
+                <div class="waveform-hint">拖选区生成片段，直接拖动片段调整位置</div>
               </div>
 
               <div class="editor-drawer" data-editor-drawer="import">
