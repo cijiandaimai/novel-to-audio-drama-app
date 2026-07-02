@@ -224,12 +224,58 @@ function getByPath(object, path) {
   return path.split(".").reduce((cursor, part) => cursor?.[part], object);
 }
 
+let toastTimer = null;
+
+function showToast(message, type = "") {
+  const toast = $("#appToast");
+  if (!toast || !message) return;
+  clearTimeout(toastTimer);
+  toast.textContent = message;
+  toast.className = `app-toast ${type}`.trim();
+  toast.classList.remove("hidden");
+  toastTimer = setTimeout(() => toast.classList.add("hidden"), 2600);
+}
+
+function setButtonBusy(buttonOrSelector, busy, busyLabel = "处理中...") {
+  const button = typeof buttonOrSelector === "string" ? $(buttonOrSelector) : buttonOrSelector;
+  if (!button) return;
+  if (busy) {
+    if (!button.dataset.idleText) button.dataset.idleText = button.textContent.trim();
+    button.textContent = busyLabel;
+  } else if (button.dataset.idleText) {
+    button.textContent = button.dataset.idleText;
+    delete button.dataset.idleText;
+  }
+  button.disabled = busy;
+  button.setAttribute("aria-busy", busy ? "true" : "false");
+}
+
+function readLocalHistory() {
+  try {
+    const history = JSON.parse(localStorage.getItem("localHistory") || "[]");
+    return Array.isArray(history) ? history : [];
+  } catch {
+    localStorage.removeItem("localHistory");
+    return [];
+  }
+}
+
 function showView(name) {
   if (isPlayerFullscreen()) exitPlayerFullscreen();
+  if (document.body.dataset.view === "editor") setEditorPanel("");
   document.body.dataset.view = name;
   $$(".view").forEach((view) => view.classList.toggle("active", view.id === name));
   const navView = name === "config" || name === "history" ? "discover" : name;
-  $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === navView));
+  $$(".nav-item").forEach((item) => {
+    const active = item.dataset.view === navView;
+    item.classList.toggle("active", active);
+    item.setAttribute("aria-current", active ? "page" : "false");
+  });
+  const activeView = $(`#${name}`);
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    activeView?.scrollIntoView({ block: "start" });
+  });
   if (name === "history") loadHistory();
   if (name === "editor") requestAnimationFrame(renderWaveform);
 }
@@ -462,6 +508,7 @@ async function importPlayerAudio(file) {
   playerState.lyricFileName = "";
   renderLyrics();
   playInApp(playerState.audioUrl, file.name.replace(/\.[^.]+$/, ""));
+  showToast(`已导入音频：${file.name}`, "ok");
 }
 
 async function importLyrics(file) {
@@ -475,9 +522,11 @@ async function importLyrics(file) {
   renderLyrics();
   if (!lines.length) {
     $("#lyricPanel").innerHTML = `<p id="lyricCurrent">没有识别到可同步的时间戳。当前支持普通 LRC、逐字 LRC 和明文 KRC，部分加密 KRC 需要先转换成文本。</p>`;
+    showToast("没有识别到可同步歌词，请检查 LRC/KRC 时间戳。", "fail");
     return;
   }
   syncLyrics($("#mainPlayer")?.currentTime || 0);
+  showToast(`已导入歌词：${file.name}，共 ${lines.length} 行。`, "ok");
 }
 
 function togglePlayerFullscreen() {
@@ -582,10 +631,23 @@ function exitPlayerFullscreenOnTouchEnd(event) {
 }
 
 function handlePlayerFullscreenKey(event) {
-  if (!isPlayerFullscreen()) return;
-  if (event.key === "Escape" || event.key === "Backspace") {
+  const isEscape = event.key === "Escape";
+  const isBack = event.key === "Backspace";
+  if (isPlayerFullscreen() && (isEscape || isBack)) {
     event.preventDefault();
     exitPlayerFullscreen();
+    return;
+  }
+  if (!isEscape) return;
+  const midnightModal = $("#midnightModal");
+  if (midnightModal && !midnightModal.classList.contains("hidden")) {
+    event.preventDefault();
+    setMidnightModal(false);
+    return;
+  }
+  if (document.body.dataset.view === "editor" && $("[data-editor-drawer].active")) {
+    event.preventDefault();
+    setEditorPanel("");
   }
 }
 
@@ -603,6 +665,7 @@ function decorateApiHelpFields() {
     button.type = "button";
     button.className = "api-help-button";
     button.dataset.apiHelp = field.dataset.config;
+    button.setAttribute("aria-expanded", "false");
     button.textContent = "?";
     row.appendChild(button);
     const panel = document.createElement("div");
@@ -638,12 +701,13 @@ function fileToDataUrl(file) {
 
 async function startVoiceRecording() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    alert("当前环境不支持录音，请改用上传参考音频。");
+    showToast("当前环境不支持录音，请改用上传参考音频。", "fail");
     return;
   }
   const role = $("#voiceRoleInput").value.trim();
   if (!role) {
-    alert("请先填写角色名，再开始录音。");
+    showToast("请先填写角色名，再开始录音。", "fail");
+    $("#voiceRoleInput").focus();
     return;
   }
   recorderState.chunks = [];
@@ -679,6 +743,7 @@ async function startVoiceRecording() {
   $("#stopVoiceRecord").disabled = false;
   $("#saveVoiceRecord").disabled = true;
   $("#voiceRecordStatus").textContent = "录音中，请保持 5-20 秒清晰干声。";
+  showToast("录音已开始，请保持清晰干声。");
 }
 
 function stopVoiceRecording() {
@@ -692,11 +757,12 @@ function stopVoiceRecording() {
 function saveRecordedVoiceReference() {
   const role = $("#voiceRoleInput").value.trim();
   if (!role) {
-    alert("请先填写角色名。");
+    showToast("请先填写角色名。", "fail");
+    $("#voiceRoleInput").focus();
     return;
   }
   if (!recorderState.dataUrl) {
-    alert("还没有可保存的录音。");
+    showToast("还没有可保存的录音。", "fail");
     return;
   }
   const references = getVoiceReferences();
@@ -709,10 +775,12 @@ function saveRecordedVoiceReference() {
   });
   saveVoiceReferences(references);
   $("#voiceRecordStatus").textContent = "录音已保存为参考音色。";
+  showToast(`已保存 ${role} 的录音参考。`, "ok");
 }
 
 function openBluetoothSettings() {
   $("#bluetoothStatus").textContent = "正在尝试打开系统蓝牙设置；如果没有跳转，请从手机系统设置里配对音箱。";
+  showToast("正在尝试打开系统蓝牙设置。");
   try {
     window.location.href = "intent:#Intent;action=android.settings.BLUETOOTH_SETTINGS;end";
   } catch {
@@ -733,6 +801,7 @@ function testBluetoothAudio() {
   oscillator.start();
   oscillator.stop(context.currentTime + duration);
   $("#bluetoothStatus").textContent = "已播放测试音。如果蓝牙音箱已配对，声音会从系统当前输出设备播放。";
+  showToast("已播放测试音，请留意当前输出设备。", "ok");
 }
 
 function formatSeconds(value) {
@@ -869,10 +938,14 @@ function syncTrackControls(trackId) {
 
 function setEditorPanel(name = "") {
   $$("[data-editor-panel]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.editorPanel === name);
+    const active = button.dataset.editorPanel === name;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-expanded", active ? "true" : "false");
   });
   $$("[data-editor-drawer]").forEach((drawer) => {
-    drawer.classList.toggle("active", drawer.dataset.editorDrawer === name);
+    const active = drawer.dataset.editorDrawer === name;
+    drawer.classList.toggle("active", active);
+    if (active) requestAnimationFrame(() => drawer.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   });
 }
 
@@ -928,7 +1001,11 @@ function updateEditorSourceInfo() {
   });
   const active = getActiveTrack();
   $("#editorSourceInfo").textContent = `当前选中：${active.name}｜${active.label}${active.buffer ? `｜${formatSeconds(active.buffer.duration)}` : ""}`;
-  $$("[data-track-card]").forEach((card) => card.classList.toggle("active", card.dataset.trackCard === editorState.activeTrackId));
+  $$("[data-track-card]").forEach((card) => {
+    const selected = card.dataset.trackCard === editorState.activeTrackId;
+    card.classList.toggle("active", selected);
+    card.setAttribute("aria-selected", selected ? "true" : "false");
+  });
   editorState.tracks.forEach((track) => syncTrackControls(track.id));
 }
 
@@ -975,10 +1052,11 @@ function restoreTrackSource(trackId, source) {
 function undoTrackImport(trackId, options = {}) {
   const track = getTrack(trackId);
   if (!track.sourceHistory?.length) {
-    if (!options.silent) alert(`${track.name} 没有可撤销的导入。`);
+    if (!options.silent) showToast(`${track.name} 没有可撤销的导入。`, "fail");
     return;
   }
   restoreTrackSource(trackId, track.sourceHistory.pop());
+  if (!options.silent) showToast(`已撤销 ${track.name} 的上一次导入。`, "ok");
 }
 
 function clearTrackSource(trackId) {
@@ -986,6 +1064,7 @@ function clearTrackSource(trackId) {
   if (!track.buffer && !track.url) return;
   pushTrackSourceHistory(track);
   restoreTrackSource(trackId, null);
+  showToast(`已移除 ${track.name} 音频，可撤销。`, "ok");
 }
 
 async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.activeTrackId, remember = true }) {
@@ -1012,11 +1091,12 @@ async function loadEditorFile(file, trackId = editorState.activeTrackId) {
   const arrayBuffer = await file.arrayBuffer();
   const url = URL.createObjectURL(file);
   await setEditorSource({ arrayBuffer, url, name: file.name, trackId });
+  showToast(`已导入到 ${getTrack(trackId).name}：${file.name}`, "ok");
 }
 
 async function startEditorMicRecording() {
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-    alert("当前环境不支持麦克风录音。");
+    showToast("当前环境不支持麦克风录音。", "fail");
     return;
   }
   const trackId = $("#editorMicTrack")?.value || editorState.activeTrackId;
@@ -1052,8 +1132,10 @@ async function startEditorMicRecording() {
       });
       $("#editorMicStatus").textContent = `录音已导入 ${getTrack(editorState.micTrackId).name}。`;
       setEditorPanel("import");
+      showToast("麦克风录音已导入轨道。", "ok");
     } catch (error) {
       $("#editorMicStatus").textContent = `录音导入失败：${error.message}`;
+      showToast(`录音导入失败：${error.message}`, "fail");
     } finally {
       editorState.micStream?.getTracks().forEach((track) => track.stop());
       editorState.micStream = null;
@@ -1066,6 +1148,7 @@ async function startEditorMicRecording() {
   $("#startEditorMic").disabled = true;
   $("#stopEditorMic").disabled = false;
   $("#editorMicStatus").textContent = `正在录音到 ${getTrack(trackId).name}，停止后会自动导入。`;
+  showToast(`正在录音到 ${getTrack(trackId).name}。`);
 }
 
 function stopEditorMicRecording() {
@@ -1077,7 +1160,7 @@ function stopEditorMicRecording() {
 async function loadEditorFromPlayer() {
   const player = $("#mainPlayer");
   if (!player?.src) {
-    alert("播放器里还没有可导入的音频。");
+    showToast("播放器里还没有可导入的音频。", "fail");
     return;
   }
   try {
@@ -1090,8 +1173,9 @@ async function loadEditorFromPlayer() {
       trackId: editorState.activeTrackId
     });
     showView("editor");
+    showToast("已把播放器音频导入剪辑轨道。", "ok");
   } catch {
-    alert("这个音频地址无法直接导入。请先下载到本机，再从剪辑工作台上传。");
+    showToast("这个音频地址无法直接导入，请先下载到本机再上传。", "fail");
   }
 }
 
@@ -1420,13 +1504,14 @@ function endTimelineDrag() {
 function addEditorClip(start, end, timelineStart = editorState.selection.timelineStart, trackId = editorState.selection.trackId) {
   const track = getTrack(trackId);
   if (!track?.buffer) {
-    alert("请先给当前轨道导入音频。");
+    showToast("请先给当前轨道导入音频。", "fail");
+    setEditorPanel("import");
     return;
   }
   const safeStart = clamp(start, 0, track.buffer.duration);
   const safeEnd = clamp(end, safeStart, track.buffer.duration);
   if (safeEnd - safeStart < 0.1) {
-    alert("片段太短，请至少保留 0.1 秒。");
+    showToast("片段太短，请至少保留 0.1 秒。", "fail");
     return;
   }
   pushEditorHistory();
@@ -1444,6 +1529,7 @@ function addEditorClip(start, end, timelineStart = editorState.selection.timelin
   });
   renderClipList();
   renderWaveform();
+  showToast(`已加入 ${track.name} 片段。`, "ok");
 }
 
 function renderClipList() {
@@ -1545,12 +1631,15 @@ function handleClipAction(clipId, action) {
   if (action === "select") {
     setActiveTrack(clip.trackId);
     setClipInputs(clip.sourceStart, clip.sourceEnd, clip.timelineStart);
+    setEditorPanel("select");
+    showToast("已把片段载入选区。", "ok");
   }
   if (action === "remove") {
     pushEditorHistory();
     editorState.clips = editorState.clips.filter((item) => item.id !== clipId);
     renderClipList();
     renderWaveform();
+    showToast("已删除片段，可撤销。", "ok");
   }
 }
 
@@ -1562,7 +1651,7 @@ function splitClipAtPlayhead() {
     return playhead > item.timelineStart + 0.05 && playhead < item.timelineStart + duration - 0.05;
   });
   if (!clip) {
-    alert("请把播放头放在当前轨道某个片段内部。");
+    showToast("请把播放头放在当前轨道某个片段内部。", "fail");
     return;
   }
   pushEditorHistory();
@@ -1579,6 +1668,7 @@ function splitClipAtPlayhead() {
   editorState.clips.push(right);
   renderClipList();
   renderWaveform();
+  showToast("已在播放头处分割片段。", "ok");
 }
 
 function getRenderableClips() {
@@ -1646,7 +1736,7 @@ async function previewTimelineMix() {
     source.start(0, Math.min(editorState.timeline.playhead, Math.max(0, rendered.duration - 0.05)));
     editorState.playingNodes = [source];
   } catch (error) {
-    alert(`预听失败：${error.message}`);
+    showToast(`预听失败：${error.message}`, "fail");
   }
 }
 
@@ -1688,7 +1778,7 @@ function audioBufferToWav(buffer) {
 }
 
 async function exportEditorMix() {
-  $("#exportMix").disabled = true;
+  setButtonBusy("#exportMix", true, "导出中...");
   $("#editorResult").classList.add("hidden");
   try {
     const rendered = await renderEditorMixBuffer();
@@ -1706,6 +1796,7 @@ async function exportEditorMix() {
       </div>
     `;
     playInApp(editorState.renderedUrl, fileName);
+    showToast("双轨混音导出完成。", "ok");
     if (blob.size <= 3500000) {
       saveLocalHistory({
         jobId: `edit-${Date.now()}`,
@@ -1718,8 +1809,9 @@ async function exportEditorMix() {
   } catch (error) {
     $("#editorResult").classList.remove("hidden");
     $("#editorResult").innerHTML = `<strong>导出失败：</strong>${error.message}`;
+    showToast(`导出失败：${error.message}`, "fail");
   } finally {
-    $("#exportMix").disabled = false;
+    setButtonBusy("#exportMix", false);
   }
 }
 
@@ -1764,11 +1856,12 @@ async function addVoiceReference() {
   const role = $("#voiceRoleInput").value.trim();
   const file = $("#voiceRefFile").files?.[0];
   if (!role) {
-    alert("请先填写角色名。");
+    showToast("请先填写角色名。", "fail");
+    $("#voiceRoleInput").focus();
     return;
   }
   if (!file) {
-    alert("请先选择参考音频文件。");
+    showToast("请先选择参考音频文件。", "fail");
     return;
   }
   const dataUrl = await fileToDataUrl(file);
@@ -1783,6 +1876,7 @@ async function addVoiceReference() {
   $("#voiceRoleInput").value = "";
   $("#voiceRefFile").value = "";
   saveVoiceReferences(references);
+  showToast(`已添加 ${role} 的音色参考。`, "ok");
 }
 
 function fillDirectPromptDemo() {
@@ -1800,17 +1894,19 @@ function fillDirectPromptDemo() {
 【音效时间线】18 秒门轴轻响，42 秒杯子轻碰桌面。
 【混音要求】对白始终靠前，雨声和音乐在背景层。
 【禁止事项】不要朗诵腔，不要模仿真实名人声线。`;
+  showToast("已填入提示词示例。", "ok");
 }
 
 async function runDirectAudio() {
   const promptText = $("#directPromptInput").value.trim();
   const title = $("#titleInput").value.trim() || "直接提示词音频";
   if (!promptText) {
-    alert("请先上传或粘贴音频提示词。");
+    showToast("请先上传或粘贴音频提示词。", "fail");
+    $("#directPromptInput").focus();
     return;
   }
 
-  $("#runDirectAudioButton").disabled = true;
+  setButtonBusy("#runDirectAudioButton", true, "生成中...");
   $("#directResultBox").classList.add("hidden");
   $("#directResultBox").textContent = "";
   try {
@@ -1838,6 +1934,7 @@ async function runDirectAudio() {
       ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">在播放器收听</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
       <a href="${links.manifest}" target="_blank">查看任务详情</a>
     `;
+    showToast("直接音频生成完成。", "ok");
     if (links.finalAudio) playInApp(links.finalAudio, result.title);
     saveLocalHistory({
       jobId: result.jobId,
@@ -1850,8 +1947,9 @@ async function runDirectAudio() {
   } catch (error) {
     $("#directResultBox").classList.remove("hidden");
     $("#directResultBox").innerHTML = `<strong>生成失败：</strong>${error.message}`;
+    showToast(`生成失败：${error.message}`, "fail");
   } finally {
-    $("#runDirectAudioButton").disabled = false;
+    setButtonBusy("#runDirectAudioButton", false);
   }
 }
 
@@ -1868,7 +1966,7 @@ function saveConfigFromForm() {
     setByPath(config, field.dataset.config, field.value.trim());
   });
   localStorage.setItem("apiConfig", JSON.stringify(config));
-  alert("配置已保存在本机浏览器。真实产品中建议改为服务端加密保存。");
+  showToast("配置已保存在本机。正式产品建议改为服务端加密保存。", "ok");
 }
 
 function saveConfigObject(config) {
@@ -1896,6 +1994,7 @@ function applyNetworkPreset(profile) {
   saveConfigObject(config);
   const label = profile === "vpn" ? "系统 VPN 优先" : "中国大陆优先";
   $("#networkStatus").innerHTML = `<p class="ok">已套用「${label}」线路预设，记得保存或继续填写 API Key。</p>`;
+  showToast(`已套用「${label}」线路预设。`, "ok");
 }
 
 function getProbeUrl(label, config) {
@@ -1938,17 +2037,26 @@ async function probeNetwork(label, url, timeoutMs) {
 
 async function testNetworkRoutes() {
   const config = getConfig();
-  $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
-  const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
-  const labels = ["GPT", "Gemini", "豆包文本", "豆包音频"];
-  if (config.network?.relayBaseUrl) labels.push("中转服务");
-  const results = [];
-  for (const label of labels) {
-    results.push(await probeNetwork(label, getProbeUrl(label, config), timeoutMs));
+  setButtonBusy("#testNetwork", true, "诊断中...");
+  try {
+    $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
+    const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
+    const labels = ["GPT", "Gemini", "豆包文本", "豆包音频"];
+    if (config.network?.relayBaseUrl) labels.push("中转服务");
+    const results = [];
+    for (const label of labels) {
+      results.push(await probeNetwork(label, getProbeUrl(label, config), timeoutMs));
+    }
+    $("#networkStatus").innerHTML = results.map((item) => `
+      <p class="${item.ok ? "ok" : "fail"}"><strong>${item.label}</strong>：${item.message}</p>
+    `).join("");
+    showToast("联网诊断完成。", "ok");
+  } catch (error) {
+    $("#networkStatus").innerHTML = `<p class="fail">诊断失败：${error.message}</p>`;
+    showToast(`联网诊断失败：${error.message}`, "fail");
+  } finally {
+    setButtonBusy("#testNetwork", false);
   }
-  $("#networkStatus").innerHTML = results.map((item) => `
-    <p class="${item.ok ? "ok" : "fail"}"><strong>${item.label}</strong>：${item.message}</p>
-  `).join("");
 }
 
 function isMidnightUnlocked() {
@@ -1965,7 +2073,9 @@ function getMidnightFailCount() {
 
 function setMidnightModal(open) {
   $("#midnightModal").classList.toggle("hidden", !open);
+  document.body.classList.toggle("modal-open", open);
   updateMidnightState();
+  if (open) requestAnimationFrame(() => $("#closeMidnightModal")?.focus());
 }
 
 async function openMidnightGate() {
@@ -2230,16 +2340,17 @@ async function runMidnightRewrite() {
   }
   const source = getMidnightSource();
   if (!source) {
-    alert("请先粘贴改编素材，或在创作页/直接提示词里填入内容。");
+    showToast("请先粘贴改编素材，或在创作页/直接提示词里填入内容。", "fail");
+    $("#midnightSource")?.focus();
     return;
   }
   const config = getConfig();
   if (!config.grok?.apiKey || !config.grok?.model) {
-    alert("请先在 API 页面填写 Grok API Key 和模型 ID。");
+    showToast("请先在 API 页面填写 Grok API Key 和模型 ID。", "fail");
     showView("config");
     return;
   }
-  $("#runMidnightRewrite").disabled = true;
+  setButtonBusy("#runMidnightRewrite", true, "生成中...");
   $("#midnightResult").classList.add("hidden");
   try {
     const result = await callGrokRewrite(source, config);
@@ -2256,12 +2367,15 @@ async function runMidnightRewrite() {
       $("#directPromptInput").value = text;
       setMidnightModal(false);
       showView("create");
+      showToast("已放入直接提示词。", "ok");
     });
+    showToast("午夜猫娘提示词已生成。", "ok");
   } catch (error) {
     $("#midnightResult").classList.remove("hidden");
     $("#midnightResult").innerHTML = `<strong>生成失败：</strong>${error.message}`;
+    showToast(`生成失败：${error.message}`, "fail");
   } finally {
-    $("#runMidnightRewrite").disabled = false;
+    setButtonBusy("#runMidnightRewrite", false);
   }
 }
 
@@ -2277,49 +2391,58 @@ function renderStages(active = false, doneCount = 0) {
 }
 
 function saveLocalHistory(item) {
-  const history = JSON.parse(localStorage.getItem("localHistory") || "[]");
+  const history = readLocalHistory();
   history.unshift(item);
   localStorage.setItem("localHistory", JSON.stringify(history.slice(0, 30)));
 }
 
 async function loadHistory() {
   const box = $("#historyList");
-  box.innerHTML = "<p>正在读取历史...</p>";
-  let serverHistory = [];
+  setButtonBusy("#refreshHistory", true, "刷新中...");
   try {
-    const response = await fetch("/api/history");
-    serverHistory = await response.json();
-  } catch {
-    serverHistory = [];
-  }
-  const localHistory = JSON.parse(localStorage.getItem("localHistory") || "[]");
-  const merged = [...serverHistory, ...localHistory].filter((item, index, arr) =>
-    arr.findIndex((other) => other.jobId === item.jobId) === index
-  );
+    box.innerHTML = "<p>正在读取历史...</p>";
+    let serverHistory = [];
+    try {
+      const response = await fetch("/api/history");
+      serverHistory = await response.json();
+    } catch {
+      serverHistory = [];
+    }
+    const localHistory = readLocalHistory();
+    const merged = [...serverHistory, ...localHistory].filter((item, index, arr) =>
+      arr.findIndex((other) => other.jobId === item.jobId) === index
+    );
 
-  if (!merged.length) {
-    box.innerHTML = "<p>还没有创作记录。完成一次自动生成后，这里会出现脚本、提示词和音频下载入口。</p>";
-    return;
-  }
+    if (!merged.length) {
+      box.innerHTML = "<p>还没有创作记录。完成一次自动生成后，这里会出现脚本、提示词和音频下载入口。</p>";
+      return;
+    }
 
-  box.innerHTML = "";
-  merged.forEach((item) => {
-    const audioSrc = item.finalAudio || item.finalAudioDataUrl;
-    const article = document.createElement("article");
-    article.className = "history-item";
-    article.innerHTML = `
-      <div>
-        <h3>${item.title || "未命名作品"}</h3>
-        <p>${item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</p>
-      </div>
-      <div class="actions">
-        ${audioSrc ? `<button data-play-src="${audioSrc}" data-play-title="${item.title || "未命名作品"}">播放</button>` : ""}
-        ${audioSrc ? `<a href="${audioSrc}" target="_blank">下载</a>` : ""}
-        ${item.manifest ? `<a href="${item.manifest}" target="_blank">详情</a>` : ""}
-      </div>
-    `;
-    box.appendChild(article);
-  });
+    box.innerHTML = "";
+    merged.forEach((item) => {
+      const audioSrc = item.finalAudio || item.finalAudioDataUrl;
+      const article = document.createElement("article");
+      article.className = "history-item";
+      article.innerHTML = `
+        <div>
+          <h3>${item.title || "未命名作品"}</h3>
+          <p>${item.createdAt ? new Date(item.createdAt).toLocaleString() : ""}</p>
+        </div>
+        <div class="actions">
+          ${audioSrc ? `<button data-play-src="${audioSrc}" data-play-title="${item.title || "未命名作品"}">播放</button>` : ""}
+          ${audioSrc ? `<a href="${audioSrc}" target="_blank">下载</a>` : ""}
+          ${item.manifest ? `<a href="${item.manifest}" target="_blank">详情</a>` : ""}
+        </div>
+      `;
+      box.appendChild(article);
+    });
+    showToast(`已读取 ${merged.length} 条历史记录。`, "ok");
+  } catch (error) {
+    box.innerHTML = `<p class="fail">历史读取失败：${error.message}</p>`;
+    showToast(`历史读取失败：${error.message}`, "fail");
+  } finally {
+    setButtonBusy("#refreshHistory", false);
+  }
 }
 
 async function loadPlan() {
@@ -2356,18 +2479,21 @@ function fillDemo() {
 林舟笑了一下，笑意很短：“那你为什么给我写信？”
 
 窗外一辆车急刹，刺耳的声音划破雨夜。档案室里，两个人同时沉默。`;
+  showToast("已填入演示小说片段。", "ok");
 }
 
 async function runPipeline() {
   const title = $("#titleInput").value.trim() || "未命名作品";
   const novelText = $("#novelInput").value.trim();
   if (!novelText) {
-    alert("请先上传或粘贴小说内容。");
+    showToast("请先上传或粘贴小说内容。", "fail");
+    $("#novelInput").focus();
     return;
   }
 
-  $("#runButton").disabled = true;
+  setButtonBusy("#runButton", true, "生成中...");
   $("#runStatusPanel").classList.remove("hidden");
+  $("#runStatusPanel").scrollIntoView({ block: "start", behavior: "smooth" });
   $("#runStatus").textContent = "正在执行";
   $("#resultBox").classList.add("hidden");
   $("#stageList").innerHTML = "";
@@ -2414,12 +2540,14 @@ async function runPipeline() {
       finalAudioDataUrl: links.finalAudioDataUrl,
       manifest: links.manifest
     });
+    showToast("广播剧生成完成，已保存到历史。", "ok");
   } catch (error) {
     $("#runStatus").textContent = "失败";
     $("#resultBox").classList.remove("hidden");
     $("#resultBox").innerHTML = `<strong>生成失败：</strong>${error.message}`;
+    showToast(`生成失败：${error.message}`, "fail");
   } finally {
-    $("#runButton").disabled = false;
+    setButtonBusy("#runButton", false);
   }
 }
 
@@ -2430,9 +2558,13 @@ function bindEvents() {
   $("#demoButton").addEventListener("click", fillDemo);
   $("#runButton").addEventListener("click", runPipeline);
   $("#addVoiceRef").addEventListener("click", addVoiceReference);
-  $("#clearVoiceRefs").addEventListener("click", () => saveVoiceReferences([]));
+  $("#clearVoiceRefs").addEventListener("click", () => {
+    saveVoiceReferences([]);
+    showToast("已清空角色音色参考。", "ok");
+  });
   $("#startVoiceRecord").addEventListener("click", () => startVoiceRecording().catch((error) => {
     $("#voiceRecordStatus").textContent = `录音失败：${error.message}`;
+    showToast(`录音失败：${error.message}`, "fail");
     $("#startVoiceRecord").disabled = false;
     $("#stopVoiceRecord").disabled = true;
   }));
@@ -2454,6 +2586,7 @@ function bindEvents() {
   });
   $("#startEditorMic").addEventListener("click", () => startEditorMicRecording().catch((error) => {
     $("#editorMicStatus").textContent = `录音失败：${error.message}`;
+    showToast(`录音失败：${error.message}`, "fail");
     $("#startEditorMic").disabled = false;
     $("#stopEditorMic").disabled = true;
     editorState.micStream?.getTracks().forEach((track) => track.stop());
@@ -2472,7 +2605,7 @@ function bindEvents() {
     try {
       await loadEditorFile(file, "A");
     } catch (error) {
-      alert(`音频读取失败：${error.message}`);
+      showToast(`音频读取失败：${error.message}`, "fail");
     }
   });
   $("#editorAudioFileB").addEventListener("change", async (event) => {
@@ -2481,7 +2614,7 @@ function bindEvents() {
     try {
       await loadEditorFile(file, "B");
     } catch (error) {
-      alert(`音频读取失败：${error.message}`);
+      showToast(`音频读取失败：${error.message}`, "fail");
     }
   });
   $$("[data-select-track]").forEach((button) => button.addEventListener("click", () => setActiveTrack(button.dataset.selectTrack)));
@@ -2550,6 +2683,7 @@ function bindEvents() {
     editorState.clips = [];
     renderClipList();
     renderWaveform();
+    showToast("已清空时间线片段。", "ok");
   });
   $("#clipList").addEventListener("change", (event) => {
     const field = event.target.dataset.clipField;
@@ -2581,12 +2715,14 @@ function bindEvents() {
     if (helpButton) {
       const key = helpButton.dataset.apiHelp;
       const panel = $(`[data-api-help-panel="${key}"]`);
-      panel?.classList.toggle("hidden");
+      const open = panel?.classList.toggle("hidden") === false;
+      helpButton.setAttribute("aria-expanded", open ? "true" : "false");
       return;
     }
     const removeVoiceRefButton = event.target.closest("[data-remove-voice-ref]");
     if (removeVoiceRefButton) {
       saveVoiceReferences(getVoiceReferences().filter((item) => item.id !== removeVoiceRefButton.dataset.removeVoiceRef));
+      showToast("已删除音色参考。", "ok");
       return;
     }
     const button = event.target.closest("[data-play-src]");
@@ -2601,18 +2737,22 @@ function bindEvents() {
       const value = String(reader.result || "");
       localStorage.setItem(playerBgKey, value);
       setPlayerBackground(value);
+      showToast("播放器背景已更新。", "ok");
     });
     reader.readAsDataURL(file);
+    event.target.value = "";
   });
   $("#playerAudioFile").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     await importPlayerAudio(file);
+    event.target.value = "";
   });
   $("#lyricFile").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
     await importLyrics(file);
+    event.target.value = "";
   });
   $("#fullScreenPlayer").addEventListener("click", togglePlayerFullscreen);
   $("#playerArt").addEventListener("pointerdown", startPlayerFullscreenGesture);
@@ -2627,15 +2767,21 @@ function bindEvents() {
   $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
-    if (!value) return;
+    if (!value) {
+      showToast("请先粘贴图片链接。", "fail");
+      $("#playerBgUrl").focus();
+      return;
+    }
     localStorage.setItem(playerBgKey, value);
     setPlayerBackground(value);
+    showToast("播放器背景链接已应用。", "ok");
   });
   $("#clearBg").addEventListener("click", () => {
     localStorage.removeItem(playerBgKey);
     $("#playerBgUrl").value = "";
     $("#playerBgFile").value = "";
     setPlayerBackground("");
+    showToast("已恢复默认播放器背景。", "ok");
   });
   $("#fileInput").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
@@ -2645,6 +2791,8 @@ function bindEvents() {
     if (!$("#titleInput").value.trim()) {
       $("#titleInput").value = file.name.replace(/\.[^.]+$/, "");
     }
+    showToast(`已导入小说文本：${file.name}`, "ok");
+    event.target.value = "";
   });
   $("#directPromptFile").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
@@ -2653,6 +2801,8 @@ function bindEvents() {
     if (!$("#titleInput").value.trim()) {
       $("#titleInput").value = file.name.replace(/\.[^.]+$/, "");
     }
+    showToast(`已导入提示词文件：${file.name}`, "ok");
+    event.target.value = "";
   });
 }
 

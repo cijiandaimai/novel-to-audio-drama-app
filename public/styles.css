@@ -34,7 +34,8 @@ body {
   font-family: "Microsoft YaHei", "PingFang SC", "Noto Serif SC", Arial, sans-serif;
 }
 
-body.player-fullscreen-lock {
+body.player-fullscreen-lock,
+body.modal-open {
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -303,10 +304,52 @@ button {
   transform: translateY(-1px);
 }
 
-.primary:disabled {
+.primary:disabled,
+.secondary:disabled,
+button:disabled {
   opacity: 0.6;
-  cursor: progress;
+  cursor: not-allowed;
   transform: none;
+}
+
+button[aria-busy="true"] {
+  cursor: progress;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 3px solid rgba(184, 139, 74, 0.48);
+  outline-offset: 3px;
+}
+
+.app-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  z-index: 1500;
+  width: min(560px, calc(100vw - 28px));
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 250, 238, 0.28);
+  border-radius: 8px;
+  padding: 12px 16px;
+  background: rgba(31, 33, 31, 0.92);
+  color: #fffaf0;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
+  font-size: 14px;
+  line-height: 1.55;
+  text-align: center;
+}
+
+.app-toast.ok {
+  background: rgba(49, 95, 76, 0.94);
+}
+
+.app-toast.fail {
+  background: rgba(111, 31, 27, 0.94);
 }
 
 .sample-grid,
