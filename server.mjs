@@ -9,6 +9,15 @@ const publicDir = path.join(__dirname, "public");
 const outputsDir = path.join(__dirname, "outputs");
 const promptGuidePath = path.join(__dirname, "AI影视级音频提示词写作指导.md");
 const PORT = Number(process.env.PORT || 4173);
+const DEFAULT_DOUBAO_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+const DEFAULT_DOUBAO_AUDIO_URL = "https://openspeech.bytedance.com/api/v3/tts/create";
+const DEFAULT_GROK_URL = "https://api.x.ai/v1/chat/completions";
+
+const commonHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Api-Key, X-Api-Request-Id"
+};
 
 const OPTIMIZED_PLAN = {
   title: "小说转广播剧自动流水线",
@@ -37,6 +46,7 @@ await fs.mkdir(outputsDir, { recursive: true });
 function sendJson(res, status, data) {
   const body = JSON.stringify(data, null, 2);
   res.writeHead(status, {
+    ...commonHeaders,
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body)
   });
@@ -45,6 +55,7 @@ function sendJson(res, status, data) {
 
 function sendText(res, status, text, contentType = "text/plain; charset=utf-8") {
   res.writeHead(status, {
+    ...commonHeaders,
     "Content-Type": contentType,
     "Content-Length": Buffer.byteLength(text)
   });
@@ -149,6 +160,94 @@ function missingProvider(provider) {
   return !provider || !provider.apiKey || !provider.model;
 }
 
+function envText(...names) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function withServerProvider(clientProvider = {}, serverProvider = {}) {
+  return {
+    ...clientProvider,
+    ...Object.fromEntries(Object.entries(serverProvider).filter(([, value]) => value))
+  };
+}
+
+function getServerManagedProviders() {
+  return {
+    gpt: {
+      baseUrl: envText("GPT_BASE_URL", "OPENAI_BASE_URL"),
+      model: envText("GPT_MODEL", "OPENAI_MODEL"),
+      apiKey: envText("GPT_API_KEY", "OPENAI_API_KEY")
+    },
+    gemini: {
+      endpoint: envText("GEMINI_ENDPOINT"),
+      model: envText("GEMINI_MODEL"),
+      apiKey: envText("GEMINI_API_KEY")
+    },
+    doubao: {
+      baseUrl: envText("DOUBAO_TEXT_BASE_URL", "ARK_BASE_URL"),
+      model: envText("DOUBAO_TEXT_MODEL", "DOUBAO_MODEL", "ARK_MODEL"),
+      apiKey: envText("DOUBAO_TEXT_API_KEY", "DOUBAO_API_KEY", "ARK_API_KEY")
+    },
+    audio: {
+      endpoint: envText("DOUBAO_AUDIO_ENDPOINT", "SEED_AUDIO_ENDPOINT"),
+      model: envText("DOUBAO_AUDIO_MODEL", "SEED_AUDIO_MODEL"),
+      apiKey: envText("DOUBAO_AUDIO_API_KEY", "SEED_AUDIO_API_KEY", "DOUBAO_TTS_API_KEY")
+    },
+    grok: {
+      baseUrl: envText("GROK_BASE_URL", "XAI_BASE_URL"),
+      model: envText("GROK_MODEL", "XAI_MODEL"),
+      apiKey: envText("GROK_API_KEY", "XAI_API_KEY")
+    },
+    network: {
+      timeoutSeconds: envText("NETWORK_TIMEOUT_SECONDS"),
+      retryCount: envText("NETWORK_RETRY_COUNT")
+    }
+  };
+}
+
+function applyServerManagedConfig(clientConfig = {}) {
+  const managed = getServerManagedProviders();
+  const config = structuredClone(clientConfig || {});
+  config.gpt = withServerProvider(config.gpt, managed.gpt);
+  config.gemini = withServerProvider(config.gemini, managed.gemini);
+  config.doubao = withServerProvider(config.doubao, managed.doubao);
+  config.audio = withServerProvider(config.audio, managed.audio);
+  config.grok = withServerProvider(config.grok, managed.grok);
+  config.network = withServerProvider(config.network, managed.network);
+  config.doubao.baseUrl ||= DEFAULT_DOUBAO_CHAT_URL;
+  config.audio.endpoint ||= DEFAULT_DOUBAO_AUDIO_URL;
+  config.audio.model ||= "seed-audio-1.0";
+  config.grok.baseUrl ||= DEFAULT_GROK_URL;
+  return config;
+}
+
+function serverCapabilities() {
+  const managed = getServerManagedProviders();
+  return {
+    service: "baize-voice-studio-relay",
+    recommendedClientMode: "server-relay",
+    aiAppLabReference: "Arkitect 可作为下一阶段 Python 编排层；当前 Node 中转已先把 Key 从 APK 中移出。",
+    providers: {
+      gpt: { hasApiKey: !!managed.gpt.apiKey, hasModel: !!managed.gpt.model },
+      gemini: { hasApiKey: !!managed.gemini.apiKey, hasModel: !!managed.gemini.model },
+      doubao: { hasApiKey: !!managed.doubao.apiKey, hasModel: !!managed.doubao.model },
+      audio: { hasApiKey: !!managed.audio.apiKey, hasModel: !!managed.audio.model },
+      grok: { hasApiKey: !!managed.grok.apiKey, hasModel: !!managed.grok.model }
+    },
+    envNames: {
+      doubaoText: ["ARK_API_KEY", "DOUBAO_TEXT_API_KEY", "DOUBAO_TEXT_MODEL"],
+      doubaoAudio: ["DOUBAO_AUDIO_API_KEY", "DOUBAO_AUDIO_MODEL", "DOUBAO_AUDIO_ENDPOINT"],
+      openaiCompatible: ["OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL"],
+      gemini: ["GEMINI_API_KEY", "GEMINI_MODEL"],
+      grok: ["GROK_API_KEY", "GROK_MODEL"]
+    }
+  };
+}
+
 function networkTimeoutMs(network = {}) {
   return Math.max(10000, Math.min(300000, Number(network.timeoutSeconds || 120) * 1000));
 }
@@ -174,6 +273,53 @@ async function fetchWithNetwork(url, options = {}, network = {}) {
     }
   }
   throw lastError;
+}
+
+function getProbeUrl(label, config = {}) {
+  if (label === "GPT") return config.gpt?.baseUrl || envText("GPT_BASE_URL", "OPENAI_BASE_URL") || "https://api.openai.com/v1/chat/completions";
+  if (label === "Gemini") return config.gemini?.endpoint || "https://generativelanguage.googleapis.com";
+  if (label === "豆包文本") return config.doubao?.baseUrl || DEFAULT_DOUBAO_CHAT_URL;
+  if (label === "豆包音频") return config.audio?.endpoint || DEFAULT_DOUBAO_AUDIO_URL;
+  if (label === "Grok") return config.grok?.baseUrl || DEFAULT_GROK_URL;
+  return "";
+}
+
+async function probeServerNetwork(label, url, network = {}) {
+  if (!url) return { label, ok: false, message: "未配置地址" };
+  const startedAt = Date.now();
+  try {
+    const target = new URL(url);
+    const response = await fetchWithNetwork(target.href, { method: "HEAD" }, network);
+    return {
+      label,
+      ok: response.status < 500,
+      status: response.status,
+      message: `${target.host} 可连通，HTTP ${response.status}，约 ${Date.now() - startedAt}ms`
+    };
+  } catch (error) {
+    return {
+      label,
+      ok: false,
+      message: `${error.name === "AbortError" ? "连接超时" : "当前服务器网络不可达"}：${url}`
+    };
+  }
+}
+
+async function runNetworkTest(input = {}) {
+  const config = applyServerManagedConfig(input.config || {});
+  const network = config.network || {};
+  const labels = Array.isArray(input.labels) && input.labels.length
+    ? input.labels
+    : ["GPT", "Gemini", "豆包文本", "豆包音频", "Grok"];
+  const results = [];
+  for (const label of labels) {
+    results.push(await probeServerNetwork(label, getProbeUrl(label, config), network));
+  }
+  return {
+    checkedAt: new Date().toISOString(),
+    serverManaged: serverCapabilities().providers,
+    results
+  };
 }
 
 async function callOpenAICompatible(provider, messages, temperature = 0.4, network = {}) {
@@ -533,7 +679,7 @@ async function generateAudioSegments(audioConfig, prompts, jobDir, voiceReferenc
 
 async function runDirectAudio(input) {
   const title = safeName(input.title || "直接提示词音频");
-  const config = input.config || {};
+  const config = applyServerManagedConfig(input.config || {});
   const network = config.network || {};
   const guide = await readPromptGuide();
   const audioPrompts = normalizeAudioPrompts(input.prompts || input.promptText || input.text, title, guide);
@@ -586,7 +732,7 @@ async function runPipeline(input) {
   const jobDir = path.join(outputsDir, jobId);
   await fs.mkdir(jobDir, { recursive: true });
 
-  const config = input.config || {};
+  const config = applyServerManagedConfig(input.config || {});
   const network = config.network || {};
   const novelContext = buildNovelContext(novelText);
   const guide = await readPromptGuide();
@@ -753,8 +899,9 @@ function midnightSystemPrompt() {
 
 async function runMidnightNekomata(input) {
   const source = pickText(input.source);
-  const grok = input.config?.grok || {};
-  const network = input.config?.network || {};
+  const config = applyServerManagedConfig(input.config || {});
+  const grok = config.grok || {};
+  const network = config.network || {};
   if (!source) throw new Error("缺少改编素材。");
   if (!grok.apiKey || !grok.model) throw new Error("请先填写 Grok API Key 和模型 ID。");
   const text = await callOpenAICompatible(grok, [
@@ -796,7 +943,7 @@ async function serveStatic(res, root, requestPath) {
     }
     const ext = path.extname(filePath).toLowerCase();
     const data = await fs.readFile(filePath);
-    res.writeHead(200, { "Content-Type": mimeTypes[ext] || "application/octet-stream" });
+    res.writeHead(200, { ...commonHeaders, "Content-Type": mimeTypes[ext] || "application/octet-stream" });
     res.end(data);
   } catch {
     sendText(res, 404, "Not found");
@@ -806,6 +953,15 @@ async function serveStatic(res, root, requestPath) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, commonHeaders);
+      res.end();
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/capabilities") {
+      sendJson(res, 200, serverCapabilities());
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/plan") {
       sendJson(res, 200, OPTIMIZED_PLAN);
       return;
@@ -823,6 +979,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/audio-direct") {
       const input = await readJson(req);
       const result = await runDirectAudio(input);
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/network-test") {
+      const input = await readJson(req);
+      const result = await runNetworkTest(input);
       sendJson(res, 200, result);
       return;
     }

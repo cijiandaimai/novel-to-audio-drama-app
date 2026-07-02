@@ -184,6 +184,21 @@ const apiHelp = {
     url: "https://console.volcengine.com/",
     text: "在火山引擎语音服务或相关控制台创建 Key。真实生成音频前请先确认额度和计费。"
   },
+  "network.relayBaseUrl": {
+    title: "后端中转地址",
+    url: "https://github.com/volcengine/ai-app-lab/tree/main/arkitect",
+    text: "正式安装给别人用时，建议把 Key 放在自己的后端。这里填你的中转服务地址，例如 https://api.example.com，App 会优先请求它的 /api/run 等接口。"
+  },
+  "network.timeoutSeconds": {
+    title: "请求超时",
+    url: "https://github.com/volcengine/ai-app-lab/tree/main/arkitect",
+    text: "大模型和音频生成可能较慢。大陆网络或系统 VPN 下建议 120-180 秒，避免长音频还没生成就被中断。"
+  },
+  "network.retryCount": {
+    title: "失败重试次数",
+    url: "https://github.com/volcengine/ai-app-lab/tree/main/arkitect",
+    text: "网络不稳时可设 1-2 次。重试只适合临时网络失败；如果 Key 或模型 ID 填错，重试不会解决。"
+  },
   "grok.baseUrl": {
     title: "Grok 接口地址",
     url: "https://docs.x.ai/developers/rest-api-reference/inference/chat",
@@ -233,6 +248,61 @@ function setByPath(object, path, value) {
 
 function getByPath(object, path) {
   return path.split(".").reduce((cursor, part) => cursor?.[part], object);
+}
+
+function getRelayBaseUrl(config = getConfig()) {
+  return String(config.network?.relayBaseUrl || "").trim().replace(/\/+$/, "");
+}
+
+function apiUrl(path, config = getConfig()) {
+  const relay = getRelayBaseUrl(config);
+  if (!relay) return path;
+  if (relay.endsWith("/api") && path.startsWith("/api/")) return `${relay}${path.slice(4)}`;
+  return `${relay}${path}`;
+}
+
+function relayAssetUrl(path, config = getConfig()) {
+  if (!path || /^(https?:|data:|blob:|file:)/i.test(path)) return path;
+  const relay = getRelayBaseUrl(config);
+  if (!relay) return path;
+  const base = relay.endsWith("/api") ? relay.slice(0, -4) : relay;
+  return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
+}
+
+function normalizeResultLinks(result, config = getConfig()) {
+  const links = { ...(result?.links || {}) };
+  for (const [key, value] of Object.entries(links)) {
+    if (typeof value === "string") links[key] = relayAssetUrl(value, config);
+  }
+  return links;
+}
+
+function normalizeHistoryItem(item, config = getConfig()) {
+  return {
+    ...item,
+    finalAudio: relayAssetUrl(item.finalAudio, config),
+    manifest: relayAssetUrl(item.manifest, config)
+  };
+}
+
+async function apiJson(path, payload, config = getConfig()) {
+  const response = await fetch(apiUrl(path, config), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.error || `接口请求失败：${response.status}`);
+  return data;
+}
+
+async function apiGetJson(path, config = getConfig()) {
+  const response = await fetch(apiUrl(path, config), { cache: "no-store" });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : {};
+  if (!response.ok) throw new Error(data.error || `接口请求失败：${response.status}`);
+  return data;
 }
 
 let toastTimer = null;
@@ -2119,18 +2189,15 @@ async function runDirectAudio() {
     config.voiceReferences = getVoiceReferences();
     let result;
     try {
-      const response = await fetch("/api/audio-direct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, promptText, config })
-      });
-      if (!response.ok) throw new Error("本地服务不可用");
-      result = await response.json();
-    } catch {
+      result = await apiJson("/api/audio-direct", { title, promptText, config }, config);
+    } catch (error) {
+      if (getRelayBaseUrl(config)) {
+        throw new Error(`后端中转不可用：${error.message}`);
+      }
       result = await runDirectAudioPipeline({ title, promptText, config });
     }
 
-    const links = result.links || {};
+    const links = normalizeResultLinks(result, payload.config);
     $("#directResultBox").classList.remove("hidden");
     $("#directResultBox").innerHTML = `
       <strong>${result.title}</strong><br />
@@ -2248,13 +2315,23 @@ async function testNetworkRoutes() {
     const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
     const labels = ["GPT", "Gemini", "豆包文本", "豆包音频"];
     if (config.network?.relayBaseUrl) labels.push("中转服务");
-    const results = [];
-    for (const label of labels) {
-      results.push(await probeNetwork(label, getProbeUrl(label, config), timeoutMs));
+    let results = [];
+    let serverManaged = null;
+    if (getRelayBaseUrl(config)) {
+      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "豆包音频", "Grok"] }, config);
+      results = serverResult.results || [];
+      serverManaged = serverResult.serverManaged;
+    } else {
+      for (const label of labels) {
+        results.push(await probeNetwork(label, getProbeUrl(label, config), timeoutMs));
+      }
     }
+    const serverSummary = serverManaged ? `
+      <p class="ok"><strong>后端中转</strong>：已连接。服务端 Key 状态：豆包文本 ${serverManaged.doubao?.hasApiKey ? "已配置" : "未配置"}，豆包音频 ${serverManaged.audio?.hasApiKey ? "已配置" : "未配置"}。</p>
+    ` : "";
     $("#networkStatus").innerHTML = results.map((item) => `
       <p class="${item.ok ? "ok" : "fail"}"><strong>${item.label}</strong>：${item.message}</p>
-    `).join("");
+    `).join("") + serverSummary;
     showToast("联网诊断完成。", "ok");
   } catch (error) {
     $("#networkStatus").innerHTML = `<p class="fail">诊断失败：${error.message}</p>`;
@@ -2502,13 +2579,11 @@ function midnightSystemPrompt() {
 
 async function callGrokRewrite(source, config) {
   try {
-    const response = await fetch("/api/midnight-nekomata", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, config })
-    });
-    if (response.ok) return response.json();
-  } catch {
+    return await apiJson("/api/midnight-nekomata", { source, config }, config);
+  } catch (error) {
+    if (getRelayBaseUrl(config)) {
+      throw new Error(`后端中转不可用：${error.message}`);
+    }
     // Android packaged app has no local Node service; fall back to direct API below.
   }
   const grok = config.grok || {};
@@ -2603,20 +2678,20 @@ function saveLocalHistory(item) {
 
 async function loadHistory() {
   const box = $("#historyList");
+  const config = getConfig();
   setButtonBusy("#refreshHistory", true, "刷新中...");
   try {
     box.innerHTML = "<p>正在读取历史...</p>";
     let serverHistory = [];
     try {
-      const response = await fetch("/api/history");
-      serverHistory = await response.json();
+      serverHistory = await apiGetJson("/api/history", config);
     } catch {
       serverHistory = [];
     }
     const localHistory = readLocalHistory();
     const merged = [...serverHistory, ...localHistory].filter((item, index, arr) =>
       arr.findIndex((other) => other.jobId === item.jobId) === index
-    );
+    ).map((item) => normalizeHistoryItem(item, config));
 
     if (!merged.length) {
       box.innerHTML = "<p>还没有创作记录。完成一次自动生成后，这里会出现脚本、提示词和音频下载入口。</p>";
@@ -2654,7 +2729,7 @@ async function loadPlan() {
   const planStrip = $("#planStrip");
   if (!planStrip) return;
   try {
-    const plan = await fetch("/api/plan").then((res) => res.json());
+    const plan = await apiGetJson("/api/plan");
     planStrip.innerHTML = `
       <h3>${plan.title}</h3>
       <ol>${plan.stages.map((stage) => `<li>${stage}</li>`).join("")}</ol>
@@ -2712,21 +2787,18 @@ async function runPipeline() {
     payload.config.voiceReferences = getVoiceReferences();
     let result;
     try {
-      const response = await fetch("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) throw new Error("本地服务不可用");
-      result = await response.json();
-    } catch {
+      result = await apiJson("/api/run", payload, payload.config);
+    } catch (error) {
+      if (getRelayBaseUrl(payload.config)) {
+        throw new Error(`后端中转不可用：${error.message}`);
+      }
       result = await runStandalonePipeline(payload);
     }
 
     renderStages(false, stageNames.length);
     $("#runStatus").textContent = "已完成";
 
-    const links = result.links || {};
+    const links = normalizeResultLinks(result, payload.config);
     $("#resultBox").classList.remove("hidden");
     $("#resultBox").innerHTML = `
       <strong>${result.title}</strong><br />

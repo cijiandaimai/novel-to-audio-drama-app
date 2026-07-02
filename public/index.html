@@ -553,8 +553,8 @@
             </section>
 
             <section class="panel provider network-panel">
-              <h3>网络与线路：大陆用户友好</h3>
-              <p>App 不内置 VPN；会优先尊重手机系统 VPN、代理和你填写的中转接口。这里用于快速套用线路、设置超时重试和诊断域名是否可达。</p>
+              <h3>后端中转与网络</h3>
+              <p>参考 AI App Lab / Arkitect 的服务端编排思路，正式使用建议把 Key 放在自己的后端。App 不内置 VPN，会尊重系统 VPN、代理和你填写的中转接口。</p>
               <label>地区预设
                 <select data-config="network.profile">
                   <option value="china">中国大陆优先：豆包直连，海外模型走系统 VPN/中转</option>
@@ -562,7 +562,7 @@
                   <option value="custom">自定义：我自己填写全部接口</option>
                 </select>
               </label>
-              <label>API 中转地址（可选）<input data-config="network.relayBaseUrl" placeholder="例如 https://你的中转服务.example.com" /></label>
+              <label>后端中转地址（可选）<input data-config="network.relayBaseUrl" placeholder="例如 https://你的中转服务.example.com" /></label>
               <label>请求超时（秒）<input data-config="network.timeoutSeconds" type="number" min="10" max="300" placeholder="120" /></label>
               <label>失败重试次数<input data-config="network.retryCount" type="number" min="0" max="5" placeholder="1" /></label>
               <div class="actions">
@@ -571,7 +571,7 @@
                 <button id="testNetwork" class="primary">联网诊断</button>
               </div>
               <div id="networkStatus" class="network-status"></div>
-              <div class="tutorial">提示：Android 上系统 VPN 会自动接管 App 流量。若 OpenAI/Gemini 无法直连，建议开启系统 VPN 后再测；若仍失败，可把接口地址改成自己的 HTTPS 中转服务。</div>
+              <div class="tutorial">填了中转地址后，创作、直接生成音频、历史和联网诊断都会优先请求后端的 /api 接口；中转失败时不会偷偷改走本机直连，避免付费 Key 暴露在 APK 里。</div>
             </section>
 
             <section class="panel provider mature-provider" id="grokProvider">
