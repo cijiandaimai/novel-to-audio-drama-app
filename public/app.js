@@ -48,6 +48,14 @@ const stageNames = [
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
+const routeViews = ["discover", "create", "editor", "config", "history"];
+const viewLabels = {
+  discover: "音箱",
+  create: "创作",
+  editor: "剪辑",
+  config: "API 配置",
+  history: "创作历史"
+};
 const playerBgKey = "playerBackgroundImage";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const playerState = {
@@ -260,24 +268,71 @@ function readLocalHistory() {
   }
 }
 
-function showView(name) {
+function normalizeView(name) {
+  return routeViews.includes(name) ? name : "discover";
+}
+
+function getViewFromLocation() {
+  const hash = decodeURIComponent(window.location.hash || "").replace(/^#\/?/, "");
+  if (routeViews.includes(hash)) return hash;
+  const queryView = new URLSearchParams(window.location.search).get("view");
+  return normalizeView(queryView);
+}
+
+function getRouteHref(name) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("view");
+  const view = normalizeView(name);
+  url.hash = view === "discover" ? "" : view;
+  return url.href;
+}
+
+function syncRoute(name, mode = "push") {
+  if (!window.history?.pushState) return;
+  const href = getRouteHref(name);
+  if (href === window.location.href) return;
+  window.history[mode === "replace" ? "replaceState" : "pushState"]({ view: normalizeView(name) }, "", href);
+}
+
+function closeTransientSurfaces() {
+  if (isPlayerFullscreen()) exitPlayerFullscreen();
+  const midnightModal = $("#midnightModal");
+  if (midnightModal && !midnightModal.classList.contains("hidden")) setMidnightModal(false);
+  if (document.body.dataset.view === "editor" && $("[data-editor-drawer].active")) setEditorPanel("");
+}
+
+function showView(name, options = {}) {
+  const viewName = normalizeView(name);
+  if (options.updateHistory !== false) syncRoute(viewName);
+  closeTransientSurfaces();
   if (isPlayerFullscreen()) exitPlayerFullscreen();
   if (document.body.dataset.view === "editor") setEditorPanel("");
-  document.body.dataset.view = name;
-  $$(".view").forEach((view) => view.classList.toggle("active", view.id === name));
-  const navView = name === "config" || name === "history" ? "discover" : name;
+  document.body.dataset.view = viewName;
+  $$(".view").forEach((view) => view.classList.toggle("active", view.id === viewName));
+  const navView = viewName === "config" || viewName === "history" ? "discover" : viewName;
   $$(".nav-item").forEach((item) => {
     const active = item.dataset.view === navView;
     item.classList.toggle("active", active);
     item.setAttribute("aria-current", active ? "page" : "false");
   });
-  const activeView = $(`#${name}`);
+  const activeView = $(`#${viewName}`);
   requestAnimationFrame(() => {
     window.scrollTo({ top: 0, behavior: "smooth" });
     activeView?.scrollIntoView({ block: "start" });
   });
-  if (name === "history") loadHistory();
-  if (name === "editor") requestAnimationFrame(renderWaveform);
+  if (viewName === "history") loadHistory();
+  if (viewName === "editor") requestAnimationFrame(renderWaveform);
+  if (options.announce) showToast(`已切换到${viewLabels[viewName] || "页面"}。`, "ok");
+}
+
+function initRouteNavigation() {
+  if ("scrollRestoration" in window.history) window.history.scrollRestoration = "manual";
+  const initialView = getViewFromLocation();
+  syncRoute(initialView, "replace");
+  showView(initialView, { updateHistory: false });
+  window.addEventListener("popstate", () => {
+    showView(getViewFromLocation(), { updateHistory: false, announce: true });
+  });
 }
 
 
@@ -868,17 +923,44 @@ function pushEditorHistory() {
 
 function undoEditor() {
   if (!editorState.undoStack.length) {
-    undoTrackImport(editorState.activeTrackId, { silent: true });
+    const track = getActiveTrack();
+    if (track.sourceHistory?.length) {
+      undoTrackImport(track.id);
+    } else {
+      showToast("没有可撤销的剪辑操作。", "fail");
+    }
     return;
   }
   editorState.redoStack.push(snapshotEditor());
   restoreEditor(editorState.undoStack.pop());
+  showToast("已撤销上一步。", "ok");
 }
 
 function redoEditor() {
-  if (!editorState.redoStack.length) return;
+  if (!editorState.redoStack.length) {
+    showToast("没有可重做的剪辑操作。", "fail");
+    return;
+  }
   editorState.undoStack.push(snapshotEditor());
   restoreEditor(editorState.redoStack.pop());
+  showToast("已重做上一步。", "ok");
+}
+
+function isTextEditingTarget(target) {
+  return !!target?.closest?.("input, textarea, select, [contenteditable='true']");
+}
+
+function handleEditorShortcut(event) {
+  if (document.body.dataset.view !== "editor" || isTextEditingTarget(event.target)) return;
+  const key = event.key.toLowerCase();
+  const modifier = event.ctrlKey || event.metaKey;
+  if (!modifier || event.altKey) return;
+  const isUndo = key === "z" && !event.shiftKey;
+  const isRedo = key === "y" || (key === "z" && event.shiftKey);
+  if (!isUndo && !isRedo) return;
+  event.preventDefault();
+  if (isUndo) undoEditor();
+  if (isRedo) redoEditor();
 }
 
 function snapTime(value) {
@@ -2764,6 +2846,7 @@ function bindEvents() {
   $("#playerArt").addEventListener("touchend", exitPlayerFullscreenOnTouchEnd);
   document.addEventListener("fullscreenchange", syncPlayerFullscreenUi);
   document.addEventListener("keydown", handlePlayerFullscreenKey);
+  document.addEventListener("keydown", handleEditorShortcut);
   $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
@@ -2816,5 +2899,6 @@ renderWaveform();
 loadPlan();
 updateMidnightState();
 bindEvents();
+initRouteNavigation();
 syncPlayerFullscreenUi();
 syncTimelineControls();
