@@ -72,6 +72,8 @@ const playerState = {
   lyricFormatLabel: "",
   activeLyricIndex: -1,
   activeWordIndex: -1,
+  seeking: false,
+  lastLyricScrollIndex: -1,
   lastFullscreenTapAt: 0,
   fullscreenPointerStartY: 0
 };
@@ -654,6 +656,7 @@ function resetPlayerLyrics() {
   playerState.lyricFormatLabel = "";
   playerState.activeLyricIndex = -1;
   playerState.activeWordIndex = -1;
+  playerState.lastLyricScrollIndex = -1;
   renderLyrics();
 }
 
@@ -699,15 +702,19 @@ async function resolvePlaylistSrc(item) {
   return item.src;
 }
 
-async function playPlaylistItem(id) {
+async function loadPlaylistItem(id, { autoplay = false } = {}) {
   const item = playerState.playlist.find((entry) => entry.id === id);
   if (!item) return;
   try {
     const src = await resolvePlaylistSrc(item);
-    playInApp(src, item.title, { playlistItem: item, addToPlaylist: false });
+    playInApp(src, item.title, { playlistItem: item, addToPlaylist: false, autoplay });
   } catch (error) {
     showToast(error.message, "fail");
   }
+}
+
+async function playPlaylistItem(id) {
+  await loadPlaylistItem(id, { autoplay: true });
 }
 
 function playNextPlaylistItem() {
@@ -717,12 +724,34 @@ function playNextPlaylistItem() {
   playPlaylistItem(playerState.playlist[index + 1].id);
 }
 
+function playPreviousPlaylistItem() {
+  const player = $("#mainPlayer");
+  if (player?.currentTime > 3) {
+    player.currentTime = 0;
+    syncLyrics(0);
+    syncPlayerControls();
+    return;
+  }
+  if (!playerState.playlist.length || !playerState.currentPlaylistId) return;
+  const index = playerState.playlist.findIndex((item) => item.id === playerState.currentPlaylistId);
+  if (index > 0) playPlaylistItem(playerState.playlist[index - 1].id);
+}
+
 async function removePlaylistItem(id) {
   const item = playerState.playlist.find((entry) => entry.id === id);
   playerState.playlist = playerState.playlist.filter((entry) => entry.id !== id);
   if (playerState.currentPlaylistId === id) {
     playerState.currentPlaylistId = "";
+    const player = $("#mainPlayer");
+    if (player) {
+      player.pause();
+      player.removeAttribute("src");
+      player.load();
+    }
+    $("#playerTitle").textContent = "选择一段广播剧开始收听";
+    resetPlayerLyrics();
     updatePlayerPathLabel();
+    syncPlayerControls();
   }
   saveAndRenderPlayerPlaylist();
   if (item?.sourceType === "local") await deletePlayerMediaBlob(item.blobId);
@@ -734,7 +763,16 @@ async function clearPlayerPlaylist() {
     .map((item) => item.blobId);
   playerState.playlist = [];
   playerState.currentPlaylistId = "";
+  const player = $("#mainPlayer");
+  if (player) {
+    player.pause();
+    player.removeAttribute("src");
+    player.load();
+  }
+  $("#playerTitle").textContent = "选择一段广播剧开始收听";
+  resetPlayerLyrics();
   saveAndRenderPlayerPlaylist();
+  syncPlayerControls();
   await Promise.all(localBlobIds.map((id) => deletePlayerMediaBlob(id)));
   showToast("播放列表已清空。", "ok");
 }
@@ -744,6 +782,53 @@ function formatLyricTime(seconds) {
   const minute = Math.floor(safe / 60);
   const second = Math.floor(safe % 60);
   return `${minute}:${String(second).padStart(2, "0")}`;
+}
+
+function syncPlayerControls() {
+  const player = $("#mainPlayer");
+  if (!player) return;
+  const duration = Number.isFinite(player.duration) ? player.duration : 0;
+  const currentTime = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+  const seek = $("#playerSeek");
+  const playPause = $("#playerPlayPause");
+  const currentLabel = $("#playerCurrentTime");
+  const durationLabel = $("#playerDuration");
+  const hasSource = Boolean(player.currentSrc || player.src);
+  if (currentLabel) currentLabel.textContent = formatLyricTime(currentTime);
+  if (durationLabel) durationLabel.textContent = duration ? formatLyricTime(duration) : "0:00";
+  if (seek) {
+    seek.max = String(Math.max(1, duration || 1));
+    if (!playerState.seeking) seek.value = String(Math.min(currentTime, Number(seek.max) || 1));
+    seek.disabled = !hasSource;
+  }
+  if (playPause) {
+    playPause.textContent = player.paused ? "播放" : "暂停";
+    playPause.disabled = !hasSource && !playerState.playlist.length;
+  }
+  const index = playerState.playlist.findIndex((item) => item.id === playerState.currentPlaylistId);
+  const hasPlaylist = playerState.playlist.length > 0;
+  const prev = $("#playerPrev");
+  const next = $("#playerNext");
+  if (prev) prev.disabled = !hasPlaylist || index <= 0;
+  if (next) next.disabled = !hasPlaylist || index < 0 || index >= playerState.playlist.length - 1;
+}
+
+async function togglePlayerPlayback() {
+  const player = $("#mainPlayer");
+  if (!player) return;
+  if (!(player.currentSrc || player.src)) {
+    const firstId = playerState.currentPlaylistId || playerState.playlist[0]?.id;
+    if (firstId) await playPlaylistItem(firstId);
+    else showToast("请先导入音频。", "fail");
+    syncPlayerControls();
+    return;
+  }
+  if (player.paused) {
+    await player.play().catch(() => showToast("播放失败，请重新选择音频。", "fail"));
+  } else {
+    player.pause();
+  }
+  syncPlayerControls();
 }
 
 function parseLyricTime(raw) {
@@ -966,6 +1051,17 @@ function updateLyricWordFill(lineElement, line, currentTime) {
   });
 }
 
+function scrollActiveLyric(lineElement) {
+  const panel = $("#lyricPanel");
+  if (!panel || !lineElement) return;
+  const targetTop = lineElement.offsetTop - (panel.clientHeight / 2) + (lineElement.offsetHeight / 2);
+  const maxTop = Math.max(0, panel.scrollHeight - panel.clientHeight);
+  panel.scrollTo({
+    top: Math.max(0, Math.min(maxTop, targetTop)),
+    behavior: "smooth"
+  });
+}
+
 function syncLyrics(currentTime = 0) {
   if (!playerState.lyrics.length) return;
   let activeIndex = 0;
@@ -983,11 +1079,14 @@ function syncLyrics(currentTime = 0) {
     const lyricLine = playerState.lyrics[lineIndex];
     line.classList.toggle("active", active);
     updateLyricWordFill(line, lyricLine, active ? currentTime : (lineIndex < activeIndex ? Number.POSITIVE_INFINITY : 0));
-    if (active && lyricChanged) line.scrollIntoView({ block: "center", behavior: "smooth" });
+    if (active && lyricChanged) {
+      playerState.lastLyricScrollIndex = activeIndex;
+      scrollActiveLyric(line);
+    }
   });
 }
 
-async function importPlayerAudio(file, { play = true } = {}) {
+async function importPlayerAudio(file, { play = false, select = false } = {}) {
   if (!file) return;
   const blobId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const item = createPlaylistItem({
@@ -1007,6 +1106,7 @@ async function importPlayerAudio(file, { play = true } = {}) {
   const saved = upsertPlaylistItem(item);
   saveAndRenderPlayerPlaylist();
   if (play) await playPlaylistItem(saved.id);
+  else if (select || !playerState.currentPlaylistId) await loadPlaylistItem(saved.id, { autoplay: false });
   showToast(`已加入播放列表：${file.name}`, "ok");
 }
 
@@ -1021,6 +1121,7 @@ async function importLyrics(file) {
   playerState.lyricFormatLabel = parsed.label;
   playerState.activeLyricIndex = -1;
   playerState.activeWordIndex = -1;
+  playerState.lastLyricScrollIndex = -1;
   renderLyrics();
   if (!lines.length) {
     $("#lyricPanel").innerHTML = `<p id="lyricCurrent">没有识别到可同步的时间戳。当前支持普通 LRC、逐字 LRC 和明文 KRC，部分加密 KRC 需要先转换成文本。</p>`;
@@ -1185,6 +1286,7 @@ function playInApp(src, title, options = {}) {
   const playerTitle = $("#playerTitle");
   if (!player || !src) return;
   const previousPlaylistId = playerState.currentPlaylistId;
+  const shouldAutoplay = options.autoplay !== false;
   player.src = src;
   playerState.audioUrl = src;
   playerTitle.textContent = title || "正在播放广播剧";
@@ -1213,10 +1315,21 @@ function playInApp(src, title, options = {}) {
   }
   playerState.activeLyricIndex = -1;
   playerState.activeWordIndex = -1;
+  playerState.lastLyricScrollIndex = -1;
   syncLyrics(0);
-  player.play().catch(() => {
-    playerTitle.textContent = `${title || "广播剧"}（点击播放）`;
-  });
+  syncPlayerControls();
+  if (!shouldAutoplay) {
+    player.pause();
+    player.load();
+    syncPlayerControls();
+    return;
+  }
+  player.play()
+    .then(syncPlayerControls)
+    .catch(() => {
+      playerTitle.textContent = `${title || "广播剧"}（点击播放）`;
+      syncPlayerControls();
+    });
 }
 
 function fileToDataUrl(file) {
@@ -3403,7 +3516,7 @@ function bindEvents() {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
     for (const [index, file] of files.entries()) {
-      await importPlayerAudio(file, { play: index === 0 });
+      await importPlayerAudio(file, { play: false, select: index === 0 });
     }
     event.target.value = "";
   });
@@ -3437,7 +3550,33 @@ function bindEvents() {
   document.addEventListener("touchcancel", () => {
     routeSwipe = null;
   }, { passive: true });
-  $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
+  $("#playerPlayPause").addEventListener("click", togglePlayerPlayback);
+  $("#playerPrev").addEventListener("click", playPreviousPlaylistItem);
+  $("#playerNext").addEventListener("click", playNextPlaylistItem);
+  $("#playerSeek").addEventListener("input", (event) => {
+    const player = $("#mainPlayer");
+    if (!player) return;
+    playerState.seeking = true;
+    player.currentTime = Number(event.target.value) || 0;
+    syncLyrics(player.currentTime);
+    syncPlayerControls();
+  });
+  $("#playerSeek").addEventListener("change", () => {
+    playerState.seeking = false;
+    syncPlayerControls();
+  });
+  $("#playerVolume").addEventListener("input", (event) => {
+    const player = $("#mainPlayer");
+    if (player) player.volume = Math.max(0, Math.min(1, Number(event.target.value) || 0));
+  });
+  $("#mainPlayer").addEventListener("timeupdate", (event) => {
+    syncLyrics(event.target.currentTime);
+    syncPlayerControls();
+  });
+  $("#mainPlayer").addEventListener("loadedmetadata", syncPlayerControls);
+  $("#mainPlayer").addEventListener("durationchange", syncPlayerControls);
+  $("#mainPlayer").addEventListener("play", syncPlayerControls);
+  $("#mainPlayer").addEventListener("pause", syncPlayerControls);
   $("#mainPlayer").addEventListener("ended", playNextPlaylistItem);
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
@@ -3491,6 +3630,7 @@ renderWaveform();
 loadPlan();
 updateMidnightState();
 bindEvents();
+syncPlayerControls();
 initRouteNavigation();
 registerNativeBackHandler();
 syncPlayerFullscreenUi();

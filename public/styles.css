@@ -1365,6 +1365,7 @@ body[data-view="editor"] .main {
 .player-art:fullscreen .midnight-cat-button,
 .player-art:fullscreen .speaker-now,
 .player-art:fullscreen #mainPlayer,
+.player-art:fullscreen .player-controls,
 .player-art:fullscreen .player-actions,
 .player-art:fullscreen .player-more,
 .player-art:fullscreen .player-meta-row,
@@ -1372,6 +1373,7 @@ body[data-view="editor"] .main {
 .player-art.is-player-fullscreen .midnight-cat-button,
 .player-art.is-player-fullscreen .speaker-now,
 .player-art.is-player-fullscreen #mainPlayer,
+.player-art.is-player-fullscreen .player-controls,
 .player-art.is-player-fullscreen .player-actions,
 .player-art.is-player-fullscreen .player-more,
 .player-art.is-player-fullscreen .player-meta-row,
@@ -1457,7 +1459,74 @@ body[data-view="editor"] .main {
 }
 
 #mainPlayer {
+  display: none;
+}
+
+.player-controls {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(255, 250, 238, 0.22);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.26);
+  backdrop-filter: blur(12px);
+}
+
+.player-progress-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
+  gap: 10px;
+  align-items: center;
+  color: rgba(255, 250, 238, 0.78);
+  font-size: 12px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.player-progress-row span:last-child {
+  text-align: right;
+}
+
+.player-progress-row input,
+.player-volume input {
   width: 100%;
+  accent-color: #efd7aa;
+}
+
+.player-control-row {
+  display: grid;
+  grid-template-columns: 74px minmax(96px, 1fr) 74px minmax(88px, 0.72fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.player-skip-button,
+.player-play-toggle {
+  min-height: 42px;
+  border: 1px solid rgba(255, 250, 238, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 250, 238, 0.12);
+  color: #fffaf0;
+  font-weight: 900;
+}
+
+.player-play-toggle {
+  background: #fffaf0;
+  color: #3d3328;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.2);
+}
+
+.player-skip-button:disabled,
+.player-play-toggle:disabled {
+  opacity: 0.45;
+}
+
+.player-volume {
+  display: grid;
+  gap: 4px;
+  color: rgba(255, 250, 238, 0.78);
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .player-meta-row {
@@ -1906,6 +1975,14 @@ body[data-view="editor"] .main {
 
   .player-actions {
     grid-template-columns: 1fr;
+  }
+
+  .player-control-row {
+    grid-template-columns: 1fr 1.2fr 1fr;
+  }
+
+  .player-volume {
+    grid-column: 1 / -1;
   }
 
   .speaker-stage .player-art {
