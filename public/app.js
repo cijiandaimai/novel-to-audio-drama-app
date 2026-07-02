@@ -236,6 +236,7 @@ function getByPath(object, path) {
 }
 
 let toastTimer = null;
+let routeSwipe = null;
 
 function showToast(message, type = "") {
   const toast = $("#appToast");
@@ -299,12 +300,38 @@ function syncRoute(name, mode = "push") {
   window.history[mode === "replace" ? "replaceState" : "pushState"]({ appRoute: true, view }, "", href);
 }
 
+function closeApiHelpPanels(exceptKey = "") {
+  let closed = false;
+  $$(".api-help:not(.hidden)").forEach((panel) => {
+    const key = panel.dataset.apiHelpPanel;
+    if (key === exceptKey) return;
+    panel.classList.add("hidden");
+    $(`.api-help-button[data-api-help="${key}"]`)?.setAttribute("aria-expanded", "false");
+    closed = true;
+  });
+  return closed;
+}
+
+function hasTransientSurface() {
+  const midnightModal = $("#midnightModal");
+  return isPlayerFullscreen()
+    || !!$(".player-more[open]")
+    || !!$(".api-help:not(.hidden)")
+    || !!(midnightModal && !midnightModal.classList.contains("hidden"))
+    || (document.body.dataset.view === "editor" && !!$("[data-editor-drawer].active"));
+}
+
 function closeTransientSurfaces() {
   let closed = false;
   if (isPlayerFullscreen()) {
     exitPlayerFullscreen();
     closed = true;
   }
+  $$(".player-more[open]").forEach((details) => {
+    details.open = false;
+    closed = true;
+  });
+  if (closeApiHelpPanels()) closed = true;
   const midnightModal = $("#midnightModal");
   if (midnightModal && !midnightModal.classList.contains("hidden")) {
     setMidnightModal(false);
@@ -368,7 +395,7 @@ function goHomeFromBack() {
   showView(homeView, { historyMode: "replace", announce: true });
 }
 
-function handleNativeBackButton(event = {}) {
+function performBackNavigation(event = {}) {
   if (closeTransientSurfaces()) return;
   const currentView = normalizeView(document.body.dataset.view);
   if (currentView !== homeView) {
@@ -382,7 +409,7 @@ function handleNativeBackButton(event = {}) {
 
   const now = Date.now();
   const app = getCapacitorAppPlugin();
-  if (now - lastHomeBackAt < 1600 && app?.exitApp) {
+  if (event.allowExit !== false && now - lastHomeBackAt < 1600 && app?.exitApp) {
     app.exitApp();
     return;
   }
@@ -390,10 +417,45 @@ function handleNativeBackButton(event = {}) {
   showToast("已在首页，再按一次返回退出。");
 }
 
+function handleNativeBackButton(event = {}) {
+  performBackNavigation({ ...event, allowExit: true });
+}
+
 function registerNativeBackHandler() {
   const app = getCapacitorAppPlugin();
   if (!app?.addListener) return;
   app.addListener("backButton", handleNativeBackButton);
+}
+
+function isRouteSwipeTarget(target) {
+  if (document.body.classList.contains("player-fullscreen-lock")) return true;
+  return !target?.closest?.("input, textarea, select, audio, button, a, canvas, [data-editor-drawer], .waveform-wrap, .modal-panel");
+}
+
+function handleRouteSwipeStart(event) {
+  const touch = event.touches?.[0];
+  if (!touch || !isRouteSwipeTarget(event.target)) return;
+  routeSwipe = {
+    x: touch.clientX,
+    y: touch.clientY,
+    time: Date.now()
+  };
+}
+
+function handleRouteSwipeEnd(event) {
+  if (!routeSwipe) return;
+  const touch = event.changedTouches?.[0];
+  const start = routeSwipe;
+  routeSwipe = null;
+  if (!touch) return;
+  const dx = touch.clientX - start.x;
+  const dy = Math.abs(touch.clientY - start.y);
+  const elapsed = Date.now() - start.time;
+  const fromEdge = start.x <= 42;
+  if (fromEdge && dx > 72 && dy < 54 && elapsed < 700) {
+    if (normalizeView(document.body.dataset.view) === homeView && !hasTransientSurface()) return;
+    performBackNavigation({ canGoBack: window.history.length > 1, allowExit: false });
+  }
 }
 
 
@@ -2749,6 +2811,8 @@ function bindEvents() {
       await loadEditorFile(file, "A");
     } catch (error) {
       showToast(`音频读取失败：${error.message}`, "fail");
+    } finally {
+      event.target.value = "";
     }
   });
   $("#editorAudioFileB").addEventListener("change", async (event) => {
@@ -2758,6 +2822,8 @@ function bindEvents() {
       await loadEditorFile(file, "B");
     } catch (error) {
       showToast(`音频读取失败：${error.message}`, "fail");
+    } finally {
+      event.target.value = "";
     }
   });
   $$("[data-select-track]").forEach((button) => button.addEventListener("click", () => setActiveTrack(button.dataset.selectTrack)));
@@ -2849,6 +2915,9 @@ function bindEvents() {
   $("#midnightCatButton").addEventListener("click", openMidnightGate);
   $("#openMidnightGateFromConfig").addEventListener("click", openMidnightGate);
   $("#closeMidnightModal").addEventListener("click", () => setMidnightModal(false));
+  $("#midnightModal").addEventListener("click", (event) => {
+    if (event.target.id === "midnightModal") setMidnightModal(false);
+  });
   $("#submitMidnightQuiz").addEventListener("click", submitMidnightQuiz);
   $("#lockMidnightMode").addEventListener("click", lockMidnightMode);
   $("#runMidnightRewrite").addEventListener("click", runMidnightRewrite);
@@ -2858,9 +2927,14 @@ function bindEvents() {
     if (helpButton) {
       const key = helpButton.dataset.apiHelp;
       const panel = $(`[data-api-help-panel="${key}"]`);
-      const open = panel?.classList.toggle("hidden") === false;
+      const open = panel?.classList.contains("hidden") === true;
+      closeApiHelpPanels(key);
+      panel?.classList.toggle("hidden", !open);
       helpButton.setAttribute("aria-expanded", open ? "true" : "false");
       return;
+    }
+    if (!event.target.closest(".api-input-row, .api-help")) {
+      closeApiHelpPanels();
     }
     const removeVoiceRefButton = event.target.closest("[data-remove-voice-ref]");
     if (removeVoiceRefButton) {
@@ -2908,6 +2982,11 @@ function bindEvents() {
   document.addEventListener("fullscreenchange", syncPlayerFullscreenUi);
   document.addEventListener("keydown", handlePlayerFullscreenKey);
   document.addEventListener("keydown", handleEditorShortcut);
+  document.addEventListener("touchstart", handleRouteSwipeStart, { passive: true });
+  document.addEventListener("touchend", handleRouteSwipeEnd, { passive: true });
+  document.addEventListener("touchcancel", () => {
+    routeSwipe = null;
+  }, { passive: true });
   $("#mainPlayer").addEventListener("timeupdate", (event) => syncLyrics(event.target.currentTime));
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
