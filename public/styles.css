@@ -910,6 +910,48 @@ textarea {
   padding: 6px 9px;
 }
 
+.editor-clip-tool-strip {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.editor-clip-tool-strip button {
+  min-height: 34px;
+  padding: 6px 8px;
+}
+
+.editor-clip-inspector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.editor-clip-inspector label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 44px;
+  gap: 7px;
+  align-items: center;
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid rgba(78, 73, 60, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.68);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.editor-clip-inspector input[type="range"] {
+  min-height: 24px;
+  padding: 0;
+}
+
+.editor-clip-inspector span {
+  color: var(--ink);
+  text-align: right;
+}
+
 .secondary.danger {
   color: var(--accent-dark);
   border-color: rgba(111, 31, 27, 0.28);
@@ -2428,6 +2470,14 @@ body[data-view="editor"] .main {
 
   .selected-clip-actions {
     grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .editor-clip-tool-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .editor-clip-inspector {
+    grid-template-columns: 1fr;
   }
 
   .selected-clip-actions button {

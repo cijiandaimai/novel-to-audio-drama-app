@@ -315,6 +315,7 @@ const editorState = {
   sourceName: "",
   clips: [],
   selectedClipId: "",
+  clipboardClip: null,
   pickNext: "start",
   clipTimer: null,
   playingNodes: [],
@@ -3026,6 +3027,21 @@ function handleEditorShortcut(event) {
     }
   }
   if (!modifier || event.altKey) return;
+  if (key === "c" && selectedClip) {
+    event.preventDefault();
+    copySelectedClip();
+    return;
+  }
+  if (key === "x" && selectedClip) {
+    event.preventDefault();
+    cutSelectedClip();
+    return;
+  }
+  if (key === "v") {
+    event.preventDefault();
+    pasteClipAtPlayhead();
+    return;
+  }
   const isUndo = key === "z" && !event.shiftKey;
   const isRedo = key === "y" || (key === "z" && event.shiftKey);
   if (!isUndo && !isRedo) return;
@@ -3218,10 +3234,143 @@ function updateSelectedClipControls(selectedClip = getSelectedClip()) {
       ? `${selectedClip.name}｜${formatSeconds(selectedClip.timelineStart)}｜${formatSeconds(selectedClip.sourceEnd - selectedClip.sourceStart)}`
       : "未选中片段";
   }
-  ["#quickPreviewClip", "#nudgeClipLeft", "#nudgeClipRight", "#duplicateSelectedClip", "#deleteSelectedClip"].forEach((selector) => {
+  [
+    "#quickPreviewClip",
+    "#nudgeClipLeft",
+    "#nudgeClipRight",
+    "#duplicateSelectedClip",
+    "#deleteSelectedClip",
+    "#copySelectedClip",
+    "#cutSelectedClip",
+    "#toggleSelectedClipMute",
+    "#fadeInSelectedClip",
+    "#fadeOutSelectedClip"
+  ].forEach((selector) => {
     const button = $(selector);
     if (button) button.disabled = !selectedClip;
   });
+  const pasteButton = $("#pasteClipAtPlayhead");
+  if (pasteButton) pasteButton.disabled = !editorState.clipboardClip;
+  const duration = selectedClip ? Math.max(0.1, selectedClip.sourceEnd - selectedClip.sourceStart) : 0;
+  const inspectorFields = [
+    ["#selectedClipVolume", "#selectedClipVolumeLabel", selectedClip?.volume ?? 1, "volume"],
+    ["#selectedClipFadeIn", "#selectedClipFadeInLabel", selectedClip?.fadeIn ?? 0, "fade"],
+    ["#selectedClipFadeOut", "#selectedClipFadeOutLabel", selectedClip?.fadeOut ?? 0, "fade"]
+  ];
+  inspectorFields.forEach(([inputSelector, labelSelector, value, type]) => {
+    const input = $(inputSelector);
+    const output = $(labelSelector);
+    if (input) {
+      input.disabled = !selectedClip;
+      input.max = type === "fade" ? Math.max(0.1, Math.min(5, duration / 2)).toFixed(1) : input.max;
+      input.value = type === "fade" ? Number(value).toFixed(1) : Number(value).toFixed(2);
+    }
+    if (output) output.textContent = type === "fade" ? `${Number(value).toFixed(1)}s` : Number(value).toFixed(2);
+  });
+  const muteButton = $("#toggleSelectedClipMute");
+  if (muteButton && selectedClip) muteButton.textContent = selectedClip.muted ? "取消静音" : "静音";
+}
+
+function getClipDuration(clip) {
+  return Math.max(0, (clip?.sourceEnd || 0) - (clip?.sourceStart || 0));
+}
+
+function ensureClipVisible(clip) {
+  if (!clip) return;
+  const projectDuration = getTimelineDuration();
+  const visible = getVisibleTimelineDuration(projectDuration);
+  const clipStart = clip.timelineStart;
+  const clipEnd = clip.timelineStart + getClipDuration(clip);
+  const viewStart = editorState.timeline.offset;
+  const viewEnd = viewStart + visible;
+  if (clipStart >= viewStart && clipEnd <= viewEnd) return;
+  const nextOffset = clipStart < viewStart
+    ? clipStart - visible * 0.12
+    : clipEnd - visible * 0.88;
+  editorState.timeline.offset = clamp(nextOffset, 0, Math.max(0, projectDuration - visible));
+  syncTimelineControls();
+}
+
+function cloneClipForTimeline(clip, timelineStart = clip.timelineStart, suffix = "") {
+  return {
+    ...clip,
+    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: suffix ? `${clip.name} ${suffix}` : clip.name,
+    timelineStart: Math.max(0, Number(timelineStart) || 0)
+  };
+}
+
+function copySelectedClip({ silent = false } = {}) {
+  const clip = getSelectedClip();
+  if (!clip) {
+    if (!silent) showToast("请先点选一个片段。", "fail");
+    return false;
+  }
+  editorState.clipboardClip = { ...clip };
+  updateSelectedClipControls(clip);
+  if (!silent) showToast("已复制片段，可移动播放头后粘贴。", "ok");
+  return true;
+}
+
+function cutSelectedClip() {
+  if (!copySelectedClip({ silent: true })) return;
+  removeSelectedClip({ silent: true });
+  showToast("已剪切片段，可在播放头位置粘贴。", "ok");
+}
+
+function pasteClipAtPlayhead() {
+  const source = editorState.clipboardClip;
+  if (!source) {
+    showToast("还没有复制片段。", "fail");
+    return;
+  }
+  const trackId = getTrack(source.trackId)?.buffer ? source.trackId : editorState.activeTrackId;
+  if (!getTrack(trackId)?.buffer) {
+    showToast("目标轨道还没有音频，无法粘贴。", "fail");
+    return;
+  }
+  pushEditorHistory();
+  const clip = cloneClipForTimeline({ ...source, trackId }, editorState.timeline.playhead, "粘贴");
+  editorState.clips.push(clip);
+  selectEditorClip(clip);
+  showToast("已粘贴到播放头位置。", "ok");
+}
+
+function setSelectedClipField(field, value, { silent = false } = {}) {
+  const clip = getSelectedClip();
+  if (!clip) {
+    if (!silent) showToast("请先点选一个片段。", "fail");
+    return;
+  }
+  pushEditorHistory();
+  const duration = getClipDuration(clip);
+  if (field === "volume") clip.volume = clamp(Number(value), 0, 2);
+  if (field === "fadeIn") clip.fadeIn = clamp(Number(value), 0, Math.max(0, duration / 2));
+  if (field === "fadeOut") clip.fadeOut = clamp(Number(value), 0, Math.max(0, duration / 2));
+  if (field === "muted") clip.muted = Boolean(value);
+  renderClipList();
+  renderWaveform();
+}
+
+function toggleSelectedClipMute() {
+  const clip = getSelectedClip();
+  if (!clip) {
+    showToast("请先点选一个片段。", "fail");
+    return;
+  }
+  setSelectedClipField("muted", !clip.muted, { silent: true });
+  showToast(clip.muted ? "片段已静音。" : "片段已取消静音。", "ok");
+}
+
+function applySelectedClipFade(type) {
+  const clip = getSelectedClip();
+  if (!clip) {
+    showToast("请先点选一个片段。", "fail");
+    return;
+  }
+  const value = Math.min(1.2, Math.max(0.2, getClipDuration(clip) / 5));
+  setSelectedClipField(type === "in" ? "fadeIn" : "fadeOut", value, { silent: true });
+  showToast(type === "in" ? "已给片段加淡入。" : "已给片段加淡出。", "ok");
 }
 
 function nudgeSelectedClip(direction = 1, multiplier = 1) {
@@ -3244,24 +3393,19 @@ function duplicateSelectedClip() {
     showToast("请先点选一个片段。", "fail");
     return;
   }
-  const duration = Math.max(0.1, clip.sourceEnd - clip.sourceStart);
+  const duration = Math.max(0.1, getClipDuration(clip));
   const gap = editorState.timeline.snap ? Math.max(0.01, Number(editorState.timeline.grid) || 0.5) : 0.25;
   pushEditorHistory();
-  const copy = {
-    ...clip,
-    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: `${clip.name} 副本`,
-    timelineStart: Number((clip.timelineStart + duration + gap).toFixed(2))
-  };
+  const copy = cloneClipForTimeline(clip, Number((clip.timelineStart + duration + gap).toFixed(2)), "副本");
   editorState.clips.push(copy);
   selectEditorClip(copy);
   showToast("已复制到当前片段后方。", "ok");
 }
 
-function removeSelectedClip() {
+function removeSelectedClip({ silent = false } = {}) {
   const clip = getSelectedClip();
   if (!clip) {
-    showToast("请先点选一个片段。", "fail");
+    if (!silent) showToast("请先点选一个片段。", "fail");
     return;
   }
   pushEditorHistory();
@@ -3270,7 +3414,7 @@ function removeSelectedClip() {
   editorState.selectedClipId = editorState.clips[Math.min(index, editorState.clips.length - 1)]?.id || "";
   renderClipList();
   renderWaveform();
-  showToast("已删除片段，可撤销。", "ok");
+  if (!silent) showToast("已删除片段，可撤销。", "ok");
 }
 
 function previewSelectedClip() {
@@ -3290,6 +3434,7 @@ function selectEditorClip(clipOrId, { openPanel = false, notify = false } = {}) 
   editorState.selectedClipId = clip.id;
   setActiveTrack(clip.trackId);
   setClipInputs(clip.sourceStart, clip.sourceEnd, clip.timelineStart);
+  ensureClipVisible(clip);
   setPlayhead(clip.timelineStart);
   if (openPanel) setEditorPanel("clips");
   renderClipList();
@@ -3956,6 +4101,7 @@ function updateClipField(clipId, field, value, checked) {
   const clip = editorState.clips.find((item) => item.id === clipId);
   if (!clip) return;
   pushEditorHistory();
+  editorState.selectedClipId = clip.id;
   if (field === "muted") {
     clip.muted = checked;
   } else if (field === "trackId") {
@@ -5076,6 +5222,24 @@ function bindEvents() {
   $("#nudgeClipRight")?.addEventListener("click", () => nudgeSelectedClip(1));
   $("#duplicateSelectedClip")?.addEventListener("click", duplicateSelectedClip);
   $("#deleteSelectedClip")?.addEventListener("click", removeSelectedClip);
+  $("#copySelectedClip")?.addEventListener("click", copySelectedClip);
+  $("#cutSelectedClip")?.addEventListener("click", cutSelectedClip);
+  $("#pasteClipAtPlayhead")?.addEventListener("click", pasteClipAtPlayhead);
+  $("#toggleSelectedClipMute")?.addEventListener("click", toggleSelectedClipMute);
+  $("#fadeInSelectedClip")?.addEventListener("click", () => applySelectedClipFade("in"));
+  $("#fadeOutSelectedClip")?.addEventListener("click", () => applySelectedClipFade("out"));
+  $("#selectedClipVolume")?.addEventListener("input", (event) => {
+    $("#selectedClipVolumeLabel").textContent = Number(event.target.value || 0).toFixed(2);
+  });
+  $("#selectedClipVolume")?.addEventListener("change", (event) => setSelectedClipField("volume", event.target.value));
+  $("#selectedClipFadeIn")?.addEventListener("input", (event) => {
+    $("#selectedClipFadeInLabel").textContent = `${Number(event.target.value || 0).toFixed(1)}s`;
+  });
+  $("#selectedClipFadeIn")?.addEventListener("change", (event) => setSelectedClipField("fadeIn", event.target.value));
+  $("#selectedClipFadeOut")?.addEventListener("input", (event) => {
+    $("#selectedClipFadeOutLabel").textContent = `${Number(event.target.value || 0).toFixed(1)}s`;
+  });
+  $("#selectedClipFadeOut")?.addEventListener("change", (event) => setSelectedClipField("fadeOut", event.target.value));
   $$("[data-editor-panel]").forEach((button) => {
     button.addEventListener("click", () => setEditorPanel(button.dataset.editorPanel));
   });

@@ -347,9 +347,22 @@
                     <button id="quickPreviewClip" class="secondary" type="button" disabled>试听片段</button>
                     <button id="nudgeClipLeft" class="secondary" type="button" disabled>左挪</button>
                     <button id="nudgeClipRight" class="secondary" type="button" disabled>右挪</button>
-                    <button id="duplicateSelectedClip" class="secondary" type="button" disabled>复制</button>
+                    <button id="duplicateSelectedClip" class="secondary" type="button" disabled>克隆</button>
                     <button id="deleteSelectedClip" class="secondary danger" type="button" disabled>删除</button>
                   </div>
+                </div>
+                <div class="editor-clip-tool-strip" aria-label="片段快捷工具">
+                  <button id="copySelectedClip" class="secondary" type="button" disabled>复制</button>
+                  <button id="cutSelectedClip" class="secondary" type="button" disabled>剪切</button>
+                  <button id="pasteClipAtPlayhead" class="secondary" type="button" disabled>粘贴</button>
+                  <button id="toggleSelectedClipMute" class="secondary" type="button" disabled>静音</button>
+                  <button id="fadeInSelectedClip" class="secondary" type="button" disabled>淡入</button>
+                  <button id="fadeOutSelectedClip" class="secondary" type="button" disabled>淡出</button>
+                </div>
+                <div class="editor-clip-inspector" aria-label="片段混音控制">
+                  <label>音量 <input id="selectedClipVolume" type="range" min="0" max="2" step="0.05" value="1" disabled /><span id="selectedClipVolumeLabel">1.00</span></label>
+                  <label>淡入 <input id="selectedClipFadeIn" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeInLabel">0.0s</span></label>
+                  <label>淡出 <input id="selectedClipFadeOut" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeOutLabel">0.0s</span></label>
                 </div>
               </div>
 
