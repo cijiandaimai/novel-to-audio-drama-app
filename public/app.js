@@ -153,7 +153,7 @@ const apiHelp = {
   "gemini.apiKey": {
     title: "Gemini API Key",
     url: "https://aistudio.google.com/app/apikey",
-    text: "进入 Google AI Studio 的 API Key 页面创建 Key。大陆用户通常需要系统 VPN 或中转线路。"
+    text: "进入 Google AI Studio 的 API Key 页面创建 Key。大陆用户通常需要系统代理或中转线路。"
   },
   "gemini.endpoint": {
     title: "Gemini 自定义接口",
@@ -203,7 +203,7 @@ const apiHelp = {
   "network.timeoutSeconds": {
     title: "请求超时",
     url: "https://github.com/volcengine/ai-app-lab/tree/main/arkitect",
-    text: "大模型和音频生成可能较慢。大陆网络或系统 VPN 下建议 120-180 秒，避免长音频还没生成就被中断。"
+    text: "大模型和音频生成可能较慢。大陆网络或系统代理下建议 120-180 秒，避免长音频还没生成就被中断。"
   },
   "network.retryCount": {
     title: "失败重试次数",
@@ -2850,6 +2850,7 @@ async function runDirectAudio() {
 
 function loadConfigIntoForm() {
   const config = getConfig();
+  if (config.network?.profile === "vpn") config.network.profile = "proxy";
   $$("[data-config]").forEach((field) => {
     field.value = getByPath(config, field.dataset.config) || "";
   });
@@ -2871,23 +2872,24 @@ function saveConfigObject(config) {
 
 function applyNetworkPreset(profile) {
   const config = getConfig();
+  const useProxy = profile === "proxy" || profile === "vpn";
   config.network ||= {};
-  config.network.profile = profile;
-  config.network.timeoutSeconds = profile === "vpn" ? "180" : "120";
-  config.network.retryCount = profile === "vpn" ? "2" : "1";
+  config.network.profile = useProxy ? "proxy" : profile;
+  config.network.timeoutSeconds = useProxy ? "180" : "120";
+  config.network.retryCount = useProxy ? "2" : "1";
   if (profile === "china") {
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
     config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
     config.audio.model = "seed-audio-1.0";
   }
-  if (profile === "vpn") {
+  if (useProxy) {
     config.gpt.baseUrl = "https://api.openai.com/v1/chat/completions";
     config.gemini.endpoint = "";
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
     config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
   }
   saveConfigObject(config);
-  const label = profile === "vpn" ? "系统 VPN 优先" : "中国大陆优先";
+  const label = useProxy ? "系统代理优先" : "中国大陆优先";
   $("#networkStatus").innerHTML = `<p class="ok">已套用「${label}」线路预设，记得保存或继续填写 API Key。</p>`;
   showToast(`已套用「${label}」线路预设。`, "ok");
 }
@@ -3630,7 +3632,7 @@ function bindEvents() {
   });
   $("#exportMix").addEventListener("click", exportEditorMix);
   $("#applyChinaNetwork").addEventListener("click", () => applyNetworkPreset("china"));
-  $("#applyVpnNetwork").addEventListener("click", () => applyNetworkPreset("vpn"));
+  $("#applyVpnNetwork").addEventListener("click", () => applyNetworkPreset("proxy"));
   $("#testNetwork").addEventListener("click", testNetworkRoutes);
   $("#openBluetoothSettings").addEventListener("click", openBluetoothSettings);
   $("#testBluetoothAudio").addEventListener("click", testBluetoothAudio);

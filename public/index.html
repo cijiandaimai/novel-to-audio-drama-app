@@ -571,6 +571,21 @@
           </header>
 
           <div class="config-grid">
+            <section class="panel provider essential-provider">
+              <h3>Doubao-音频生成-1.0</h3>
+              <p>最核心配置：逐段生成对白、音乐、音效和环境声一体化音频。</p>
+              <label>模式
+                <select data-config="audio.mode">
+                  <option value="mock">演示模式：生成静音占位音频</option>
+                  <option value="http">HTTP：调用豆包音频生成接口</option>
+                </select>
+              </label>
+              <label>接口地址<input data-config="audio.endpoint" placeholder="https://openspeech.bytedance.com/api/v3/tts/create" /></label>
+              <label>模型 ID<input data-config="audio.model" placeholder="seed-audio-1.0" /></label>
+              <label>API Key<input data-config="audio.apiKey" type="password" placeholder="豆包语音 API Key" /></label>
+              <div class="tutorial compact">官方音频生成 HTTP 使用 X-Api-Key 鉴权；模型 ID 当前填 seed-audio-1.0。</div>
+            </section>
+
             <section class="panel provider">
               <h3>GPT：总控与剧本</h3>
               <p>用于故事骨架、剧本 1、剧本 2 和音频提示词拆分。</p>
@@ -598,28 +613,13 @@
               <div class="tutorial">在火山方舟开通模型服务并创建 API Key，然后填入模型 ID。</div>
             </section>
 
-            <section class="panel provider">
-              <h3>豆包音频生成：声场导演</h3>
-              <p>逐段生成对白、音乐、音效和环境声一体化音频。</p>
-              <label>模式
-                <select data-config="audio.mode">
-                  <option value="mock">演示模式：生成静音占位音频</option>
-                  <option value="http">HTTP：调用豆包音频生成接口</option>
-                </select>
-              </label>
-              <label>接口地址<input data-config="audio.endpoint" placeholder="https://openspeech.bytedance.com/api/v3/tts/create" /></label>
-              <label>模型 ID<input data-config="audio.model" placeholder="seed-audio-1.0" /></label>
-              <label>API Key<input data-config="audio.apiKey" type="password" placeholder="豆包语音 API Key" /></label>
-              <div class="tutorial">官方音频生成 HTTP 使用 X-Api-Key 鉴权；模型 ID 当前填 seed-audio-1.0，单段最长 120 秒。</div>
-            </section>
-
             <section class="panel provider network-panel">
               <h3>后端中转与网络</h3>
-              <p>参考 AI App Lab / Arkitect 的服务端编排思路，正式使用建议把 Key 放在自己的后端。App 不内置 VPN，会尊重系统 VPN、代理和你填写的中转接口。</p>
+              <p>正式使用建议把 Key 放在自己的后端。App 会尊重系统代理和你填写的中转接口。</p>
               <label>地区预设
                 <select data-config="network.profile">
-                  <option value="china">中国大陆优先：豆包直连，海外模型走系统 VPN/中转</option>
-                  <option value="vpn">系统 VPN 优先：海外模型按官方地址走系统网络</option>
+                  <option value="china">中国大陆优先：豆包直连，海外模型走代理/中转</option>
+                  <option value="proxy">系统代理优先：海外模型按官方地址走系统网络</option>
                   <option value="custom">自定义：我自己填写全部接口</option>
                 </select>
               </label>
@@ -628,7 +628,7 @@
               <label>失败重试次数<input data-config="network.retryCount" type="number" min="0" max="5" placeholder="1" /></label>
               <div class="actions">
                 <button id="applyChinaNetwork" class="secondary">套用大陆优先</button>
-                <button id="applyVpnNetwork" class="secondary">套用系统 VPN</button>
+                <button id="applyVpnNetwork" class="secondary">套用系统代理</button>
                 <button id="testNetwork" class="primary">联网诊断</button>
               </div>
               <div id="networkStatus" class="network-status"></div>

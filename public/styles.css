@@ -1264,21 +1264,67 @@ body[data-view="editor"] .main {
 
 .config-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .provider p {
   color: var(--muted);
-  line-height: 1.7;
-  margin: 8px 0 16px;
+  line-height: 1.55;
+  margin: 4px 0 10px;
+  font-size: 13px;
+}
+
+.config-grid .panel {
+  padding: 14px;
+}
+
+.config-grid .provider h3 {
+  font-size: 17px;
+}
+
+.config-grid .provider label {
+  gap: 5px;
+  margin-bottom: 9px;
+  font-size: 13px;
+}
+
+.config-grid input,
+.config-grid select {
+  padding: 9px 10px;
+}
+
+.essential-provider {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 10px;
+  align-items: end;
+  border-color: rgba(111, 31, 27, 0.32);
+  background: rgba(255, 253, 247, 0.92);
+}
+
+.essential-provider h3 {
+  grid-column: 1 / -1;
+  color: var(--accent-dark);
+}
+
+.essential-provider p,
+.essential-provider .tutorial {
+  grid-column: 1 / -1;
+}
+
+.essential-provider label {
+  margin-bottom: 0;
 }
 
 .tutorial {
   background: var(--warn);
   border: 1px solid rgba(184, 139, 74, 0.22);
   border-radius: 8px;
-  padding: 12px;
-  line-height: 1.7;
+  padding: 9px 10px;
+  line-height: 1.55;
   color: #5f442c;
+  font-size: 13px;
 }
 
 .history-list {
@@ -1966,6 +2012,10 @@ body[data-view="editor"] .main {
   .track-import-grid,
   .voice-ref-form,
   .voice-ref-item {
+    grid-template-columns: 1fr;
+  }
+
+  .essential-provider {
     grid-template-columns: 1fr;
   }
 
