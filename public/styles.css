@@ -434,6 +434,44 @@ audio {
   width: 100%;
 }
 
+.sample-prompt {
+  border-top: 1px solid rgba(55, 50, 42, 0.12);
+  padding-top: 8px;
+}
+
+.sample-prompt summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  list-style: none;
+}
+
+.sample-prompt summary::-webkit-details-marker {
+  display: none;
+}
+
+.sample-prompt summary::after {
+  content: " +";
+}
+
+.sample-prompt[open] summary::after {
+  content: " -";
+}
+
+.sample-prompt pre {
+  max-height: 180px;
+  margin: 10px 0 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 8px;
+  background: rgba(255, 250, 238, 0.72);
+  color: var(--ink);
+  font: 12px/1.65 "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
 .workflow-strip {
   margin-top: 18px;
   padding: 18px;

@@ -1243,8 +1243,78 @@ function normalizeLyricMatchKey(fileName = "") {
   return normalizeMediaBaseName(fileName)
     .replace(/^\s*\d{1,4}\s*[-_.、]\s*/, "")
     .replace(/\s*[\[(（]?\d{1,4}[\])）]?\s*$/, "")
+    .replace(/\s*(歌词|lyrics?)$/i, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeLyricLooseKey(fileName = "") {
+  return normalizeLyricMatchKey(fileName)
+    .replace(/[\s\-_.·・、，,()[\]（）【】《》<>]+/g, "")
+    .toLowerCase();
+}
+
+function getMediaRelativePath(item = {}) {
+  return String(item.relativePath || item.webkitRelativePath || item.name || "").replace(/\\/g, "/");
+}
+
+function getMediaRelativeBase(item = {}) {
+  return getMediaRelativePath(item)
+    .replace(/\.[^.]+$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function getMediaPathDirectory(item = {}) {
+  const path = getMediaRelativePath(item);
+  return path.includes("/") ? path.split("/").slice(0, -1).join("/").toLowerCase() : String(item.directory || "").toLowerCase();
+}
+
+function addLyricIndexEntry(map, key, record) {
+  if (!key) return;
+  const list = map.get(key) || [];
+  list.push(record);
+  map.set(key, list);
+}
+
+function buildLyricMatchIndex(lyricItems = []) {
+  const index = {
+    byRelative: new Map(),
+    byName: new Map(),
+    byLoose: new Map()
+  };
+  lyricItems.forEach((item) => {
+    const record = {
+      ...item,
+      name: item.name || "",
+      text: item.text || "",
+      directory: getMediaPathDirectory(item)
+    };
+    addLyricIndexEntry(index.byRelative, getMediaRelativeBase(record), record);
+    addLyricIndexEntry(index.byName, normalizeLyricMatchKey(record.name), record);
+    addLyricIndexEntry(index.byLoose, normalizeLyricLooseKey(record.name), record);
+  });
+  return index;
+}
+
+function pickLyricMatch(candidates = [], audioItem = {}) {
+  if (!candidates.length) return null;
+  const directory = getMediaPathDirectory(audioItem);
+  return candidates.find((entry) => entry.directory && entry.directory === directory) || candidates[0];
+}
+
+function findBestLyricMatch(audioItem = {}, lyricIndex = {}) {
+  const exactRelative = pickLyricMatch(lyricIndex.byRelative?.get(getMediaRelativeBase(audioItem)) || [], audioItem);
+  if (exactRelative) return exactRelative;
+  const exactName = pickLyricMatch(lyricIndex.byName?.get(normalizeLyricMatchKey(audioItem.name)) || [], audioItem);
+  if (exactName) return exactName;
+  const looseKey = normalizeLyricLooseKey(audioItem.name);
+  const looseName = pickLyricMatch(lyricIndex.byLoose?.get(looseKey) || [], audioItem);
+  if (looseName) return looseName;
+  const fuzzy = Array.from(lyricIndex.byLoose?.entries?.() || [])
+    .filter(([key]) => key && looseKey && (key.includes(looseKey) || looseKey.includes(key)))
+    .flatMap(([, list]) => list);
+  return pickLyricMatch(fuzzy, audioItem);
 }
 
 function normalizeMediaCollectionKey(name = "") {
@@ -1280,15 +1350,11 @@ function buildCollectionCounts(items = [], getName = (item) => item.collectionNa
 }
 
 function normalizeMediaRelativeBase(file) {
-  return String(file?.webkitRelativePath || file?.name || "")
-    .replace(/\.[^.]+$/, "")
-    .trim()
-    .toLowerCase();
+  return getMediaRelativeBase(file);
 }
 
 function getMediaDirectory(file) {
-  const path = String(file?.webkitRelativePath || "");
-  return path.includes("/") ? path.split("/").slice(0, -1).join("/").toLowerCase() : "";
+  return getMediaPathDirectory(file);
 }
 
 function sortMediaFiles(files) {
@@ -1351,18 +1417,13 @@ async function scanDownloadsToPlaylist() {
     const result = await plugin.scanDownloads();
     const audioItems = sortMediaRecords(result.audio || []);
     const lyricItems = sortMediaRecords(result.lyrics || []);
-    const lyricsByName = new Map();
-    lyricItems.forEach((item) => {
-      const base = normalizeLyricMatchKey(item.name);
-      const list = lyricsByName.get(base) || [];
-      list.push(item);
-      lyricsByName.set(base, list);
-    });
+    const lyricIndex = buildLyricMatchIndex(lyricItems);
     const collectionCounts = buildCollectionCounts(audioItems, getDownloadsCollectionName);
     let firstAddedId = "";
+    let matchedLyrics = 0;
     audioItems.forEach((item) => {
-      const base = normalizeLyricMatchKey(item.name);
-      const lyric = (lyricsByName.get(base) || [])[0];
+      const lyric = findBestLyricMatch(item, lyricIndex);
+      if (lyric?.text) matchedLyrics += 1;
       const collectionName = getDownloadsCollectionName(item);
       const playlistItem = createPlaylistItem({
         title: item.name.replace(/\.[^.]+$/, ""),
@@ -1394,7 +1455,7 @@ async function scanDownloadsToPlaylist() {
     recordNativeDownloadScan(audioItems, lyricItems);
     renderPlayerImportLocation();
     const lyricHint = lyricItems.length ? "" : " 未找到歌词时，可用“导入歌词”手动绑定当前歌曲。";
-    showToast(`下载文件夹扫描完成：${audioItems.length} 个音频，${lyricItems.length} 个歌词。${lyricHint}`, lyricItems.length || !audioItems.length ? "ok" : "fail");
+    showToast(`下载文件夹扫描完成：${audioItems.length} 个音频，${lyricItems.length} 个歌词，已关联 ${matchedLyrics} 首。${lyricHint}`, lyricItems.length || !audioItems.length ? "ok" : "fail");
   } catch (error) {
     showToast(`扫描失败：${error.message || error}`, "fail");
     $("#playerFolderInput")?.click();
@@ -2323,26 +2384,17 @@ async function importPlayerFolder(files) {
     const directory = getMediaDirectory(file);
     return directory || normalizeMediaCollectionKey(file.name);
   });
-  const lyricsByRelative = new Map();
-  const lyricsByName = new Map();
-  await Promise.all(lyricFiles.map(async (file) => {
-    const record = {
+  const lyricRecords = await Promise.all(lyricFiles.map(async (file) => ({
       text: await file.text(),
       name: file.name,
-      directory: getMediaDirectory(file)
-    };
-    lyricsByRelative.set(normalizeMediaRelativeBase(file), record);
-    const baseName = normalizeLyricMatchKey(file.name);
-    const list = lyricsByName.get(baseName) || [];
-    list.push(record);
-    lyricsByName.set(baseName, list);
-  }));
+      directory: getMediaDirectory(file),
+      relativePath: file.webkitRelativePath || file.name
+    })));
+  const lyricIndex = buildLyricMatchIndex(lyricRecords);
+  let matchedLyrics = 0;
   for (const [index, file] of audioFiles.entries()) {
-    const relativeMatch = lyricsByRelative.get(normalizeMediaRelativeBase(file));
-    const sameNameMatches = lyricsByName.get(normalizeLyricMatchKey(file.name)) || [];
-    const lyric = relativeMatch
-      || sameNameMatches.find((entry) => entry.directory === getMediaDirectory(file))
-      || sameNameMatches[0];
+    const lyric = findBestLyricMatch(file, lyricIndex);
+    if (lyric?.text) matchedLyrics += 1;
     const collectionName = getMediaDirectory(file) || normalizeMediaCollectionKey(file.name);
     await importPlayerAudio(file, {
       play: false,
@@ -2358,7 +2410,7 @@ async function importPlayerFolder(files) {
   }
   rememberPlayerImportLocation(fileList[0], "文件夹", { audioCount: audioFiles.length, lyricCount: lyricFiles.length });
   recordFolderScan(fileList, audioFiles.length, lyricFiles.length);
-  showToast(`文件夹导入完成：${audioFiles.length} 个音频，${lyricFiles.length} 个歌词。`, "ok");
+  showToast(`文件夹导入完成：${audioFiles.length} 个音频，${lyricFiles.length} 个歌词，已关联 ${matchedLyrics} 首。`, "ok");
 }
 
 async function importLyrics(file) {
@@ -4039,6 +4091,20 @@ function fillDirectPromptDemo() {
   showToast("已填入提示词示例。", "ok");
 }
 
+async function loadSamplePrompt(details) {
+  if (!details?.open) return;
+  const target = details.querySelector("[data-prompt-src]");
+  if (!target || target.dataset.loaded === "true") return;
+  try {
+    const response = await fetch(target.dataset.promptSrc);
+    if (!response.ok) throw new Error("load failed");
+    target.textContent = await response.text();
+    target.dataset.loaded = "true";
+  } catch {
+    target.textContent = "提示词加载失败，请检查示例资源是否已打包。";
+  }
+}
+
 async function runDirectAudio() {
   const promptText = $("#directPromptInput").value.trim();
   const title = $("#titleInput").value.trim() || "直接提示词音频";
@@ -4739,6 +4805,7 @@ async function runPipeline() {
 function bindEvents() {
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
   $("#appLanguageSelect")?.addEventListener("change", (event) => applyAppLanguage(event.target.value));
+  $$(".sample-prompt").forEach((details) => details.addEventListener("toggle", () => loadSamplePrompt(details)));
   $$("[data-jump]").forEach((button) => button.addEventListener("click", () => {
     showView(button.dataset.jump);
     if (button.closest("#appIntroModal")) closeAppIntroModal();
