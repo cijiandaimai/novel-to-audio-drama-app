@@ -41,6 +41,22 @@ function normalizeChatUrl(baseUrl) {
   return url;
 }
 
+function normalizeGeminiEndpoint(provider = {}) {
+  const model = encodeURIComponent(provider.model || "");
+  const apiKey = encodeURIComponent(provider.apiKey || "");
+  const endpoint = pickText(provider.endpoint);
+  if (!endpoint) return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  let url = endpoint.replace(/\{model\}/g, model).replace(/\/+$/, "");
+  if (!url.includes(":generateContent")) {
+    const base = url.includes("/models/") ? url : `${url}/v1beta/models/${model}`;
+    url = `${base}:generateContent`;
+  }
+  if (apiKey && !/[?&]key=/.test(url)) {
+    url += `${url.includes("?") ? "&" : "?"}key=${apiKey}`;
+  }
+  return url;
+}
+
 function networkTimeoutMs(network = {}) {
   return Math.max(10000, Math.min(300000, Number(network.timeoutSeconds || 120) * 1000));
 }
@@ -213,9 +229,7 @@ async function callOpenAICompatible(provider, messages, temperature = 0.4, netwo
 }
 
 async function callGemini(provider, system, user, temperature = 0.5, network = {}) {
-  const model = encodeURIComponent(provider.model);
-  const endpoint = pickText(provider.endpoint)
-    || `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(provider.apiKey)}`;
+  const endpoint = normalizeGeminiEndpoint(provider);
   const response = await fetchWithNetwork(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

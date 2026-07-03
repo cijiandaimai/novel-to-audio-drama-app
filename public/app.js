@@ -4224,6 +4224,7 @@ function getProbeUrl(label, config) {
   if (label === "千问") return config.qwen?.baseUrl || defaultConfig.qwen.baseUrl;
   if (label === "Kimi") return config.kimi?.baseUrl || defaultConfig.kimi.baseUrl;
   if (label === "豆包音频") return config.audio?.endpoint || defaultConfig.audio.endpoint;
+  if (label === "Grok") return config.grok?.baseUrl || defaultConfig.grok.baseUrl;
   if (label === "中转服务") return config.network?.relayBaseUrl || "";
   return "";
 }
@@ -4263,7 +4264,7 @@ async function testNetworkRoutes() {
   try {
     $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
     const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
-    const labels = ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频"];
+    const labels = ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "Grok"];
     if (config.network?.relayBaseUrl) labels.push("中转服务");
     let results = [];
     let serverManaged = null;
