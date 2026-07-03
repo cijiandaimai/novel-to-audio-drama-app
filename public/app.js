@@ -60,6 +60,7 @@ const viewLabels = {
 const playerBgKey = "playerBackgroundImage";
 const playerPlaylistKey = "playerPlaylist";
 const playerLastImportKey = "playerLastImportLocation";
+const appIntroSeenKey = "appIntroSeen";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const playerState = {
   audioUrl: "",
@@ -77,7 +78,11 @@ const playerState = {
   lastLyricScrollIndex: -1,
   lyricScrollFrame: 0,
   lastFullscreenTapAt: 0,
-  fullscreenPointerStartY: 0
+  fullscreenPointerStartY: 0,
+  lyricHoldTimer: 0,
+  lyricScrubbing: false,
+  lyricScrubStartY: 0,
+  lyricScrubStartTime: 0
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -1345,7 +1350,52 @@ function syncPlayerFullscreenUi() {
   if (!active) {
     playerState.lastFullscreenTapAt = 0;
     playerState.fullscreenPointerStartY = 0;
+    stopLyricScrub();
   }
+}
+
+function stopLyricScrub() {
+  clearTimeout(playerState.lyricHoldTimer);
+  playerState.lyricHoldTimer = 0;
+  playerState.lyricScrubbing = false;
+  $("#lyricPanel")?.classList.remove("is-scrubbing");
+}
+
+function startFullscreenLyricScrub(event) {
+  if (!isPlayerFullscreen() || !playerState.lyrics.length) return;
+  const player = $("#mainPlayer");
+  if (!player?.duration) return;
+  clearTimeout(playerState.lyricHoldTimer);
+  playerState.lyricScrubbing = false;
+  playerState.lyricScrubStartY = event.clientY;
+  playerState.lyricScrubStartTime = player.currentTime || 0;
+  playerState.lyricHoldTimer = window.setTimeout(() => {
+    playerState.lyricScrubbing = true;
+    $("#lyricPanel")?.classList.add("is-scrubbing");
+  }, 360);
+}
+
+function moveFullscreenLyricScrub(event) {
+  if (!isPlayerFullscreen()) return;
+  if (!playerState.lyricScrubbing) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const player = $("#mainPlayer");
+  if (!player?.duration) return;
+  const deltaY = event.clientY - playerState.lyricScrubStartY;
+  const nextTime = Math.max(0, Math.min(player.duration, playerState.lyricScrubStartTime - deltaY * 0.08));
+  player.currentTime = nextTime;
+  syncLyrics(nextTime);
+  syncPlayerControls();
+}
+
+function endFullscreenLyricScrub(event) {
+  if (playerState.lyricScrubbing) {
+    event.preventDefault();
+    event.stopPropagation();
+    playerState.lastFullscreenTapAt = 0;
+  }
+  stopLyricScrub();
 }
 
 function startPlayerFullscreenGesture(event) {
@@ -1371,6 +1421,7 @@ function exitPlayerFullscreenOnSwipe(endY) {
 function exitPlayerFullscreenOnDoubleTap(event) {
   const target = $("#playerArt");
   if (!isPlayerFullscreen(target)) return;
+  if (playerState.lyricScrubbing) return;
   if (event.type === "dblclick") {
     exitPlayerFullscreen();
     return;
@@ -1389,6 +1440,7 @@ function exitPlayerFullscreenOnDoubleTap(event) {
 function exitPlayerFullscreenOnTouchEnd(event) {
   const target = $("#playerArt");
   if (!isPlayerFullscreen(target)) return;
+  if (playerState.lyricScrubbing) return;
   const endY = event.changedTouches?.[0]?.clientY || 0;
   if (exitPlayerFullscreenOnSwipe(endY)) return;
   const now = Date.now();
@@ -2978,9 +3030,25 @@ function getMidnightFailCount() {
   return Number(localStorage.getItem(midnightFailKey) || 0);
 }
 
+function setAppIntroModal(open) {
+  $("#appIntroModal")?.classList.toggle("hidden", !open);
+  document.body.classList.toggle("modal-open", open || !$("#midnightModal")?.classList.contains("hidden"));
+  if (open) requestAnimationFrame(() => $("#closeAppIntro")?.focus());
+}
+
+function showAppIntroIfNeeded() {
+  if (localStorage.getItem(appIntroSeenKey) === "yes") return;
+  setAppIntroModal(true);
+}
+
+function closeAppIntroModal() {
+  if ($("#dontShowAppIntro")?.checked) localStorage.setItem(appIntroSeenKey, "yes");
+  setAppIntroModal(false);
+}
+
 function setMidnightModal(open) {
   $("#midnightModal").classList.toggle("hidden", !open);
-  document.body.classList.toggle("modal-open", open);
+  document.body.classList.toggle("modal-open", open || !$("#appIntroModal")?.classList.contains("hidden"));
   updateMidnightState();
   if (open) requestAnimationFrame(() => $("#closeMidnightModal")?.focus());
 }
@@ -3455,7 +3523,10 @@ async function runPipeline() {
 
 function bindEvents() {
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
-  $$("[data-jump]").forEach((button) => button.addEventListener("click", () => showView(button.dataset.jump)));
+  $$("[data-jump]").forEach((button) => button.addEventListener("click", () => {
+    showView(button.dataset.jump);
+    if (button.closest("#appIntroModal")) closeAppIntroModal();
+  }));
   $("#saveConfig").addEventListener("click", saveConfigFromForm);
   $("#demoButton").addEventListener("click", fillDemo);
   $("#runButton").addEventListener("click", runPipeline);
@@ -3702,6 +3773,10 @@ function bindEvents() {
     event.target.value = "";
   });
   $("#fullScreenPlayer").addEventListener("click", togglePlayerFullscreen);
+  $("#lyricPanel").addEventListener("pointerdown", startFullscreenLyricScrub);
+  $("#lyricPanel").addEventListener("pointermove", moveFullscreenLyricScrub);
+  $("#lyricPanel").addEventListener("pointerup", endFullscreenLyricScrub);
+  $("#lyricPanel").addEventListener("pointercancel", stopLyricScrub);
   $("#playerPlaylist").addEventListener("click", (event) => {
     const action = event.target.closest("[data-playlist-action]")?.dataset.playlistAction;
     if (!action) return;
@@ -3771,6 +3846,8 @@ function bindEvents() {
     setPlayerBackground("");
     showToast("已恢复默认播放器背景。", "ok");
   });
+  $("#closeAppIntro").addEventListener("click", closeAppIntroModal);
+  $("#closeAppIntroTop").addEventListener("click", closeAppIntroModal);
   $("#fileInput").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -3811,3 +3888,4 @@ initRouteNavigation();
 registerNativeBackHandler();
 syncPlayerFullscreenUi();
 syncTimelineControls();
+showAppIntroIfNeeded();

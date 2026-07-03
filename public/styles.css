@@ -1415,6 +1415,7 @@ body[data-view="editor"] .main {
 .player-art:fullscreen .player-actions,
 .player-art:fullscreen .player-more,
 .player-art:fullscreen .player-meta-row,
+.player-art:fullscreen .player-import-memory,
 .player-art:fullscreen .player-playlist,
 .player-art.is-player-fullscreen .midnight-cat-button,
 .player-art.is-player-fullscreen .speaker-now,
@@ -1423,6 +1424,7 @@ body[data-view="editor"] .main {
 .player-art.is-player-fullscreen .player-actions,
 .player-art.is-player-fullscreen .player-more,
 .player-art.is-player-fullscreen .player-meta-row,
+.player-art.is-player-fullscreen .player-import-memory,
 .player-art.is-player-fullscreen .player-playlist {
   display: none;
 }
@@ -1442,12 +1444,13 @@ body[data-view="editor"] .main {
   min-height: 0;
   max-height: 82vh;
   margin: 0 auto;
-  padding: 0;
+  padding: 12vh 0;
   border: 0;
   border-radius: 0;
   background: transparent;
   overflow: hidden;
   text-align: center;
+  touch-action: none;
 }
 
 .player-art:fullscreen .lyric-panel p,
@@ -1462,6 +1465,11 @@ body[data-view="editor"] .main {
 .player-art.is-player-fullscreen .lyric-panel p.active {
   font-size: clamp(28px, 7.2vw, 58px);
   transform: none;
+}
+
+.player-art:fullscreen .lyric-panel.is-scrubbing,
+.player-art.is-player-fullscreen .lyric-panel.is-scrubbing {
+  cursor: ns-resize;
 }
 
 .player-art:fullscreen .lyric-time,
@@ -1639,6 +1647,13 @@ body[data-view="editor"] .main {
   transform: translateX(4px);
 }
 
+.lyric-panel p.active .lyric-line-fill,
+.lyric-panel p.active .lyric-word {
+  color: #fffaf0;
+  background: none;
+  -webkit-text-fill-color: #fffaf0;
+}
+
 .lyric-time {
   display: inline-block;
   min-width: 52px;
@@ -1666,7 +1681,7 @@ body[data-view="editor"] .main {
 }
 
 .lyric-panel p.active .lyric-translation {
-  color: rgba(239, 215, 170, 0.9);
+  color: #fffaf0;
 }
 
 .lyric-line-fill {
@@ -1902,6 +1917,34 @@ body[data-view="editor"] .main {
   border-radius: 8px;
   box-shadow: 0 28px 80px rgba(20, 18, 14, 0.26);
   padding: 20px;
+}
+
+.app-intro-panel {
+  width: min(520px, 100%);
+}
+
+.app-intro-copy {
+  display: grid;
+  gap: 10px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.app-intro-copy p {
+  margin: 0;
+}
+
+.intro-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.intro-check input {
+  width: auto;
 }
 
 .midnight-panel {

@@ -667,6 +667,28 @@
 
     <div id="appToast" class="app-toast hidden" role="status" aria-live="polite"></div>
 
+    <div id="appIntroModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="appIntroTitle">
+      <div class="modal-panel app-intro-panel">
+        <div class="panel-title-row">
+          <div>
+            <p class="eyebrow">使用说明</p>
+            <h3 id="appIntroTitle">白泽声工坊是框架型工具</h3>
+          </div>
+          <button id="closeAppIntroTop" class="secondary">关闭</button>
+        </div>
+        <div class="app-intro-copy">
+          <p>要使用完整 AI 功能，需要去对应模型官方购买额度，并在 API 配置页填入自己的 Key。</p>
+          <p>本应用不上传、不云端储存个人信息；个人配置、播放列表、导入记录等只保留在本机。</p>
+          <p>调用第三方模型时，你提交的文本会按你配置发送到对应官方接口或后端中转服务，请自行确认服务条款。</p>
+        </div>
+        <label class="intro-check"><input id="dontShowAppIntro" type="checkbox" /> 下次不再提示</label>
+        <div class="actions">
+          <button id="closeAppIntro" class="primary">我知道了</button>
+          <button class="secondary" data-jump="config">去配置 API</button>
+        </div>
+      </div>
+    </div>
+
     <div id="midnightModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="midnightTitle">
       <div class="modal-panel midnight-panel">
         <div class="panel-title-row">
