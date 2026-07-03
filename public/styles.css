@@ -1388,7 +1388,7 @@ body[data-view="editor"] .main {
 .player-art {
   --player-bg:
     linear-gradient(180deg, rgba(26, 30, 27, 0.12), rgba(26, 30, 27, 0.48)),
-    url("/assets/player-default-bg.png");
+    url("/assets/player-default-bg.jpg");
   position: relative;
   height: calc(100vh - 124px);
   min-height: 460px;

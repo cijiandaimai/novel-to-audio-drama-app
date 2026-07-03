@@ -252,7 +252,7 @@ const playerRateKey = "playerPlaybackRate";
 const appIntroSeenKey = "appIntroSeen";
 const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
-const defaultPlayerBg = "/assets/player-default-bg.png";
+const defaultPlayerBg = "/assets/player-default-bg.jpg";
 const playerState = {
   audioUrl: "",
   objectUrl: "",
