@@ -61,6 +61,7 @@ const playerBgKey = "playerBackgroundImage";
 const playerPlaylistKey = "playerPlaylist";
 const playerLastImportKey = "playerLastImportLocation";
 const playerPlaybackDocKey = "playerPlaybackDocument";
+const playerAudioGuardKey = "playerAudioGuard";
 const appIntroSeenKey = "appIntroSeen";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const playerState = {
@@ -85,7 +86,11 @@ const playerState = {
   lyricScrubStartY: 0,
   lyricScrubStartTime: 0,
   playbackSaveTimer: 0,
-  lastPlaybackSyncAt: 0
+  lastPlaybackSyncAt: 0,
+  userPaused: true,
+  expectedPlaying: false,
+  interruptionResumeAttempts: 0,
+  interruptionResumeTimer: 0
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -1002,6 +1007,9 @@ async function removePlaylistItem(id) {
     playerState.currentPlaylistId = "";
     const player = $("#mainPlayer");
     if (player) {
+      playerState.userPaused = true;
+      playerState.expectedPlaying = false;
+      clearTimeout(playerState.interruptionResumeTimer);
       player.pause();
       player.removeAttribute("src");
       player.load();
@@ -1027,6 +1035,9 @@ async function clearPlayerPlaylist() {
   playerState.currentPlaylistId = "";
   const player = $("#mainPlayer");
   if (player) {
+    playerState.userPaused = true;
+    playerState.expectedPlaying = false;
+    clearTimeout(playerState.interruptionResumeTimer);
     player.pause();
     player.removeAttribute("src");
     player.load();
@@ -1077,6 +1088,98 @@ function syncPlayerControls() {
   const next = $("#playerNext");
   if (prev) prev.disabled = !hasPlaylist || index <= 0;
   if (next) next.disabled = !hasPlaylist || index < 0 || index >= playerState.playlist.length - 1;
+  updateMediaSessionState();
+}
+
+function isAudioGuardEnabled() {
+  return localStorage.getItem(playerAudioGuardKey) !== "off";
+}
+
+function renderAudioGuardUi() {
+  const button = $("#toggleAudioGuard");
+  if (button) button.textContent = isAudioGuardEnabled() ? "自动续播：开" : "自动续播：关";
+}
+
+function toggleAudioGuard() {
+  const enabled = !isAudioGuardEnabled();
+  localStorage.setItem(playerAudioGuardKey, enabled ? "on" : "off");
+  renderAudioGuardUi();
+  showToast(enabled ? "已开启自动续播，音频被短暂打断后会尝试恢复。" : "已关闭自动续播。", "ok");
+}
+
+function updateMediaSessionMetadata(item = getCurrentPlaybackItem()) {
+  if (!("mediaSession" in navigator)) return;
+  try {
+    if (window.MediaMetadata) navigator.mediaSession.metadata = new MediaMetadata({
+      title: item?.title || $("#playerTitle")?.textContent?.trim() || "白泽声工坊",
+      artist: "白泽声工坊",
+      album: item?.lyricFileName ? `歌词：${item.lyricFileName}` : "本地播放"
+    });
+    navigator.mediaSession.setActionHandler("play", () => resumeMainPlayer("media-session"));
+    navigator.mediaSession.setActionHandler("pause", () => pauseMainPlayerByUser());
+    navigator.mediaSession.setActionHandler("previoustrack", playPreviousPlaylistItem);
+    navigator.mediaSession.setActionHandler("nexttrack", playNextPlaylistItem);
+    navigator.mediaSession.setActionHandler("seekto", (details) => {
+      const player = $("#mainPlayer");
+      if (!player || !Number.isFinite(details.seekTime)) return;
+      player.currentTime = Math.max(0, Math.min(player.duration || details.seekTime, details.seekTime));
+      syncLyrics(player.currentTime);
+      syncPlayerControls();
+    });
+  } catch {
+    // Some WebView builds expose Media Session partially.
+  }
+}
+
+function updateMediaSessionState() {
+  if (!("mediaSession" in navigator)) return;
+  const player = $("#mainPlayer");
+  try {
+    navigator.mediaSession.playbackState = player && !player.paused ? "playing" : "paused";
+    if (navigator.mediaSession.setPositionState && player && Number.isFinite(player.duration)) {
+      navigator.mediaSession.setPositionState({
+        duration: Math.max(0, player.duration || 0),
+        playbackRate: player.playbackRate || 1,
+        position: Math.max(0, Math.min(player.currentTime || 0, player.duration || 0))
+      });
+    }
+  } catch {
+    // Ignore incomplete WebView Media Session support.
+  }
+}
+
+async function resumeMainPlayer(reason = "manual") {
+  const player = $("#mainPlayer");
+  if (!player) return;
+  if (!(player.currentSrc || player.src)) {
+    const firstId = playerState.currentPlaylistId || playerState.playlist[0]?.id;
+    if (firstId) await playPlaylistItem(firstId);
+    else showToast("请先导入音频。", "fail");
+    syncPlayerControls();
+    return;
+  }
+  playerState.userPaused = false;
+  playerState.expectedPlaying = true;
+  await player.play()
+    .then(() => {
+      playerState.interruptionResumeAttempts = 0;
+      if (reason !== "manual") $("#bluetoothStatus").textContent = "播放已恢复。";
+    })
+    .catch(() => {
+      playerState.expectedPlaying = false;
+      showToast("播放失败，请重新选择音频。", "fail");
+    });
+  syncPlayerControls();
+}
+
+function pauseMainPlayerByUser() {
+  const player = $("#mainPlayer");
+  if (!player) return;
+  playerState.userPaused = true;
+  playerState.expectedPlaying = false;
+  clearTimeout(playerState.interruptionResumeTimer);
+  player.pause();
+  syncPlayerControls();
 }
 
 async function togglePlayerPlayback() {
@@ -1090,11 +1193,71 @@ async function togglePlayerPlayback() {
     return;
   }
   if (player.paused) {
-    await player.play().catch(() => showToast("播放失败，请重新选择音频。", "fail"));
+    await resumeMainPlayer("manual");
   } else {
-    player.pause();
+    pauseMainPlayerByUser();
   }
   syncPlayerControls();
+}
+
+function shouldAutoResumeInterruptedPlayback(player = $("#mainPlayer")) {
+  return isAudioGuardEnabled()
+    && player
+    && !player.ended
+    && playerState.expectedPlaying
+    && !playerState.userPaused
+    && Boolean(player.currentSrc || player.src);
+}
+
+function scheduleInterruptedResume(reason = "interrupted", delay = 1200) {
+  const player = $("#mainPlayer");
+  if (!shouldAutoResumeInterruptedPlayback(player)) return;
+  clearTimeout(playerState.interruptionResumeTimer);
+  if (playerState.interruptionResumeAttempts >= 3) {
+    $("#bluetoothStatus").textContent = "播放被系统或其他应用暂停，已停止自动重试，可手动点播放继续。";
+    return;
+  }
+  playerState.interruptionResumeAttempts += 1;
+  $("#bluetoothStatus").textContent = "播放被系统或其他应用短暂打断，正在尝试自动续播。";
+  playerState.interruptionResumeTimer = window.setTimeout(() => {
+    if (shouldAutoResumeInterruptedPlayback(player)) resumeMainPlayer(reason);
+  }, delay);
+}
+
+function handlePlayerPauseEvent() {
+  syncPlayerControls();
+  recordPlaybackEvent("pause");
+  scheduleInterruptedResume("audio-focus");
+}
+
+function handlePlayerPlayEvent() {
+  playerState.userPaused = false;
+  playerState.expectedPlaying = true;
+  playerState.interruptionResumeAttempts = 0;
+  syncPlayerControls();
+  recordPlaybackEvent("play");
+}
+
+function handlePlayerEndedEvent() {
+  playerState.expectedPlaying = false;
+  playerState.userPaused = true;
+  clearTimeout(playerState.interruptionResumeTimer);
+  recordPlaybackEvent("ended");
+  playNextPlaylistItem();
+}
+
+function handleAppAudioResumeSignal() {
+  if (document.visibilityState === "hidden") return;
+  scheduleInterruptedResume("app-resume", 300);
+}
+
+function registerPlaybackInterruptionHandlers() {
+  document.addEventListener("visibilitychange", handleAppAudioResumeSignal);
+  window.addEventListener("focus", handleAppAudioResumeSignal);
+  const app = getCapacitorAppPlugin();
+  app?.addListener?.("appStateChange", ({ isActive }) => {
+    if (isActive) handleAppAudioResumeSignal();
+  });
 }
 
 function parseLyricTime(raw) {
@@ -1729,6 +1892,7 @@ function playInApp(src, title, options = {}) {
   if (!player || !src) return;
   const previousPlaylistId = playerState.currentPlaylistId;
   const shouldAutoplay = options.autoplay !== false;
+  clearTimeout(playerState.interruptionResumeTimer);
   player.src = src;
   playerState.audioUrl = src;
   playerTitle.textContent = title || "正在播放广播剧";
@@ -1759,6 +1923,7 @@ function playInApp(src, title, options = {}) {
     updatePlayerPathLabel(playlistItem);
     renderPlayerPlaylist();
     upsertPlaybackTrack(playlistItem);
+    updateMediaSessionMetadata(playlistItem);
   }
   playerState.activeLyricIndex = -1;
   playerState.activeWordIndex = -1;
@@ -1766,16 +1931,22 @@ function playInApp(src, title, options = {}) {
   syncLyrics(0);
   syncPlayerControls();
   if (!shouldAutoplay) {
+    playerState.userPaused = true;
+    playerState.expectedPlaying = false;
     player.pause();
     player.load();
     syncPlayerControls();
     return;
   }
+  playerState.userPaused = false;
+  playerState.expectedPlaying = true;
   player.play()
     .then(() => {
+      playerState.interruptionResumeAttempts = 0;
       syncPlayerControls();
     })
     .catch(() => {
+      playerState.expectedPlaying = false;
       playerTitle.textContent = `${title || "广播剧"}（点击播放）`;
       syncPlayerControls();
     });
@@ -3935,6 +4106,7 @@ function bindEvents() {
   $("#testNetwork").addEventListener("click", testNetworkRoutes);
   $("#openBluetoothSettings").addEventListener("click", openBluetoothSettings);
   $("#testBluetoothAudio").addEventListener("click", testBluetoothAudio);
+  $("#toggleAudioGuard").addEventListener("click", toggleAudioGuard);
   $("#exportPlaybackRecord").addEventListener("click", exportPlaybackRecord);
   $("#midnightCatButton").addEventListener("click", openMidnightGate);
   $("#openMidnightGateFromConfig").addEventListener("click", openMidnightGate);
@@ -4058,18 +4230,9 @@ function bindEvents() {
     syncCurrentPlaybackRecord(true);
   });
   $("#mainPlayer").addEventListener("durationchange", syncPlayerControls);
-  $("#mainPlayer").addEventListener("play", () => {
-    syncPlayerControls();
-    recordPlaybackEvent("play");
-  });
-  $("#mainPlayer").addEventListener("pause", () => {
-    syncPlayerControls();
-    recordPlaybackEvent("pause");
-  });
-  $("#mainPlayer").addEventListener("ended", () => {
-    recordPlaybackEvent("ended");
-    playNextPlaylistItem();
-  });
+  $("#mainPlayer").addEventListener("play", handlePlayerPlayEvent);
+  $("#mainPlayer").addEventListener("pause", handlePlayerPauseEvent);
+  $("#mainPlayer").addEventListener("ended", handlePlayerEndedEvent);
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
     if (!value) {
@@ -4119,6 +4282,7 @@ loadConfigIntoForm();
 loadPlayerBackground();
 loadPlayerPlaylist();
 renderPlayerImportLocation();
+renderAudioGuardUi();
 renderVoiceReferences();
 renderClipList();
 renderWaveform();
@@ -4128,6 +4292,7 @@ bindEvents();
 syncPlayerControls();
 initRouteNavigation();
 registerNativeBackHandler();
+registerPlaybackInterruptionHandlers();
 syncPlayerFullscreenUi();
 syncTimelineControls();
 showAppIntroIfNeeded();
