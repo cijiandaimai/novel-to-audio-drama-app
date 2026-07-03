@@ -12,6 +12,8 @@ const PORT = Number(process.env.PORT || 4173);
 const DEFAULT_DOUBAO_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
 const DEFAULT_DOUBAO_AUDIO_URL = "https://openspeech.bytedance.com/api/v3/tts/create";
 const DEFAULT_GROK_URL = "https://api.x.ai/v1/chat/completions";
+const DEFAULT_QWEN_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+const DEFAULT_KIMI_URL = "https://api.moonshot.cn/v1/chat/completions";
 
 const commonHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,13 +24,13 @@ const commonHeaders = {
 const OPTIMIZED_PLAN = {
   title: "小说转广播剧自动流水线",
   stages: [
-    "GPT 读取小说样本并生成故事骨架、角色表、改编策略",
-    "Gemini 基于骨架扩展场景与戏剧冲突",
+    "自动选择 A/B/C 计划并生成故事骨架、角色表、改编策略",
+    "按计划扩展场景与戏剧冲突",
     "豆包文本模型润色中文对白与角色语气",
-    "GPT 汇总生成广播剧剧本 1",
+    "按计划汇总生成广播剧剧本 1",
     "豆包文本模型只优化台词，不改剧情结构",
-    "GPT 生成最终录制版剧本 2",
-    "GPT 按影视级音频提示词规范拆成分段提示词",
+    "按计划生成最终录制版剧本 2",
+    "按影视级音频提示词规范拆成分段提示词",
     "Doubao-Seed-Audio 1.0 逐段生成音频",
     "后台音频引擎统一响度、拼接、导出"
   ],
@@ -160,6 +162,74 @@ function missingProvider(provider) {
   return !provider || !provider.apiKey || !provider.model;
 }
 
+function hasProvider(provider) {
+  return !missingProvider(provider);
+}
+
+function providerLabel(providerName) {
+  return {
+    gpt: "GPT",
+    gemini: "Gemini",
+    doubao: "豆包",
+    qwen: "千问",
+    kimi: "Kimi"
+  }[providerName] || providerName || "模型";
+}
+
+function resolvePlan(config = {}) {
+  const requested = String(config.workflow?.plan || "auto").toLowerCase();
+  const hasGpt = hasProvider(config.gpt);
+  const hasGemini = hasProvider(config.gemini);
+  const hasQwen = hasProvider(config.qwen);
+  const hasKimi = hasProvider(config.kimi);
+  const useA = requested === "a" || (requested === "auto" && hasGpt && hasGemini);
+  const useC = requested === "c" || (requested === "auto" && !useA && (hasQwen || hasKimi));
+  const plan = useA ? "A" : useC ? "C" : "B";
+  const pick = (...providers) => providers.find((item) => hasProvider(config[item])) || "doubao";
+  if (plan === "A") {
+    return {
+      plan,
+      label: "A 计划：国际多模型质量优先",
+      project: "gpt",
+      expansion: "gemini",
+      script: "gpt",
+      prompt: "gpt",
+      fallbacks: ["doubao"]
+    };
+  }
+  if (plan === "C") {
+    return {
+      plan,
+      label: "C 计划：国产多模型增强",
+      project: pick("kimi", "qwen"),
+      expansion: pick("kimi", "qwen"),
+      script: pick("qwen", "kimi"),
+      prompt: pick("qwen", "doubao"),
+      fallbacks: ["qwen", "kimi", "doubao"]
+    };
+  }
+  return {
+    plan,
+    label: "B 计划：豆包稳定优先",
+    project: "doubao",
+    expansion: "doubao",
+    script: "doubao",
+    prompt: "doubao",
+    fallbacks: []
+  };
+}
+
+function providerConfig(config, providerName) {
+  return config?.[providerName] || {};
+}
+
+function fallbackProviders(config, primaryName, workflow) {
+  return (workflow.fallbacks || [])
+    .filter((name, index, arr) => name !== primaryName && arr.indexOf(name) === index)
+    .map((name) => providerConfig(config, name))
+    .filter((provider) => !missingProvider(provider));
+}
+
 function envText(...names) {
   for (const name of names) {
     const value = process.env[name];
@@ -192,6 +262,16 @@ function getServerManagedProviders() {
       model: envText("DOUBAO_TEXT_MODEL", "DOUBAO_MODEL", "ARK_MODEL"),
       apiKey: envText("DOUBAO_TEXT_API_KEY", "DOUBAO_API_KEY", "ARK_API_KEY")
     },
+    qwen: {
+      baseUrl: envText("QWEN_BASE_URL", "DASHSCOPE_BASE_URL"),
+      model: envText("QWEN_MODEL", "DASHSCOPE_MODEL"),
+      apiKey: envText("QWEN_API_KEY", "DASHSCOPE_API_KEY")
+    },
+    kimi: {
+      baseUrl: envText("KIMI_BASE_URL", "MOONSHOT_BASE_URL"),
+      model: envText("KIMI_MODEL", "MOONSHOT_MODEL"),
+      apiKey: envText("KIMI_API_KEY", "MOONSHOT_API_KEY")
+    },
     audio: {
       endpoint: envText("DOUBAO_AUDIO_ENDPOINT", "SEED_AUDIO_ENDPOINT"),
       model: envText("DOUBAO_AUDIO_MODEL", "SEED_AUDIO_MODEL"),
@@ -215,10 +295,14 @@ function applyServerManagedConfig(clientConfig = {}) {
   config.gpt = withServerProvider(config.gpt, managed.gpt);
   config.gemini = withServerProvider(config.gemini, managed.gemini);
   config.doubao = withServerProvider(config.doubao, managed.doubao);
+  config.qwen = withServerProvider(config.qwen, managed.qwen);
+  config.kimi = withServerProvider(config.kimi, managed.kimi);
   config.audio = withServerProvider(config.audio, managed.audio);
   config.grok = withServerProvider(config.grok, managed.grok);
   config.network = withServerProvider(config.network, managed.network);
   config.doubao.baseUrl ||= DEFAULT_DOUBAO_CHAT_URL;
+  config.qwen.baseUrl ||= DEFAULT_QWEN_URL;
+  config.kimi.baseUrl ||= DEFAULT_KIMI_URL;
   config.audio.endpoint ||= DEFAULT_DOUBAO_AUDIO_URL;
   config.audio.model ||= "seed-audio-1.0";
   config.grok.baseUrl ||= DEFAULT_GROK_URL;
@@ -235,6 +319,8 @@ function serverCapabilities() {
       gpt: { hasApiKey: !!managed.gpt.apiKey, hasModel: !!managed.gpt.model },
       gemini: { hasApiKey: !!managed.gemini.apiKey, hasModel: !!managed.gemini.model },
       doubao: { hasApiKey: !!managed.doubao.apiKey, hasModel: !!managed.doubao.model },
+      qwen: { hasApiKey: !!managed.qwen.apiKey, hasModel: !!managed.qwen.model },
+      kimi: { hasApiKey: !!managed.kimi.apiKey, hasModel: !!managed.kimi.model },
       audio: { hasApiKey: !!managed.audio.apiKey, hasModel: !!managed.audio.model },
       grok: { hasApiKey: !!managed.grok.apiKey, hasModel: !!managed.grok.model }
     },
@@ -243,6 +329,8 @@ function serverCapabilities() {
       doubaoAudio: ["DOUBAO_AUDIO_API_KEY", "DOUBAO_AUDIO_MODEL", "DOUBAO_AUDIO_ENDPOINT"],
       openaiCompatible: ["OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL"],
       gemini: ["GEMINI_API_KEY", "GEMINI_MODEL"],
+      qwen: ["QWEN_API_KEY", "QWEN_MODEL", "QWEN_BASE_URL"],
+      kimi: ["KIMI_API_KEY", "KIMI_MODEL", "KIMI_BASE_URL"],
       grok: ["GROK_API_KEY", "GROK_MODEL"]
     }
   };
@@ -279,6 +367,8 @@ function getProbeUrl(label, config = {}) {
   if (label === "GPT") return config.gpt?.baseUrl || envText("GPT_BASE_URL", "OPENAI_BASE_URL") || "https://api.openai.com/v1/chat/completions";
   if (label === "Gemini") return config.gemini?.endpoint || "https://generativelanguage.googleapis.com";
   if (label === "豆包文本") return config.doubao?.baseUrl || DEFAULT_DOUBAO_CHAT_URL;
+  if (label === "千问") return config.qwen?.baseUrl || DEFAULT_QWEN_URL;
+  if (label === "Kimi") return config.kimi?.baseUrl || DEFAULT_KIMI_URL;
   if (label === "豆包音频") return config.audio?.endpoint || DEFAULT_DOUBAO_AUDIO_URL;
   if (label === "Grok") return config.grok?.baseUrl || DEFAULT_GROK_URL;
   return "";
@@ -310,7 +400,7 @@ async function runNetworkTest(input = {}) {
   const network = config.network || {};
   const labels = Array.isArray(input.labels) && input.labels.length
     ? input.labels
-    : ["GPT", "Gemini", "豆包文本", "豆包音频", "Grok"];
+    : ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "Grok"];
   const results = [];
   for (const label of labels) {
     results.push(await probeServerNetwork(label, getProbeUrl(label, config), network));
@@ -373,24 +463,36 @@ async function callGemini(provider, system, user, temperature = 0.5, network = {
     || JSON.stringify(data, null, 2);
 }
 
-async function invokeChat({ providerName, provider, system, user, temperature, mock, network, fallbackProvider }) {
-  const canUseDoubaoPlanB = providerName !== "doubao" && !missingProvider(fallbackProvider);
+async function invokeChat({ providerName, provider, system, user, temperature, mock, network, fallbackProvider, fallbackProviders = [] }) {
+  const usableFallbacks = [fallbackProvider, ...fallbackProviders].filter((item) => !missingProvider(item));
   const messages = [
     { role: "system", content: system },
     { role: "user", content: user }
   ];
 
+  const callFallbacks = async () => {
+    let lastError;
+    for (const fallback of usableFallbacks) {
+      try {
+        return await callOpenAICompatible(fallback, messages, temperature, network);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError) throw lastError;
+    return mock;
+  };
+
   if (missingProvider(provider)) {
-    if (!canUseDoubaoPlanB) return mock;
-    return callOpenAICompatible(fallbackProvider, messages, temperature, network);
+    return callFallbacks();
   }
 
   try {
     if (providerName === "gemini") return await callGemini(provider, system, user, temperature, network);
     return await callOpenAICompatible(provider, messages, temperature, network);
   } catch (error) {
-    if (!canUseDoubaoPlanB) throw error;
-    return callOpenAICompatible(fallbackProvider, messages, temperature, network);
+    if (!usableFallbacks.length) throw error;
+    return callFallbacks();
   }
 }
 
@@ -737,34 +839,36 @@ async function runPipeline(input) {
   const novelContext = buildNovelContext(novelText);
   const guide = await readPromptGuide();
   const stages = [];
+  const workflow = resolvePlan(config);
 
   const gptSystem = "你是资深广播剧总编剧和制作统筹。你只输出可执行、结构清晰、便于进入下一制作环节的内容。";
   const geminiSystem = "你是长篇小说改编编剧，擅长扩写场景、补足戏剧冲突、保持原著设定一致。";
   const doubaoSystem = "你是中文广播剧台词导演，只优化中文对白、语气、节奏和可听表演，不擅自改变剧情事实。";
+  stages.push({ name: `已选择${workflow.label}`, output: workflow.label });
 
   const projectBible = await invokeChat({
-    providerName: "gpt",
-    provider: config.gpt,
-    fallbackProvider: config.doubao,
+    providerName: workflow.project,
+    provider: providerConfig(config, workflow.project),
+    fallbackProviders: fallbackProviders(config, workflow.project, workflow),
     system: gptSystem,
     temperature: 0.35,
     user: `请把小说改编成广播剧项目资料包。必须包含：故事骨架、角色小传、人物关系、场景列表、广播剧改编策略、不得改动的关键设定。\n\n${novelContext.context}`,
     network,
     mock: mockProjectBible(title, novelContext)
   });
-  stages.push({ name: "GPT 生成项目资料包", output: projectBible });
+  stages.push({ name: `${providerLabel(workflow.project)} 生成项目资料包`, output: projectBible });
 
   const expansion = await invokeChat({
-    providerName: "gemini",
-    provider: config.gemini,
-    fallbackProvider: config.doubao,
+    providerName: workflow.expansion,
+    provider: providerConfig(config, workflow.expansion),
+    fallbackProviders: fallbackProviders(config, workflow.expansion, workflow),
     system: geminiSystem,
     temperature: 0.55,
     user: `基于下面项目资料包扩展成广播剧分场大纲。要求：增强冲突、补足场景动作、标注每场情绪曲线，不要改核心剧情。\n\n${projectBible}`,
     network,
     mock: `# 分场扩展大纲（演示模式）\n\n1. 开场：用环境声建立世界和人物状态。\n2. 冲突引入：用对话替代大段叙述，让角色目标碰撞。\n3. 情绪升级：增加停顿、走动、物品声和近远变化。\n4. 章节钩子：以一句关键台词或突发音效收束。\n\n${projectBible.slice(0, 1800)}`
   });
-  stages.push({ name: "Gemini 扩展分场大纲", output: expansion });
+  stages.push({ name: `${providerLabel(workflow.expansion)} 扩展分场大纲`, output: expansion });
 
   const dialogueBrief = await invokeChat({
     providerName: "doubao",
@@ -778,16 +882,16 @@ async function runPipeline(input) {
   stages.push({ name: "豆包优化对白方向", output: dialogueBrief });
 
   const script1 = await invokeChat({
-    providerName: "gpt",
-    provider: config.gpt,
-    fallbackProvider: config.doubao,
+    providerName: workflow.script,
+    provider: providerConfig(config, workflow.script),
+    fallbackProviders: fallbackProviders(config, workflow.script, workflow),
     system: gptSystem,
     temperature: 0.42,
     user: `请生成广播剧剧本 1。格式必须包含：场次编号、场景空间、角色、旁白、对白、音效、音乐、情绪提示、预计时长。\n\n【项目资料包】\n${projectBible}\n\n【分场大纲】\n${expansion}\n\n【台词方向】\n${dialogueBrief}`,
     network,
     mock: `# 广播剧剧本 1（演示模式）\n\n## 场 1：开场\n场景空间：室内，夜晚，远处有低弱环境声。\n音乐：低音量悬疑铺底，不盖对白。\n旁白：故事从一个安静却不寻常的夜晚开始。\n主角（压低声音）：这件事，我本来不想再提。\n配角（短暂停顿）：可现在，已经来不及了。\n音效：远处门轴轻响，随后停顿。\n预计时长：60 秒。\n\n## 场 2：冲突升级\n主角：你到底瞒了我多久？\n配角：从一开始。\n音效：杯子碰到桌面，声音短促。\n预计时长：70 秒。`
   });
-  stages.push({ name: "GPT 生成剧本 1", output: script1 });
+  stages.push({ name: `${providerLabel(workflow.script)} 生成剧本 1`, output: script1 });
 
   const script1Dialogue = await invokeChat({
     providerName: "doubao",
@@ -801,21 +905,21 @@ async function runPipeline(input) {
   stages.push({ name: "豆包二次优化台词", output: script1Dialogue });
 
   const script2 = await invokeChat({
-    providerName: "gpt",
-    provider: config.gpt,
-    fallbackProvider: config.doubao,
+    providerName: workflow.script,
+    provider: providerConfig(config, workflow.script),
+    fallbackProviders: fallbackProviders(config, workflow.script, workflow),
     system: gptSystem,
     temperature: 0.35,
     user: `请根据二次优化稿生成最终录制版剧本 2。要求：分段清楚、可直接进入音频提示词生成；保留角色声线、音效时间线、混音要求。\n\n${script1Dialogue}`,
     network,
     mock: `# 广播剧剧本 2（最终录制版，演示模式）\n\n## 片段 1：夜晚的开场\n时长：约 60 秒\n场景：室内夜晚，空间安静，有远处低弱风声。\n角色声线：\n- 旁白：中性声音，沉稳，语速慢。\n- 主角：青年声音，压低声线，带隐忍。\n- 配角：青年声音，紧张，回答前有短吸气。\n音乐：低音量悬疑铺底。\n音效时间线：0-8 秒风声；18 秒门轴轻响；42 秒杯子轻碰桌面。\n对白：\n旁白：故事从一个安静却不寻常的夜晚开始。\n主角（压低声音，停半拍）：这件事……我本来不想再提。\n配角（短吸气）：可现在，已经来不及了。\n\n## 片段 2：追问\n时长：约 70 秒\n场景：同一房间，距离更近，压迫感增强。\n主角（声量升高但克制）：你到底瞒了我多久？\n配角（明显停顿）：从一开始。\n音效：杯子碰到桌面，短促，随后音乐低沉一拍。`
   });
-  stages.push({ name: "GPT 生成剧本 2", output: script2 });
+  stages.push({ name: `${providerLabel(workflow.script)} 生成剧本 2`, output: script2 });
 
   const audioPromptRaw = await invokeChat({
-    providerName: "gpt",
-    provider: config.gpt,
-    fallbackProvider: config.doubao,
+    providerName: workflow.prompt,
+    provider: providerConfig(config, workflow.prompt),
+    fallbackProviders: fallbackProviders(config, workflow.prompt, workflow),
     system: "你是影视级音频提示词工程师。你必须输出 JSON 数组，不要输出解释。",
     temperature: 0.25,
     user: `请根据提示词写作指导，把广播剧剧本拆成 Doubao-Seed-Audio 1.0 可用的分段音频提示词。每段 30-90 秒，复杂多人戏拆短。每个元素格式：{"id":"scene-01","title":"片段名","durationSeconds":60,"prompt":"完整提示词"}。\n\n【提示词指导】\n${guide}\n\n【剧本 2】\n${script2}`,
@@ -823,7 +927,7 @@ async function runPipeline(input) {
     mock: JSON.stringify(fallbackAudioPrompts(script2, title, guide), null, 2)
   });
   const audioPrompts = parsePromptArray(audioPromptRaw, title, guide);
-  stages.push({ name: "GPT 生成影视级音频提示词", output: JSON.stringify(audioPrompts, null, 2) });
+  stages.push({ name: `${providerLabel(workflow.prompt)} 生成影视级音频提示词`, output: JSON.stringify(audioPrompts, null, 2) });
 
   const audio = await generateAudioSegments(config.audio || {}, audioPrompts, jobDir, config.voiceReferences || [], network);
   stages.push({ name: "Doubao-Seed-Audio 1.0 生成并合成音频", output: JSON.stringify(audio, null, 2) });
@@ -841,6 +945,7 @@ async function runPipeline(input) {
     jobId,
     title,
     createdAt: new Date().toISOString(),
+    workflowPlan: workflow.label,
     plan: OPTIMIZED_PLAN,
     stages: stages.map((stage) => ({ name: stage.name, preview: stage.output.slice(0, 1000) })),
     artifacts,

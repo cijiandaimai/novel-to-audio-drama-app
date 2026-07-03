@@ -25,6 +25,14 @@ ARK_API_KEY=你的火山方舟APIKey
 DOUBAO_TEXT_MODEL=你的豆包文本模型或接入点ID
 DOUBAO_TEXT_BASE_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
 
+# C计划：千问 / Kimi
+QWEN_API_KEY=你的阿里云百炼APIKey
+QWEN_MODEL=qwen-plus
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+KIMI_API_KEY=你的Moonshot或Kimi APIKey
+KIMI_MODEL=你的Kimi模型ID
+KIMI_BASE_URL=https://api.moonshot.cn/v1/chat/completions
+
 # 豆包音频
 DOUBAO_AUDIO_API_KEY=你的豆包音频Key
 DOUBAO_AUDIO_MODEL=seed-audio-1.0

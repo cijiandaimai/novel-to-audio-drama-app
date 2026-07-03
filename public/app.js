@@ -1,6 +1,9 @@
 ﻿import { optimizedPlan, runDirectAudioPipeline, runStandalonePipeline } from './mobile-pipeline.js';
 
 const defaultConfig = {
+  workflow: {
+    plan: "auto"
+  },
   gpt: {
     baseUrl: "https://api.openai.com/v1/chat/completions",
     model: "",
@@ -14,6 +17,16 @@ const defaultConfig = {
   doubao: {
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3/chat/completions",
     model: "doubao-seed-2-1-pro-260628",
+    apiKey: ""
+  },
+  qwen: {
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+    model: "qwen-plus",
+    apiKey: ""
+  },
+  kimi: {
+    baseUrl: "https://api.moonshot.cn/v1/chat/completions",
+    model: "kimi-k2.6",
     apiKey: ""
   },
   audio: {
@@ -36,13 +49,14 @@ const defaultConfig = {
 };
 
 const stageNames = [
-  "GPT 生成项目资料包",
-  "Gemini 扩展分场大纲",
+  "选择 A/B/C 创作计划",
+  "生成项目资料包",
+  "扩展分场大纲",
   "豆包优化对白方向",
-  "GPT 生成剧本 1",
+  "生成剧本 1",
   "豆包二次优化台词",
-  "GPT 生成剧本 2",
-  "GPT 生成影视级音频提示词",
+  "生成剧本 2",
+  "生成影视级音频提示词",
   "豆包音频生成 seed-audio-1.0 生成并合成音频"
 ];
 
@@ -62,6 +76,8 @@ const playerPlaylistKey = "playerPlaylist";
 const playerLastImportKey = "playerLastImportLocation";
 const playerPlaybackDocKey = "playerPlaybackDocument";
 const playerAudioGuardKey = "playerAudioGuard";
+const playerLoopModeKey = "playerLoopMode";
+const playerRateKey = "playerPlaybackRate";
 const appIntroSeenKey = "appIntroSeen";
 const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
@@ -92,7 +108,9 @@ const playerState = {
   userPaused: true,
   expectedPlaying: false,
   interruptionResumeAttempts: 0,
-  interruptionResumeTimer: 0
+  interruptionResumeTimer: 0,
+  loopMode: "none",
+  playbackRate: 1
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -145,6 +163,11 @@ const recorderState = {
 let lastHomeBackAt = 0;
 
 const apiHelp = {
+  "workflow.plan": {
+    title: "创作方案",
+    url: "https://help.aliyun.com/zh/model-studio/first-api-call-to-qwen",
+    text: "自动推荐会优先使用 A 计划；没有 GPT/Gemini 但配置了千问或 Kimi 时切到 C 计划；只有豆包时走 B 计划。"
+  },
   "gpt.baseUrl": {
     title: "GPT 接口地址",
     url: "https://platform.openai.com/docs",
@@ -189,6 +212,36 @@ const apiHelp = {
     title: "豆包文本 API Key",
     url: "https://console.volcengine.com/ark/",
     text: "在火山方舟创建 API Key，填入后才能调用真实文本模型。"
+  },
+  "qwen.baseUrl": {
+    title: "千问接口地址",
+    url: "https://help.aliyun.com/zh/model-studio/qwen-api-via-dashscope",
+    text: "推荐使用阿里云百炼 OpenAI 兼容模式地址：/compatible-mode/v1/chat/completions。用于 C 计划中的结构化剧本和提示词输出。"
+  },
+  "qwen.model": {
+    title: "千问模型 ID",
+    url: "https://help.aliyun.com/zh/model-studio/models",
+    text: "可先填 qwen-plus，也可以填你在百炼控制台开通的其他 Qwen 模型。"
+  },
+  "qwen.apiKey": {
+    title: "千问 API Key",
+    url: "https://bailian.console.aliyun.com/",
+    text: "进入阿里云百炼创建 API Key。C 计划会优先让千问负责结构化剧本、角色表和 JSON 音频提示词。"
+  },
+  "kimi.baseUrl": {
+    title: "Kimi 接口地址",
+    url: "https://platform.kimi.ai/docs/overview",
+    text: "月之暗面 Kimi API 使用 OpenAI 兼容接口，默认地址为 https://api.moonshot.cn/v1/chat/completions。"
+  },
+  "kimi.model": {
+    title: "Kimi 模型 ID",
+    url: "https://platform.kimi.ai/docs/models",
+    text: "填你账号可用的 Kimi 模型。C 计划会优先让 Kimi 处理长篇小说理解、人物关系和伏笔梳理。"
+  },
+  "kimi.apiKey": {
+    title: "Kimi API Key",
+    url: "https://platform.kimi.ai/",
+    text: "进入 Kimi API 平台创建 Key。适合补强长上下文阅读和分场扩写。"
   },
   "audio.mode": {
     title: "豆包音频模式",
@@ -548,6 +601,15 @@ function getCapacitorAppPlugin() {
   return window.Capacitor?.Plugins?.App || window.Capacitor?.App;
 }
 
+function getBaizeMediaPlugin() {
+  return window.Capacitor?.Plugins?.BaizeMedia || window.BaizeMedia;
+}
+
+function nativeMediaSrc(uri) {
+  if (!uri) return "";
+  return window.Capacitor?.convertFileSrc ? window.Capacitor.convertFileSrc(uri) : uri;
+}
+
 function goHomeFromBack() {
   showView(homeView, { historyMode: "replace", announce: true });
 }
@@ -902,6 +964,38 @@ function normalizeMediaBaseName(fileName = "") {
     .toLowerCase();
 }
 
+function normalizeMediaCollectionKey(name = "") {
+  return String(name || "")
+    .split(/[\\/]/)
+    .pop()
+    .replace(/\.[^.]+$/, "")
+    .replace(/^\s*\d{1,4}\s*[-_.、]\s*/, "")
+    .replace(/\s*[\[(（]?\d{1,4}[\])）]?\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getDownloadsCollectionName(item = {}) {
+  const relativePath = String(item.relativePath || "").replace(/\\/g, "/");
+  const folderParts = relativePath.split("/").filter(Boolean);
+  const appFolderIndex = folderParts.findIndex((part) => part === "白泽声工坊");
+  if (appFolderIndex >= 0 && folderParts[appFolderIndex + 1]) return folderParts[appFolderIndex + 1];
+  if (folderParts.length > 1) {
+    const leafFolder = folderParts[folderParts.length - 2];
+    if (leafFolder && !/^download$/i.test(leafFolder)) return leafFolder;
+  }
+  return normalizeMediaCollectionKey(item.name || "");
+}
+
+function buildCollectionCounts(items = [], getName = (item) => item.collectionName || "") {
+  return items.reduce((counts, item) => {
+    const name = String(getName(item) || "").trim();
+    if (name) counts[name] = (counts[name] || 0) + 1;
+    return counts;
+  }, {});
+}
+
 function normalizeMediaRelativeBase(file) {
   return String(file?.webkitRelativePath || file?.name || "")
     .replace(/\.[^.]+$/, "")
@@ -923,6 +1017,15 @@ function sortMediaFiles(files) {
   );
 }
 
+function sortMediaRecords(records) {
+  return Array.from(records || []).sort((a, b) =>
+    String(a.relativePath || a.name).localeCompare(String(b.relativePath || b.name), "zh-Hans-CN", {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
+}
+
 function isAudioFile(file) {
   return file?.type?.startsWith("audio/") || /\.(mp3|m4a|aac|wav|flac|ogg|opus)$/i.test(file?.name || "");
 }
@@ -931,7 +1034,92 @@ function isLyricFile(file) {
   return /\.(lrc|krc|txt)$/i.test(file?.name || "") || /^text\//.test(file?.type || "");
 }
 
-function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = "", persistent = true, lyricText = "", lyricFileName = "" }) {
+function recordNativeDownloadScan(audioItems = [], lyricItems = []) {
+  updatePlaybackDocument((doc) => {
+    const folder = {
+      id: "android-downloads",
+      root: "Download",
+      label: "手机下载文件夹",
+      audioCount: audioItems.length,
+      lyricCount: lyricItems.length,
+      totalFiles: audioItems.length + lyricItems.length,
+      updatedAt: new Date().toISOString(),
+      files: [...audioItems, ...lyricItems].slice(0, 500).map((item) => ({
+        name: item.name,
+        relativePath: item.relativePath || item.name,
+        size: item.size || 0,
+        type: item.text !== undefined ? "lyric" : "audio",
+        uri: item.uri || ""
+      }))
+    };
+    doc.folders = [folder, ...doc.folders.filter((entry) => entry.id !== folder.id)].slice(0, 30);
+  });
+}
+
+async function scanDownloadsToPlaylist() {
+  const plugin = getBaizeMediaPlugin();
+  if (!plugin?.scanDownloads) {
+    $("#playerFolderInput")?.click();
+    showToast("当前环境无法直接扫描下载文件夹，请手动选择下载文件夹。", "fail");
+    return;
+  }
+  try {
+    setButtonBusy("#scanDownloadsButton", true, "扫描中...");
+    const result = await plugin.scanDownloads();
+    const audioItems = sortMediaRecords(result.audio || []);
+    const lyricItems = sortMediaRecords(result.lyrics || []);
+    const lyricsByName = new Map();
+    lyricItems.forEach((item) => {
+      const base = normalizeMediaBaseName(item.name);
+      const list = lyricsByName.get(base) || [];
+      list.push(item);
+      lyricsByName.set(base, list);
+    });
+    const collectionCounts = buildCollectionCounts(audioItems, getDownloadsCollectionName);
+    let firstAddedId = "";
+    audioItems.forEach((item) => {
+      const base = normalizeMediaBaseName(item.name);
+      const lyric = (lyricsByName.get(base) || [])[0];
+      const collectionName = getDownloadsCollectionName(item);
+      const playlistItem = createPlaylistItem({
+        title: item.name.replace(/\.[^.]+$/, ""),
+        src: nativeMediaSrc(item.uri),
+        sourceType: "native",
+        persistent: true,
+        lyricText: lyric?.text || "",
+        lyricFileName: lyric?.name || "",
+        collectionName: collectionCounts[collectionName] > 1 ? collectionName : ""
+      });
+      playlistItem.fileName = item.name;
+      playlistItem.fileSize = item.size || 0;
+      playlistItem.mimeType = item.mimeType || "";
+      playlistItem.displayPath = `下载 / ${item.relativePath || item.name}`;
+      const saved = upsertPlaylistItem(playlistItem);
+      if (!firstAddedId) firstAddedId = saved.id;
+    });
+    saveAndRenderPlayerPlaylist();
+    const targetId = playerState.currentPlaylistId || firstAddedId;
+    if (targetId) await loadPlaylistItem(targetId, { autoplay: false });
+    localStorage.setItem(playerLastImportKey, JSON.stringify({
+      label: "手机下载文件夹",
+      root: "Download",
+      type: "扫描",
+      audioCount: audioItems.length,
+      lyricCount: lyricItems.length,
+      updatedAt: new Date().toISOString()
+    }));
+    recordNativeDownloadScan(audioItems, lyricItems);
+    renderPlayerImportLocation();
+    showToast(`下载文件夹扫描完成：${audioItems.length} 个音频，${lyricItems.length} 个歌词。`, "ok");
+  } catch (error) {
+    showToast(`扫描失败：${error.message || error}`, "fail");
+    $("#playerFolderInput")?.click();
+  } finally {
+    setButtonBusy("#scanDownloadsButton", false);
+  }
+}
+
+function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = "", persistent = true, lyricText = "", lyricFileName = "", collectionName = "" }) {
   const id = `audio-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return {
     id,
@@ -946,6 +1134,7 @@ function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = 
     displayPath: file ? `本机导入 / ${getImportedFilePath(file)}` : (src || "临时音频"),
     lyricText,
     lyricFileName,
+    collectionName,
     createdAt: new Date().toISOString()
   };
 }
@@ -993,7 +1182,13 @@ function renderPlayerPlaylist() {
     updatePlayerPathLabel();
     return;
   }
-  list.innerHTML = playerState.playlist.map((item) => `
+  const groupCounts = playerState.playlist.reduce((counts, item) => {
+    const key = item.collectionName || "";
+    if (key) counts[key] = (counts[key] || 0) + 1;
+    return counts;
+  }, {});
+  const renderedGroups = new Set();
+  const renderItem = (item) => `
     <article class="playlist-item${item.id === playerState.currentPlaylistId ? " active" : ""}" data-playlist-id="${item.id}">
       <button class="playlist-play" data-playlist-action="play">
         <strong>${escapeHtml(item.title)}</strong>
@@ -1001,7 +1196,21 @@ function renderPlayerPlaylist() {
       </button>
       <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
     </article>
-  `).join("");
+  `;
+  list.innerHTML = playerState.playlist.map((item) => {
+    const group = item.collectionName || "";
+    if (!group || groupCounts[group] < 2) return renderItem(item);
+    if (renderedGroups.has(group)) return "";
+    renderedGroups.add(group);
+    const children = playerState.playlist.filter((entry) => entry.collectionName === group);
+    const active = children.some((entry) => entry.id === playerState.currentPlaylistId);
+    return `
+      <details class="playlist-group" ${active ? "open" : ""}>
+        <summary>${escapeHtml(group)} <span>${children.length} 段</span></summary>
+        ${children.map(renderItem).join("")}
+      </details>
+    `;
+  }).join("");
   updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
 }
 
@@ -1046,7 +1255,11 @@ async function playPlaylistItem(id) {
 function playNextPlaylistItem() {
   if (!playerState.playlist.length || !playerState.currentPlaylistId) return;
   const index = playerState.playlist.findIndex((item) => item.id === playerState.currentPlaylistId);
-  if (index < 0 || index >= playerState.playlist.length - 1) return;
+  if (index < 0) return;
+  if (index >= playerState.playlist.length - 1) {
+    if (playerState.loopMode === "list") playPlaylistItem(playerState.playlist[0].id);
+    return;
+  }
   playPlaylistItem(playerState.playlist[index + 1].id);
 }
 
@@ -1061,6 +1274,7 @@ function playPreviousPlaylistItem() {
   if (!playerState.playlist.length || !playerState.currentPlaylistId) return;
   const index = playerState.playlist.findIndex((item) => item.id === playerState.currentPlaylistId);
   if (index > 0) playPlaylistItem(playerState.playlist[index - 1].id);
+  else if (index === 0 && playerState.loopMode === "list") playPlaylistItem(playerState.playlist[playerState.playlist.length - 1].id);
 }
 
 async function removePlaylistItem(id) {
@@ -1150,9 +1364,58 @@ function syncPlayerControls() {
   const hasPlaylist = playerState.playlist.length > 0;
   const prev = $("#playerPrev");
   const next = $("#playerNext");
-  if (prev) prev.disabled = !hasPlaylist || index <= 0;
-  if (next) next.disabled = !hasPlaylist || index < 0 || index >= playerState.playlist.length - 1;
+  const listLoop = playerState.loopMode === "list";
+  if (prev) prev.disabled = !hasPlaylist || (index <= 0 && !listLoop);
+  if (next) next.disabled = !hasPlaylist || index < 0 || (index >= playerState.playlist.length - 1 && !listLoop);
+  renderPlayerLoopRateUi();
   updateMediaSessionState();
+}
+
+function readPlayerLoopMode() {
+  const value = localStorage.getItem(playerLoopModeKey);
+  return ["none", "single", "list"].includes(value) ? value : "none";
+}
+
+function readPlayerRate() {
+  const value = Number(localStorage.getItem(playerRateKey) || 1);
+  return [0.75, 1, 1.25, 1.5, 2].includes(value) ? value : 1;
+}
+
+function renderPlayerLoopRateUi() {
+  const loopButton = $("#playerLoopMode");
+  if (loopButton) {
+    const labels = { none: "顺序", single: "单曲循环", list: "列表循环" };
+    loopButton.textContent = labels[playerState.loopMode] || "顺序";
+    loopButton.classList.toggle("active", playerState.loopMode !== "none");
+  }
+  const rate = $("#playerRate");
+  if (rate && String(rate.value) !== String(playerState.playbackRate)) rate.value = String(playerState.playbackRate);
+}
+
+function applyPlayerPlaybackSettings() {
+  playerState.loopMode = readPlayerLoopMode();
+  playerState.playbackRate = readPlayerRate();
+  const player = $("#mainPlayer");
+  if (player) player.playbackRate = playerState.playbackRate;
+  renderPlayerLoopRateUi();
+}
+
+function togglePlayerLoopMode() {
+  const next = playerState.loopMode === "none" ? "single" : (playerState.loopMode === "single" ? "list" : "none");
+  playerState.loopMode = next;
+  localStorage.setItem(playerLoopModeKey, next);
+  renderPlayerLoopRateUi();
+  showToast(`播放模式：${$("#playerLoopMode")?.textContent || "顺序"}`, "ok");
+}
+
+function setPlayerPlaybackRate(value) {
+  const rate = Number(value) || 1;
+  playerState.playbackRate = rate;
+  localStorage.setItem(playerRateKey, String(rate));
+  const player = $("#mainPlayer");
+  if (player) player.playbackRate = rate;
+  updateMediaSessionState();
+  showToast(`播放速度：${rate}x`, "ok");
 }
 
 function isAudioGuardEnabled() {
@@ -1307,6 +1570,14 @@ function handlePlayerEndedEvent() {
   playerState.userPaused = true;
   clearTimeout(playerState.interruptionResumeTimer);
   recordPlaybackEvent("ended");
+  if (playerState.loopMode === "single") {
+    const player = $("#mainPlayer");
+    if (player) {
+      player.currentTime = 0;
+      resumeMainPlayer("loop");
+    }
+    return;
+  }
   playNextPlaylistItem();
 }
 
@@ -1670,7 +1941,7 @@ function syncLyrics(currentTime = 0) {
   });
 }
 
-async function importPlayerAudio(file, { play = false, select = false, lyricText = "", lyricFileName = "", notify = true } = {}) {
+async function importPlayerAudio(file, { play = false, select = false, lyricText = "", lyricFileName = "", notify = true, collectionName = "" } = {}) {
   if (!file) return;
   const blobId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   const item = createPlaylistItem({
@@ -1679,7 +1950,8 @@ async function importPlayerAudio(file, { play = false, select = false, lyricText
     sourceType: "local",
     blobId,
     lyricText,
-    lyricFileName
+    lyricFileName,
+    collectionName
   });
   try {
     await savePlayerMediaBlob(blobId, file);
@@ -1703,6 +1975,10 @@ async function importPlayerFolder(files) {
   if (!fileList.length) return;
   const audioFiles = fileList.filter(isAudioFile);
   const lyricFiles = fileList.filter(isLyricFile);
+  const folderCollectionCounts = buildCollectionCounts(audioFiles, (file) => {
+    const directory = getMediaDirectory(file);
+    return directory || normalizeMediaCollectionKey(file.name);
+  });
   const lyricsByRelative = new Map();
   const lyricsByName = new Map();
   await Promise.all(lyricFiles.map(async (file) => {
@@ -1723,11 +1999,13 @@ async function importPlayerFolder(files) {
     const lyric = relativeMatch
       || sameNameMatches.find((entry) => entry.directory === getMediaDirectory(file))
       || sameNameMatches[0];
+    const collectionName = getMediaDirectory(file) || normalizeMediaCollectionKey(file.name);
     await importPlayerAudio(file, {
       play: false,
       select: index === 0,
       lyricText: lyric?.text || "",
       lyricFileName: lyric?.name || "",
+      collectionName: folderCollectionCounts[collectionName] > 1 ? collectionName : "",
       notify: false
     });
   }
@@ -1964,6 +2242,7 @@ function playInApp(src, title, options = {}) {
   const shouldAutoplay = options.autoplay !== false;
   clearTimeout(playerState.interruptionResumeTimer);
   player.src = src;
+  player.playbackRate = playerState.playbackRate || 1;
   playerState.audioUrl = src;
   playerTitle.textContent = title || "正在播放广播剧";
   let playlistItem = options.playlistItem || null;
@@ -2029,6 +2308,104 @@ function fileToDataUrl(file) {
     reader.addEventListener("error", () => reject(reader.error));
     reader.readAsDataURL(file);
   });
+}
+
+function dataUrlToBase64(dataUrl = "") {
+  const text = String(dataUrl || "");
+  const comma = text.indexOf(",");
+  return comma >= 0 ? text.slice(comma + 1) : text;
+}
+
+function guessAudioMime(fileName = "") {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".mp3")) return "audio/mpeg";
+  if (lower.endsWith(".m4a")) return "audio/mp4";
+  if (lower.endsWith(".flac")) return "audio/flac";
+  if (lower.endsWith(".ogg") || lower.endsWith(".opus")) return "audio/ogg";
+  return "audio/wav";
+}
+
+async function urlToBase64(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`音频下载失败：${response.status}`);
+  const blob = await response.blob();
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")));
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(blob);
+  });
+  return { base64: dataUrlToBase64(dataUrl), mimeType: blob.type || guessAudioMime(url) };
+}
+
+function collectAudioSegmentsForSaving(result, links = {}) {
+  const segments = result?.manifest?.audioSegments || result?.audioSegments || [];
+  return Array.isArray(segments) ? segments.map((segment, index) => ({
+    ...segment,
+    index,
+    fileName: segment.fileName || `${String(index + 1).padStart(3, "0")}-${segment.id || "segment"}.wav`,
+    url: segment.dataUrl || segment.url || (links.outputFolder && segment.fileName ? `${links.outputFolder}${segment.fileName}` : "")
+  })).filter((segment) => segment.url || segment.dataUrl || segment.base64) : [];
+}
+
+async function saveGeneratedSegmentsToDownloads(result, links) {
+  const segments = collectAudioSegmentsForSaving(result, links);
+  if (!segments.length) return null;
+  const plugin = getBaizeMediaPlugin();
+  const prepared = [];
+  for (const segment of segments) {
+    let base64 = segment.base64 || dataUrlToBase64(segment.dataUrl || "");
+    let mimeType = segment.mimeType || guessAudioMime(segment.fileName);
+    if (!base64 && segment.url) {
+      const converted = await urlToBase64(segment.url);
+      base64 = converted.base64;
+      mimeType = converted.mimeType || mimeType;
+    }
+    if (base64) prepared.push({
+      fileName: segment.fileName,
+      mimeType,
+      base64
+    });
+  }
+  if (!prepared.length) return null;
+  if (plugin?.saveAudioSegments) {
+    const saved = await plugin.saveAudioSegments({
+      title: result.title || "未命名作品",
+      segments: prepared
+    });
+    addSavedDownloadFilesToPlaylist(saved, result.title || "未命名作品");
+    return saved;
+  }
+  prepared.forEach((segment, index) => {
+    const anchor = document.createElement("a");
+    anchor.href = `data:${segment.mimeType};base64,${segment.base64}`;
+    anchor.download = `${String(index + 1).padStart(3, "0")}-${segment.fileName.replace(/^\d{1,3}-/, "")}`;
+    anchor.click();
+  });
+  return { count: prepared.length, folder: "浏览器默认下载文件夹" };
+}
+
+function addSavedDownloadFilesToPlaylist(savedDownloads, title = "未命名作品") {
+  const files = Array.isArray(savedDownloads?.files) ? savedDownloads.files : [];
+  if (!files.length) return;
+  const sorted = sortMediaRecords(files);
+  sorted.forEach((file) => {
+    if (!file?.uri) return;
+    const item = createPlaylistItem({
+      title: String(file.name || "").replace(/\.[^.]+$/, "") || title,
+      src: nativeMediaSrc(file.uri),
+      sourceType: "native",
+      persistent: true,
+      collectionName: sorted.length > 1 ? title : ""
+    });
+    item.fileName = file.name || "";
+    item.fileSize = file.size || 0;
+    item.mimeType = file.mimeType || guessAudioMime(file.name || "");
+    item.displayPath = file.path || `${savedDownloads.folder || "Download"}/${file.name || item.title}`;
+    upsertPlaylistItem(item);
+    upsertPlaybackTrack(item, { importedAt: item.createdAt });
+  });
+  saveAndRenderPlayerPlaylist();
 }
 
 async function startVoiceRecording() {
@@ -3343,15 +3720,21 @@ async function runDirectAudio() {
     }
 
     const links = normalizeResultLinks(result, payload.config);
+    let savedDownloads = null;
+    try {
+      savedDownloads = await saveGeneratedSegmentsToDownloads(result, links);
+    } catch (error) {
+      showToast(`音频已生成，但自动保存到下载文件夹失败：${error.message || error}`, "fail");
+    }
     $("#directResultBox").classList.remove("hidden");
     $("#directResultBox").innerHTML = `
       <strong>${result.title}</strong><br />
-      已跳过编剧流程，直接生成音频。<br />
+      已跳过编剧流程，直接生成音频。${savedDownloads?.count ? `<br />已按顺序保存 ${savedDownloads.count} 段音频到：${escapeHtml(savedDownloads.folder || "下载文件夹")}` : ""}<br />
       <a href="${links.audioPrompts}" target="_blank">查看使用的提示词</a>　
       ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">在播放器收听</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
       <a href="${links.manifest}" target="_blank">查看任务详情</a>
     `;
-    showToast("直接音频生成完成。", "ok");
+    showToast(savedDownloads?.count ? "直接音频生成完成，已保存到下载文件夹。" : "直接音频生成完成。", "ok");
     if (links.finalAudio) playInApp(links.finalAudio, result.title);
     saveLocalHistory({
       jobId: result.jobId,
@@ -3404,6 +3787,8 @@ function applyNetworkPreset(profile) {
   config.network.retryCount = useProxy ? "2" : "1";
   if (profile === "china") {
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+    config.qwen.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+    config.kimi.baseUrl = "https://api.moonshot.cn/v1/chat/completions";
     config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
     config.audio.model = "seed-audio-1.0";
   }
@@ -3411,6 +3796,8 @@ function applyNetworkPreset(profile) {
     config.gpt.baseUrl = "https://api.openai.com/v1/chat/completions";
     config.gemini.endpoint = "";
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+    config.qwen.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+    config.kimi.baseUrl = "https://api.moonshot.cn/v1/chat/completions";
     config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
   }
   saveConfigObject(config);
@@ -3423,6 +3810,8 @@ function getProbeUrl(label, config) {
   if (label === "GPT") return config.gpt?.baseUrl || defaultConfig.gpt.baseUrl;
   if (label === "Gemini") return config.gemini?.endpoint || "https://generativelanguage.googleapis.com/";
   if (label === "豆包文本") return config.doubao?.baseUrl || defaultConfig.doubao.baseUrl;
+  if (label === "千问") return config.qwen?.baseUrl || defaultConfig.qwen.baseUrl;
+  if (label === "Kimi") return config.kimi?.baseUrl || defaultConfig.kimi.baseUrl;
   if (label === "豆包音频") return config.audio?.endpoint || defaultConfig.audio.endpoint;
   if (label === "中转服务") return config.network?.relayBaseUrl || "";
   return "";
@@ -3463,12 +3852,12 @@ async function testNetworkRoutes() {
   try {
     $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
     const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
-    const labels = ["GPT", "Gemini", "豆包文本", "豆包音频"];
+    const labels = ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频"];
     if (config.network?.relayBaseUrl) labels.push("中转服务");
     let results = [];
     let serverManaged = null;
     if (getRelayBaseUrl(config)) {
-      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "豆包音频", "Grok"] }, config);
+      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "Grok"] }, config);
       results = serverResult.results || [];
       serverManaged = serverResult.serverManaged;
     } else {
@@ -3477,7 +3866,7 @@ async function testNetworkRoutes() {
       }
     }
     const serverSummary = serverManaged ? `
-      <p class="ok"><strong>后端中转</strong>：已连接。服务端 Key 状态：豆包文本 ${serverManaged.doubao?.hasApiKey ? "已配置" : "未配置"}，豆包音频 ${serverManaged.audio?.hasApiKey ? "已配置" : "未配置"}。</p>
+      <p class="ok"><strong>后端中转</strong>：已连接。服务端 Key 状态：豆包文本 ${serverManaged.doubao?.hasApiKey ? "已配置" : "未配置"}，千问 ${serverManaged.qwen?.hasApiKey ? "已配置" : "未配置"}，Kimi ${serverManaged.kimi?.hasApiKey ? "已配置" : "未配置"}，豆包音频 ${serverManaged.audio?.hasApiKey ? "已配置" : "未配置"}。</p>
     ` : "";
     $("#networkStatus").innerHTML = results.map((item) => `
       <p class="${item.ok ? "ok" : "fail"}"><strong>${item.label}</strong>：${item.message}</p>
@@ -3966,10 +4355,16 @@ async function runPipeline() {
     $("#runStatus").textContent = "已完成";
 
     const links = normalizeResultLinks(result, payload.config);
+    let savedDownloads = null;
+    try {
+      savedDownloads = await saveGeneratedSegmentsToDownloads(result, links);
+    } catch (error) {
+      showToast(`音频已生成，但自动保存到下载文件夹失败：${error.message || error}`, "fail");
+    }
     $("#resultBox").classList.remove("hidden");
     $("#resultBox").innerHTML = `
       <strong>${result.title}</strong><br />
-      剧本、提示词和音频已生成。<br />
+      剧本、提示词和音频已生成。${savedDownloads?.count ? `<br />已按顺序保存 ${savedDownloads.count} 段音频到：${escapeHtml(savedDownloads.folder || "下载文件夹")}` : ""}<br />
       <a href="${links.script2}" target="_blank">下载剧本 2</a>　
       <a href="${links.audioPrompts}" target="_blank">查看音频提示词</a>　
       ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">在播放器收听</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
@@ -3984,7 +4379,7 @@ async function runPipeline() {
       finalAudioDataUrl: links.finalAudioDataUrl,
       manifest: links.manifest
     });
-    showToast("广播剧生成完成，已保存到历史。", "ok");
+    showToast(savedDownloads?.count ? "广播剧生成完成，分段音频已保存到下载文件夹。" : "广播剧生成完成，已保存到历史。", "ok");
   } catch (error) {
     $("#runStatus").textContent = "失败";
     $("#resultBox").classList.remove("hidden");
@@ -4190,6 +4585,7 @@ function bindEvents() {
   $("#testBluetoothAudio").addEventListener("click", testBluetoothAudio);
   $("#toggleAudioGuard").addEventListener("click", toggleAudioGuard);
   $("#exportPlaybackRecord").addEventListener("click", exportPlaybackRecord);
+  $("#scanDownloadsButton").addEventListener("click", scanDownloadsToPlaylist);
   $("#midnightCatButton").addEventListener("click", openMidnightGate);
   $("#openMidnightGateFromConfig").addEventListener("click", openMidnightGate);
   $("#closeMidnightModal").addEventListener("click", () => setMidnightModal(false));
@@ -4286,6 +4682,8 @@ function bindEvents() {
   $("#playerPlayPause").addEventListener("click", togglePlayerPlayback);
   $("#playerPrev").addEventListener("click", playPreviousPlaylistItem);
   $("#playerNext").addEventListener("click", playNextPlaylistItem);
+  $("#playerLoopMode").addEventListener("click", togglePlayerLoopMode);
+  $("#playerRate").addEventListener("change", (event) => setPlayerPlaybackRate(event.target.value));
   $("#playerSeek").addEventListener("input", (event) => {
     const player = $("#mainPlayer");
     if (!player) return;

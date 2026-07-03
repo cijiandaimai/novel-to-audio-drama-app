@@ -71,6 +71,17 @@
                     <button id="playerPrev" class="player-skip-button" aria-label="上一首">上一首</button>
                     <button id="playerPlayPause" class="player-play-toggle" aria-label="播放或暂停">播放</button>
                     <button id="playerNext" class="player-skip-button" aria-label="下一首">下一首</button>
+                    <button id="playerLoopMode" class="player-skip-button" aria-label="循环模式">顺序</button>
+                    <label class="player-rate">
+                      <span>速度</span>
+                      <select id="playerRate" aria-label="播放速度">
+                        <option value="0.75">0.75x</option>
+                        <option value="1">1.0x</option>
+                        <option value="1.25">1.25x</option>
+                        <option value="1.5">1.5x</option>
+                        <option value="2">2.0x</option>
+                      </select>
+                    </label>
                     <label class="player-volume">
                       <span>音量</span>
                       <input id="playerVolume" type="range" min="0" max="1" step="0.01" value="1" aria-label="音量" />
@@ -86,10 +97,8 @@
                     导入音频
                     <input id="playerAudioFile" type="file" accept="audio/*" multiple />
                   </label>
-                  <label class="image-picker">
-                    导入文件夹
-                    <input id="playerFolderInput" type="file" accept="audio/*,.lrc,.krc,text/plain" multiple webkitdirectory />
-                  </label>
+                  <button id="scanDownloadsButton" class="image-picker" type="button">扫描下载文件夹</button>
+                  <input id="playerFolderInput" class="hidden-file-input" type="file" accept="audio/*,.lrc,.krc,text/plain" multiple webkitdirectory />
                   <label class="image-picker">
                     导入歌词
                     <input id="lyricFile" type="file" accept=".lrc,.krc,text/plain" />
@@ -573,6 +582,20 @@
           </header>
 
           <div class="config-grid">
+            <section class="panel provider">
+              <h3>创作方案</h3>
+              <p>自动推荐会根据已配置模型选择 A/B/C 计划；大陆用户可优先配置豆包、千问和 Kimi。</p>
+              <label>方案选择
+                <select data-config="workflow.plan">
+                  <option value="auto">自动推荐</option>
+                  <option value="a">A 计划：GPT + Gemini + 豆包，质量优先</option>
+                  <option value="b">B 计划：豆包稳定优先</option>
+                  <option value="c">C 计划：千问 + Kimi + 豆包，国产增强</option>
+                </select>
+              </label>
+              <div class="tutorial compact">自动推荐规则：A 可用走 A；否则千问或 Kimi 可用走 C；最后用豆包 B 计划兜底。</div>
+            </section>
+
             <section class="panel provider essential-provider">
               <h3>Doubao-音频生成-1.0</h3>
               <p>最核心配置：逐段生成对白、音乐、音效和环境声一体化音频。</p>
@@ -613,6 +636,24 @@
               <label>模型 ID<input data-config="doubao.model" placeholder="doubao-seed-2-1-pro-260628" /></label>
               <label>API Key<input data-config="doubao.apiKey" type="password" placeholder="火山方舟 API Key" /></label>
               <div class="tutorial">在火山方舟开通模型服务并创建 API Key，然后填入模型 ID。</div>
+            </section>
+
+            <section class="panel provider">
+              <h3>千问 Qwen：结构化剧本</h3>
+              <p>C 计划增强项：适合角色表、场次表、剧本整理和 JSON 音频提示词。</p>
+              <label>接口地址<input data-config="qwen.baseUrl" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" /></label>
+              <label>模型 ID<input data-config="qwen.model" placeholder="qwen-plus" /></label>
+              <label>API Key<input data-config="qwen.apiKey" type="password" placeholder="阿里云百炼 API Key" /></label>
+              <div class="tutorial">在阿里云百炼开通 Qwen；如果只想用国产增强方案，填千问、Kimi、豆包即可。</div>
+            </section>
+
+            <section class="panel provider">
+              <h3>Kimi：长文理解</h3>
+              <p>C 计划增强项：适合长篇小说、人物关系、伏笔和章节脉络梳理。</p>
+              <label>接口地址<input data-config="kimi.baseUrl" placeholder="https://api.moonshot.cn/v1/chat/completions" /></label>
+              <label>模型 ID<input data-config="kimi.model" placeholder="kimi-k2.6" /></label>
+              <label>API Key<input data-config="kimi.apiKey" type="password" placeholder="Moonshot / Kimi API Key" /></label>
+              <div class="tutorial">进入 Kimi API 平台创建 Key。C 计划会优先用它做长文理解和分场扩写。</div>
             </section>
 
             <section class="panel provider network-panel">
