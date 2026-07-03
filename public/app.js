@@ -71,6 +71,177 @@ const viewLabels = {
   config: "API 配置",
   history: "创作历史"
 };
+const appLanguageKey = "appLanguage";
+const i18n = {
+  zh: {
+    appName: "白泽声工坊",
+    tagline: "编剧、配音、配乐、合成",
+    navDiscover: "音箱",
+    navCreate: "创作",
+    navEditor: "剪辑",
+    language: "语言",
+    startCreate: "开始创作",
+    speakerEyebrow: "音箱",
+    speakerTitle: "播放、歌词、外部音频",
+    nowPlaying: "正在播放",
+    emptyPlayerTitle: "选择一段广播剧开始收听",
+    fullscreen: "全屏",
+    lyricHint: "导入 LRC / KRC 歌词后，这里会跟随音频逐字亮起。",
+    prev: "上一首",
+    play: "播放",
+    pause: "暂停",
+    next: "下一首",
+    loopNone: "顺序",
+    loopSingle: "单曲循环",
+    loopList: "列表循环",
+    speed: "速度",
+    volume: "音量",
+    pathEmpty: "未导入音频",
+    lyricEmpty: "歌词未导入",
+    importAudio: "导入音频",
+    scanDownloads: "扫描下载文件夹",
+    importLyrics: "导入歌词",
+    changeBg: "换背景",
+    importMemoryEmpty: "尚未记录导入位置",
+    moreSettings: "更多设置",
+    bgUrlPlaceholder: "粘贴图片链接",
+    applyLink: "应用链接",
+    clearBg: "恢复默认",
+    bluetooth: "蓝牙",
+    test: "测试",
+    autoResumeOn: "自动续播：开",
+    autoResumeOff: "自动续播：关",
+    exportRecord: "导出记录",
+    bluetoothHint: "请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。",
+    playlist: "播放列表",
+    clear: "清空",
+    playlistEmpty: "导入音频或播放作品后，会自动生成播放列表。",
+    apiConfig: "API 配置",
+    history: "创作历史",
+    createEyebrow: "创作台",
+    createTitle: "上传小说，生成广播剧",
+    checkApi: "检查 API",
+    editorEyebrow: "音频工作台",
+    configEyebrow: "傻瓜式配置",
+    configTitle: "把自己的 API 接进来",
+    saveConfig: "保存配置",
+    historyEyebrow: "创作历史",
+    historyTitle: "继续收听或下载成品",
+    refresh: "刷新"
+  },
+  ja: {
+    appName: "BaizeZRakugo",
+    tagline: "脚本、音声、音楽、ミックス",
+    navDiscover: "音箱",
+    navCreate: "制作",
+    navEditor: "編集",
+    language: "言語",
+    startCreate: "制作を始める",
+    speakerEyebrow: "音箱",
+    speakerTitle: "再生、歌詞、ローカル音声",
+    nowPlaying: "再生中",
+    emptyPlayerTitle: "音声ドラマを選んで再生",
+    fullscreen: "全画面",
+    lyricHint: "LRC / KRC 歌詞を読み込むと、音声に合わせて文字が光ります。",
+    prev: "前へ",
+    play: "再生",
+    pause: "一時停止",
+    next: "次へ",
+    loopNone: "順番",
+    loopSingle: "1曲リピート",
+    loopList: "リストリピート",
+    speed: "速度",
+    volume: "音量",
+    pathEmpty: "音声未読み込み",
+    lyricEmpty: "歌詞未読み込み",
+    importAudio: "音声追加",
+    scanDownloads: "Downloadsをスキャン",
+    importLyrics: "歌詞追加",
+    changeBg: "背景変更",
+    importMemoryEmpty: "読み込み場所は未記録",
+    moreSettings: "その他設定",
+    bgUrlPlaceholder: "画像リンクを貼り付け",
+    applyLink: "適用",
+    clearBg: "既定に戻す",
+    bluetooth: "Bluetooth",
+    test: "テスト",
+    autoResumeOn: "自動再開：オン",
+    autoResumeOff: "自動再開：オフ",
+    exportRecord: "記録を書き出す",
+    bluetoothHint: "先に端末のBluetooth設定でスピーカーをペアリングしてください。再生音はシステムの出力先に従います。",
+    playlist: "プレイリスト",
+    clear: "クリア",
+    playlistEmpty: "音声を追加または再生すると、プレイリストが自動作成されます。",
+    apiConfig: "API設定",
+    history: "制作履歴",
+    createEyebrow: "制作台",
+    createTitle: "小説をアップロードして音声ドラマを生成",
+    checkApi: "API確認",
+    editorEyebrow: "音声ワークベンチ",
+    configEyebrow: "かんたん設定",
+    configTitle: "自分のAPIを接続",
+    saveConfig: "設定を保存",
+    historyEyebrow: "制作履歴",
+    historyTitle: "作品を聴く・ダウンロード",
+    refresh: "更新"
+  },
+  en: {
+    appName: "Baize Voice Studio",
+    tagline: "Script, voice, music, mix",
+    navDiscover: "Speaker",
+    navCreate: "Create",
+    navEditor: "Edit",
+    language: "Language",
+    startCreate: "Start",
+    speakerEyebrow: "Speaker",
+    speakerTitle: "Player, lyrics, local audio",
+    nowPlaying: "Now Playing",
+    emptyPlayerTitle: "Choose an audio drama to play",
+    fullscreen: "Fullscreen",
+    lyricHint: "Import LRC / KRC lyrics to highlight words with playback.",
+    prev: "Previous",
+    play: "Play",
+    pause: "Pause",
+    next: "Next",
+    loopNone: "Order",
+    loopSingle: "Repeat One",
+    loopList: "Repeat List",
+    speed: "Speed",
+    volume: "Volume",
+    pathEmpty: "No audio imported",
+    lyricEmpty: "No lyrics imported",
+    importAudio: "Import Audio",
+    scanDownloads: "Scan Downloads",
+    importLyrics: "Import Lyrics",
+    changeBg: "Background",
+    importMemoryEmpty: "No import location recorded",
+    moreSettings: "More Settings",
+    bgUrlPlaceholder: "Paste image URL",
+    applyLink: "Apply",
+    clearBg: "Default",
+    bluetooth: "Bluetooth",
+    test: "Test",
+    autoResumeOn: "Auto resume: On",
+    autoResumeOff: "Auto resume: Off",
+    exportRecord: "Export Record",
+    bluetoothHint: "Pair your Bluetooth speaker in system settings first. Playback follows the system audio output.",
+    playlist: "Playlist",
+    clear: "Clear",
+    playlistEmpty: "Import or play audio to build a playlist automatically.",
+    apiConfig: "API Config",
+    history: "History",
+    createEyebrow: "Studio",
+    createTitle: "Upload a novel and generate an audio drama",
+    checkApi: "Check API",
+    editorEyebrow: "Audio Desk",
+    configEyebrow: "Simple Setup",
+    configTitle: "Connect your APIs",
+    saveConfig: "Save Config",
+    historyEyebrow: "History",
+    historyTitle: "Listen again or download",
+    refresh: "Refresh"
+  }
+};
 const playerBgKey = "playerBackgroundImage";
 const playerPlaylistKey = "playerPlaylist";
 const playerLastImportKey = "playerLastImportLocation";
@@ -305,6 +476,101 @@ function deepMerge(base, extra) {
     }
   }
   return out;
+}
+
+function getAppLanguage() {
+  const value = localStorage.getItem(appLanguageKey) || "zh";
+  return i18n[value] ? value : "zh";
+}
+
+function t(key) {
+  const lang = getAppLanguage();
+  return i18n[lang]?.[key] || i18n.zh[key] || key;
+}
+
+function setText(selector, value) {
+  const target = $(selector);
+  if (target) target.textContent = value;
+}
+
+function setPlaceholder(selector, value) {
+  const target = $(selector);
+  if (target) target.placeholder = value;
+}
+
+function setNavItemText(view, value) {
+  const button = $(`.nav-item[data-view='${view}']`);
+  if (!button) return;
+  const icon = button.querySelector(".nav-icon");
+  button.textContent = "";
+  if (icon) button.appendChild(icon);
+  button.append(document.createTextNode(value));
+}
+
+function applyAppLanguage(language = getAppLanguage()) {
+  const lang = i18n[language] ? language : "zh";
+  localStorage.setItem(appLanguageKey, lang);
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : lang;
+  document.title = t("appName");
+  const selector = $("#appLanguageSelect");
+  if (selector) selector.value = lang;
+
+  setText(".brand h1", t("appName"));
+  setText(".brand p", t("tagline"));
+  setNavItemText("discover", t("navDiscover"));
+  setNavItemText("create", t("navCreate"));
+  setNavItemText("editor", t("navEditor"));
+  setText("#discover .page-head .eyebrow", t("speakerEyebrow"));
+  setText("#discover .page-head h2", t("speakerTitle"));
+  setText(".language-switch span", t("language"));
+  setText("#discover .page-head [data-jump='create']", t("startCreate"));
+  setText(".speaker-now .eyebrow", t("nowPlaying"));
+  if (!playerState.currentPlaylistId) setText("#playerTitle", t("emptyPlayerTitle"));
+  setText("#fullScreenPlayer", t("fullscreen"));
+  if (!playerState.lyrics.length) setText("#lyricCurrent", t("lyricHint"));
+  setText("#playerPrev", t("prev"));
+  setText("#playerNext", t("next"));
+  setText(".player-rate span", t("speed"));
+  setText(".player-volume span", t("volume"));
+  setText("#scanDownloadsButton", t("scanDownloads"));
+  setText(".player-more summary", t("moreSettings"));
+  setPlaceholder("#playerBgUrl", t("bgUrlPlaceholder"));
+  setText("#applyBgUrl", t("applyLink"));
+  setText("#clearBg", t("clearBg"));
+  setText("#openBluetoothSettings", t("bluetooth"));
+  setText("#testBluetoothAudio", t("test"));
+  setText("#exportPlaybackRecord", t("exportRecord"));
+  setText("#bluetoothStatus", t("bluetoothHint"));
+  setText(".player-playlist-head strong", t("playlist"));
+  setText("#clearPlaylist", t("clear"));
+  setText(".home-actions [data-jump='config']", t("apiConfig"));
+  setText(".home-actions [data-jump='history']", t("history"));
+  setText("#create .page-head .eyebrow", t("createEyebrow"));
+  setText("#create .page-head h2", t("createTitle"));
+  setText("#create .page-head [data-jump='config']", t("checkApi"));
+  setText("#editor .page-head .eyebrow", t("editorEyebrow"));
+  setText("#config .page-head .eyebrow", t("configEyebrow"));
+  setText("#config .page-head h2", t("configTitle"));
+  setText("#saveConfig", t("saveConfig"));
+  setText("#history .page-head .eyebrow", t("historyEyebrow"));
+  setText("#history .page-head h2", t("historyTitle"));
+  setText("#refreshHistory", t("refresh"));
+
+  const playerActionLabels = $$(".player-actions label.image-picker");
+  if (playerActionLabels[0]) {
+    playerActionLabels[0].childNodes[0].nodeValue = t("importAudio");
+  }
+  if (playerActionLabels[1]) {
+    playerActionLabels[1].childNodes[0].nodeValue = t("importLyrics");
+  }
+  if (playerActionLabels[2]) {
+    playerActionLabels[2].childNodes[0].nodeValue = t("changeBg");
+  }
+
+  updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
+  renderAudioGuardUi();
+  renderPlayerLoopRateUi();
+  syncPlayerControls();
 }
 
 function getConfig() {
@@ -1158,9 +1424,9 @@ function upsertPlaylistItem(item) {
 
 function updatePlayerPathLabel(item = null) {
   const pathLabel = $("#playerPathLabel");
-  if (pathLabel) pathLabel.textContent = item?.displayPath || "未导入音频";
+  if (pathLabel) pathLabel.textContent = item?.displayPath || t("pathEmpty");
   const lyricLabel = $("#lyricModeLabel");
-  if (lyricLabel) lyricLabel.textContent = playerState.lyricFormatLabel || "歌词未导入";
+  if (lyricLabel) lyricLabel.textContent = playerState.lyricFormatLabel || t("lyricEmpty");
 }
 
 function resetPlayerLyrics() {
@@ -1178,7 +1444,7 @@ function renderPlayerPlaylist() {
   const list = $("#playerPlaylist");
   if (!list) return;
   if (!playerState.playlist.length) {
-    list.innerHTML = `<p class="playlist-empty">导入音频或播放作品后，会自动生成播放列表。</p>`;
+    list.innerHTML = `<p class="playlist-empty">${escapeHtml(t("playlistEmpty"))}</p>`;
     updatePlayerPathLabel();
     return;
   }
@@ -1357,7 +1623,7 @@ function syncPlayerControls() {
     seek.disabled = !hasSource;
   }
   if (playPause) {
-    playPause.textContent = player.paused ? "播放" : "暂停";
+    playPause.textContent = player.paused ? t("play") : t("pause");
     playPause.disabled = !hasSource && !playerState.playlist.length;
   }
   const index = playerState.playlist.findIndex((item) => item.id === playerState.currentPlaylistId);
@@ -1384,7 +1650,7 @@ function readPlayerRate() {
 function renderPlayerLoopRateUi() {
   const loopButton = $("#playerLoopMode");
   if (loopButton) {
-    const labels = { none: "顺序", single: "单曲循环", list: "列表循环" };
+    const labels = { none: t("loopNone"), single: t("loopSingle"), list: t("loopList") };
     loopButton.textContent = labels[playerState.loopMode] || "顺序";
     loopButton.classList.toggle("active", playerState.loopMode !== "none");
   }
@@ -1424,7 +1690,7 @@ function isAudioGuardEnabled() {
 
 function renderAudioGuardUi() {
   const button = $("#toggleAudioGuard");
-  if (button) button.textContent = isAudioGuardEnabled() ? "自动续播：开" : "自动续播：关";
+  if (button) button.textContent = isAudioGuardEnabled() ? t("autoResumeOn") : t("autoResumeOff");
 }
 
 function toggleAudioGuard() {
@@ -4392,6 +4658,7 @@ async function runPipeline() {
 
 function bindEvents() {
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
+  $("#appLanguageSelect")?.addEventListener("change", (event) => applyAppLanguage(event.target.value));
   $$("[data-jump]").forEach((button) => button.addEventListener("click", () => {
     showView(button.dataset.jump);
     if (button.closest("#appIntroModal")) closeAppIntroModal();
@@ -4768,6 +5035,7 @@ restoreCreatorDraft();
 loadPlayerBackground();
 loadPlayerPlaylist();
 renderPlayerImportLocation();
+applyPlayerPlaybackSettings();
 renderAudioGuardUi();
 renderVoiceReferences();
 renderClipList();
@@ -4781,4 +5049,5 @@ registerNativeBackHandler();
 registerPlaybackInterruptionHandlers();
 syncPlayerFullscreenUi();
 syncTimelineControls();
+applyAppLanguage();
 showAppIntroIfNeeded();

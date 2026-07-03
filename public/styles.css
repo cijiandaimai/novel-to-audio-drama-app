@@ -1741,6 +1741,37 @@ body[data-view="editor"] .main {
   gap: 10px;
 }
 
+.home-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.language-switch {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(33, 44, 36, 0.14);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(255, 252, 244, 0.86);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.language-switch select {
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-weight: 900;
+}
+
 .player-import-memory {
   overflow: hidden;
   padding: 7px 10px;
