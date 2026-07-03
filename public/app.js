@@ -4135,7 +4135,7 @@ function startTimelineDrag(event) {
     setPlayhead(point.time, { snap: false, follow: true });
     if (handleTimelineDoubleTap(point, hit)) return;
     if (event.pointerType === "touch") {
-      editorState.pendingDrag = { hit, point, x: point.x, y: point.y };
+      editorState.pendingDrag = { mode: "touch-range", hit, point, x: point.x, y: point.y };
       setTimelineDragClass("long-press-armed", true);
       clearTimeout(editorState.longPressTimer);
       editorState.longPressTimer = window.setTimeout(() => {
@@ -4144,10 +4144,9 @@ function startTimelineDrag(event) {
         clearPendingTimelineDrag();
         beginClipRangeSelect(pending.hit, pending.point);
       }, 360);
-      showToast("已选中片段，长按后滑动可框选片段内部。");
       return;
     }
-    beginClipDrag(hit, point);
+    editorState.pendingDrag = { mode: "mouse-clip-drag", hit, point, x: point.x, y: point.y };
     return;
   }
   const selection = editorState.selection;
@@ -4170,15 +4169,20 @@ function startTimelineDrag(event) {
 }
 
 function moveTimelineDrag(event) {
+  const point = getCanvasPointer(event);
   if (editorState.pendingDrag && !editorState.drag) {
-    const point = getCanvasPointer(event);
-    if (Math.hypot(point.x - editorState.pendingDrag.x, point.y - editorState.pendingDrag.y) > 14 * point.ratio) {
-      clearPendingTimelineDrag();
+    const pending = editorState.pendingDrag;
+    const movement = Math.hypot(point.x - pending.x, point.y - pending.y);
+    if (pending.mode === "mouse-clip-drag") {
+      if (movement <= 4 * point.ratio) return;
+      editorState.pendingDrag = null;
+      beginClipDrag(pending.hit, pending.point);
+    } else {
+      if (movement > 14 * point.ratio) clearPendingTimelineDrag();
+      return;
     }
-    return;
   }
   if (!editorState.drag) return;
-  const point = getCanvasPointer(event);
   const drag = editorState.drag;
   if (drag.type === "playhead") {
     setPlayhead(point.time, { snap: false, follow: true });
