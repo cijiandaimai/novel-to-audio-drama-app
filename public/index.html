@@ -380,7 +380,10 @@
               </div>
 
               <div class="timeline-toolbar">
-                <div id="editorSourceInfo">当前选中：轨道 1</div>
+                <div class="timeline-status-card">
+                  <div id="editorSourceInfo">当前选中：轨道 1</div>
+                  <span id="timelineZoomLabel">缩放 1.0x</span>
+                </div>
                 <div class="timeline-resize-actions" aria-label="轨道高度">
                   <button id="expandActiveTrack" class="secondary" type="button">放大轨道</button>
                   <button id="resetTrackHeights" class="secondary" type="button">均分轨道</button>
@@ -391,6 +394,9 @@
                 <button id="timelinePanLeft" class="secondary" type="button">左移</button>
                 <input id="timelineOffset" type="range" min="0" max="0" step="0.01" value="0" aria-label="时间线横向位置" />
                 <button id="timelinePanRight" class="secondary" type="button">右移</button>
+                <label class="timeline-zoom-range">缩放
+                  <input id="timelineZoomRange" type="range" min="1" max="32" step="0.1" value="1" aria-label="时间线缩放" />
+                </label>
               </div>
 
               <div class="waveform-wrap">

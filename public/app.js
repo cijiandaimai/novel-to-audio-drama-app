@@ -3093,6 +3093,23 @@ function panTimeline(direction = 1) {
   setTimelineOffset(editorState.timeline.offset + direction * Math.max(0.5, visible * 0.35));
 }
 
+function ensurePlayheadVisible(time = editorState.timeline.playhead, marginRatio = 0.14) {
+  const projectDuration = getTimelineDuration();
+  const visible = getVisibleTimelineDuration(projectDuration);
+  const maxOffset = Math.max(0, projectDuration - visible);
+  if (maxOffset <= 0) return;
+  const margin = visible * marginRatio;
+  const viewStart = editorState.timeline.offset;
+  const viewEnd = viewStart + visible;
+  if (time < viewStart + margin) {
+    editorState.timeline.offset = clamp(time - margin, 0, maxOffset);
+    syncTimelineControls();
+  } else if (time > viewEnd - margin) {
+    editorState.timeline.offset = clamp(time - visible + margin, 0, maxOffset);
+    syncTimelineControls();
+  }
+}
+
 function fitTimeline() {
   editorState.timeline.zoom = 1;
   editorState.timeline.offset = 0;
@@ -3100,17 +3117,24 @@ function fitTimeline() {
   renderWaveform();
 }
 
-function setPlayhead(value) {
-  editorState.timeline.playhead = snapTime(clamp(value, 0, getTimelineDuration()));
+function setPlayhead(value, options = {}) {
+  const shouldSnap = options.snap !== false;
+  const next = clamp(value, 0, getTimelineDuration());
+  editorState.timeline.playhead = shouldSnap ? snapTime(next) : next;
   $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
+  if (options.follow) ensurePlayheadVisible(editorState.timeline.playhead);
   syncEditorQuickState();
-  renderWaveform();
+  if (options.render !== false) renderWaveform();
 }
 
 function syncTimelineControls() {
   $("#snapTimeline").checked = editorState.timeline.snap;
   $("#snapGridSize").value = String(editorState.timeline.grid);
   $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
+  const zoomRange = $("#timelineZoomRange");
+  if (zoomRange) zoomRange.value = String(editorState.timeline.zoom);
+  const zoomLabel = $("#timelineZoomLabel");
+  if (zoomLabel) zoomLabel.textContent = `缩放 ${editorState.timeline.zoom.toFixed(1)}x`;
   const offsetInput = $("#timelineOffset");
   if (offsetInput) {
     const projectDuration = getTimelineDuration();
@@ -3124,6 +3148,17 @@ function syncTimelineControls() {
   $("#undoEdit").disabled = !editorState.undoStack.length && !getActiveTrack().sourceHistory?.length;
   $("#redoEdit").disabled = !editorState.redoStack.length;
   syncEditorQuickState();
+}
+
+function syncEditorPlaybackButtons(isPlaying = editorState.playingNodes.length > 0) {
+  const playButtons = ["#transportPlay", "#previewTimelineMix", "#quickPreviewMix"];
+  playButtons.forEach((selector) => {
+    const button = $(selector);
+    if (!button) return;
+    button.classList.toggle("playing", isPlaying);
+    if (selector === "#transportPlay") button.textContent = isPlaying ? "暂停" : "播放";
+    if (selector === "#previewTimelineMix" || selector === "#quickPreviewMix") button.textContent = isPlaying ? "暂停" : "预听";
+  });
 }
 
 function syncTrackControls(trackId) {
@@ -3180,9 +3215,15 @@ function syncEditorQuickState() {
   if (undoImport) undoImport.disabled = !active.sourceHistory?.length;
   const clearTrack = $("#quickClearTrack");
   if (clearTrack) clearTrack.disabled = !active.buffer && !active.url;
+  syncEditorPlaybackButtons();
+}
+
+function setEditorContext(name = "studio") {
+  document.body.dataset.editorPanel = name || "studio";
 }
 
 function setEditorPanel(name = "") {
+  setEditorContext(name || "studio");
   $$("[data-editor-panel]").forEach((button) => {
     const active = button.dataset.editorPanel === name;
     button.classList.toggle("active", active);
@@ -3191,8 +3232,8 @@ function setEditorPanel(name = "") {
   $$("[data-editor-drawer]").forEach((drawer) => {
     const active = drawer.dataset.editorDrawer === name;
     drawer.classList.toggle("active", active);
-    if (active) requestAnimationFrame(() => drawer.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   });
+  renderWaveform();
 }
 
 function setActiveTrack(trackId) {
@@ -3450,6 +3491,7 @@ function selectEditorClip(clipOrId, { openPanel = false, notify = false } = {}) 
   ensureClipVisible(clip);
   setPlayhead(clip.timelineStart);
   if (openPanel) setEditorPanel("clips");
+  else setEditorContext("clips");
   renderClipList();
   renderWaveform();
   if (notify) showToast("已选中片段，可在波形上长按拖动。", "ok");
@@ -4041,9 +4083,10 @@ function startTimelineDrag(event) {
     trackId: point.track.id,
     startTime: point.time,
     originalStart: selection.sourceStart,
-    originalEnd: selection.sourceEnd
+    originalEnd: selection.sourceEnd,
+    originalTimelineStart: selection.timelineStart
   };
-  if (type === "create") setClipInputs(snapTime(point.time), snapTime(point.time), selection.timelineStart);
+  if (type === "create") setClipInputs(snapTime(point.time), snapTime(point.time), snapTime(point.time));
   setPlayhead(point.time);
   point.canvas.setPointerCapture?.(event.pointerId);
 }
@@ -4087,16 +4130,20 @@ function moveTimelineDrag(event) {
     return;
   }
   if (drag.type === "create") {
-    setClipInputs(Math.min(snapTime(drag.startTime), snapTime(point.time)), Math.max(snapTime(drag.startTime), snapTime(point.time)), editorState.selection.timelineStart);
+    const start = Math.min(snapTime(drag.startTime), snapTime(point.time));
+    const end = Math.max(snapTime(drag.startTime), snapTime(point.time));
+    setClipInputs(start, end, start);
   } else if (drag.type === "left") {
-    setClipInputs(clamp(snapTime(point.time), 0, drag.originalEnd - 0.1), drag.originalEnd, editorState.selection.timelineStart);
+    const start = clamp(snapTime(point.time), 0, drag.originalEnd - 0.1);
+    setClipInputs(start, drag.originalEnd, start);
   } else if (drag.type === "right") {
     setClipInputs(drag.originalStart, clamp(snapTime(point.time), drag.originalStart + 0.1, maxTime), editorState.selection.timelineStart);
   } else if (drag.type === "move") {
     const length = Math.max(0.1, drag.originalEnd - drag.originalStart);
     const delta = snapTime(point.time) - snapTime(drag.startTime);
     const start = clamp(drag.originalStart + delta, 0, Math.max(0, maxTime - length));
-    setClipInputs(start, start + length, editorState.selection.timelineStart);
+    const timelineStart = Math.max(0, snapTime((drag.originalTimelineStart || 0) + delta));
+    setClipInputs(start, start + length, timelineStart);
   }
   setPlayhead(point.time);
 }
@@ -4148,6 +4195,7 @@ function addEditorClip(start, end, timelineStart = editorState.selection.timelin
   };
   editorState.clips.push(clip);
   editorState.selectedClipId = clip.id;
+  setEditorContext("clips");
   renderClipList();
   renderWaveform();
   showToast(`已加入 ${track.name} 片段。`, "ok");
@@ -4234,19 +4282,20 @@ function stopEditorPlayback() {
     try { node.stop(); } catch {}
   });
   editorState.playingNodes = [];
-  $("#transportPlay")?.classList.remove("playing");
+  syncEditorPlaybackButtons(false);
 }
 
 function animatePreviewPlayhead() {
   cancelAnimationFrame(editorState.playheadRaf);
   const tick = () => {
     const next = editorState.playbackStartPlayhead + Math.max(0, Date.now() / 1000 - editorState.playbackStartClock);
-    setPlayhead(Math.min(editorState.playbackDuration, next));
+    setPlayhead(Math.min(editorState.playbackDuration, next), { snap: false, follow: true });
     if (next < editorState.playbackDuration && editorState.playingNodes.length) {
       editorState.playheadRaf = requestAnimationFrame(tick);
     } else {
       editorState.playheadRaf = 0;
-      $("#transportPlay")?.classList.remove("playing");
+      setPlayhead(editorState.playbackDuration, { snap: false });
+      syncEditorPlaybackButtons(false);
     }
   };
   editorState.playheadRaf = requestAnimationFrame(tick);
@@ -4371,13 +4420,18 @@ async function renderEditorMixBuffer() {
 }
 
 async function previewTimelineMix() {
+  if (editorState.playingNodes.length) {
+    stopEditorPlayback();
+    return;
+  }
   stopEditorPlayback();
   try {
     const { clips } = getRenderableClips();
     const context = getEditorAudioContext();
     if (context.state === "suspended") context.resume();
     const totalDuration = clips.reduce((max, clip) => Math.max(max, clip.timelineStart + getClipDuration(clip)), 0);
-    const startAt = Math.min(editorState.timeline.playhead, Math.max(0, totalDuration - 0.05));
+    const currentPlayhead = editorState.timeline.playhead >= totalDuration - 0.05 ? 0 : editorState.timeline.playhead;
+    const startAt = Math.min(currentPlayhead, Math.max(0, totalDuration - 0.05));
     const now = context.currentTime;
     const nodes = [];
     clips.forEach((clip) => {
@@ -4415,7 +4469,8 @@ async function previewTimelineMix() {
         if (!editorState.playingNodes.length) {
           cancelAnimationFrame(editorState.playheadRaf);
           editorState.playheadRaf = 0;
-          $("#transportPlay")?.classList.remove("playing");
+          setPlayhead(editorState.playbackDuration, { snap: false });
+          syncEditorPlaybackButtons(false);
           syncEditorQuickState();
         }
       };
@@ -4427,7 +4482,7 @@ async function previewTimelineMix() {
     editorState.playbackStartClock = Date.now() / 1000;
     editorState.playbackStartPlayhead = startAt;
     editorState.playbackDuration = totalDuration;
-    $("#transportPlay")?.classList.add("playing");
+    syncEditorPlaybackButtons(true);
     animatePreviewPlayhead();
   } catch (error) {
     showToast(`预听失败：${error.message}`, "fail");
@@ -5488,6 +5543,7 @@ function bindEvents() {
   $("#zoomOutTimeline").addEventListener("click", () => setTimelineZoom(editorState.timeline.zoom / 1.35));
   $("#zoomInTimeline").addEventListener("click", () => setTimelineZoom(editorState.timeline.zoom * 1.35));
   $("#fitTimeline").addEventListener("click", fitTimeline);
+  $("#timelineZoomRange")?.addEventListener("input", (event) => setTimelineZoom(Number(event.target.value) || 1));
   $("#timelineOffset").addEventListener("input", (event) => setTimelineOffset(Number(event.target.value) || 0));
   $("#timelinePanLeft").addEventListener("click", () => panTimeline(-1));
   $("#timelinePanRight").addEventListener("click", () => panTimeline(1));
@@ -5747,6 +5803,7 @@ function bindEvents() {
 
 decorateApiHelpFields();
 document.body.dataset.view = "discover";
+setEditorContext("studio");
 loadConfigIntoForm();
 restoreCreatorDraft();
 loadPlayerBackground();

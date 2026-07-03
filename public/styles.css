@@ -745,11 +745,16 @@ textarea {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  min-height: calc(100vh - 250px);
-  height: calc(100dvh - 150px);
+  min-height: 0;
+  height: calc(100dvh - 128px);
   overflow: hidden;
+  padding: 10px;
+  border-color: rgba(31, 33, 31, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 253, 247, 0.94), rgba(238, 243, 236, 0.9)),
+    radial-gradient(circle at 18% 0, rgba(184, 139, 74, 0.12), transparent 34%);
 }
 
 .editor-side-panel {
@@ -760,33 +765,35 @@ textarea {
 
 .editor-command-bar {
   flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 10px;
+  order: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid rgba(78, 73, 60, 0.14);
   border-radius: 8px;
-  background: rgba(255, 253, 247, 0.72);
+  background: rgba(255, 253, 247, 0.78);
+  backdrop-filter: blur(10px);
 }
 
 .studio-transport {
   flex: 0 0 auto;
+  order: 2;
   display: grid;
-  grid-template-columns: repeat(3, minmax(64px, auto)) minmax(130px, 1fr) repeat(3, minmax(64px, auto));
+  grid-template-columns: repeat(3, minmax(56px, auto)) minmax(128px, 1fr) repeat(3, minmax(56px, auto));
   gap: 8px;
   align-items: center;
-  padding: 9px;
+  padding: 8px;
   border: 1px solid rgba(78, 73, 60, 0.14);
   border-radius: 8px;
-  background: rgba(255, 253, 247, 0.9);
+  background: rgba(31, 33, 31, 0.86);
   box-shadow: 0 8px 22px rgba(31, 33, 31, 0.05);
 }
 
 .studio-transport button {
-  min-height: 38px;
-  padding: 7px 10px;
+  min-height: 36px;
+  padding: 7px 9px;
 }
 
 .studio-transport button.playing {
@@ -798,11 +805,11 @@ textarea {
   gap: 2px;
   justify-items: center;
   min-width: 0;
-  color: var(--muted);
+  color: rgba(255, 250, 240, 0.68);
 }
 
 .studio-timecode strong {
-  color: var(--ink);
+  color: #fffaf0;
   font-family: Consolas, "SFMono-Regular", monospace;
   font-size: 20px;
   letter-spacing: 0;
@@ -819,13 +826,13 @@ textarea {
 .editor-menu-tabs {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
+  gap: 5px;
   width: 100%;
 }
 
 .editor-menu-button {
-  min-height: 36px;
-  padding: 7px 9px;
+  min-height: 34px;
+  padding: 6px 8px;
   border-radius: 8px;
   border: 1px solid var(--line);
   background: rgba(255, 253, 247, 0.8);
@@ -843,8 +850,8 @@ textarea {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, auto));
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  gap: 6px;
+  width: auto;
 }
 
 .editor-command-bar .timeline-grid {
@@ -853,14 +860,17 @@ textarea {
 
 .editor-fast-workflow {
   flex: 0 0 auto;
+  order: 6;
   display: grid;
   gap: 8px;
-  max-height: min(32vh, 280px);
-  overflow: auto;
-  padding: 10px;
+  max-height: min(25vh, 190px);
+  overflow: hidden;
+  padding: 8px;
   border: 1px solid rgba(78, 73, 60, 0.14);
   border-radius: 8px;
-  background: rgba(255, 253, 247, 0.84);
+  background: rgba(255, 253, 247, 0.92);
+  box-shadow: 0 -12px 32px rgba(31, 33, 31, 0.06);
+  backdrop-filter: blur(12px);
 }
 
 .editor-track-strip {
@@ -902,14 +912,14 @@ textarea {
 }
 
 .editor-fast-actions {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(9, minmax(0, 1fr));
-  gap: 8px;
+  gap: 6px;
 }
 
 .editor-fast-actions button {
-  min-height: 38px;
-  padding: 7px 8px;
+  min-height: 36px;
+  padding: 6px 7px;
 }
 
 .editor-fast-status {
@@ -930,7 +940,7 @@ textarea {
 }
 
 .editor-selected-clip-bar {
-  display: grid;
+  display: none;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
@@ -961,7 +971,7 @@ textarea {
 }
 
 .editor-clip-tool-strip {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
@@ -972,9 +982,28 @@ textarea {
 }
 
 .editor-clip-inspector {
-  display: grid;
+  display: none;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+body[data-view="editor"][data-editor-panel="studio"] .editor-fast-actions,
+body[data-view="editor"][data-editor-panel="import"] .editor-fast-actions,
+body[data-view="editor"][data-editor-panel="select"] .editor-fast-actions,
+body[data-view="editor"][data-editor-panel="export"] .editor-fast-actions {
+  display: grid;
+}
+
+body[data-view="editor"][data-editor-panel="clips"] .editor-selected-clip-bar,
+body[data-view="editor"][data-editor-panel="select"] .editor-selected-clip-bar,
+body[data-view="editor"][data-editor-panel="clips"] .editor-clip-tool-strip,
+body[data-view="editor"][data-editor-panel="select"] .editor-clip-tool-strip {
+  display: grid;
+}
+
+body[data-view="editor"][data-editor-panel="tracks"] .editor-selected-clip-bar,
+body[data-view="editor"][data-editor-panel="tracks"] .editor-clip-inspector {
+  display: grid;
 }
 
 .editor-clip-inspector label {
@@ -1016,13 +1045,14 @@ textarea {
 .editor-drawer {
   position: absolute;
   z-index: 8;
-  left: 20px;
-  right: 20px;
-  top: 120px;
+  left: 12px;
+  right: 12px;
+  top: 172px;
+  bottom: min(26vh, 204px);
   display: none;
-  max-height: min(50vh, 390px);
+  max-height: none;
   overflow: auto;
-  padding: 14px;
+  padding: 12px;
   border: 1px solid rgba(78, 73, 60, 0.18);
   border-radius: 8px;
   background: rgba(255, 253, 247, 0.96);
@@ -1142,6 +1172,7 @@ textarea {
 }
 
 #editorPreview {
+  display: none;
   width: min(360px, 100%);
 }
 
@@ -1199,9 +1230,31 @@ textarea {
 }
 
 .timeline-toolbar {
-  margin: 12px 0;
+  order: 3;
+  margin: 0;
   color: var(--muted);
   flex: 0 0 auto;
+}
+
+.timeline-status-card {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.timeline-status-card > div {
+  overflow: hidden;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-status-card > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .timeline-resize-actions {
@@ -1218,11 +1271,12 @@ textarea {
 
 .timeline-pan-row {
   flex: 0 0 auto;
+  order: 4;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(120px, 0.34fr);
   gap: 8px;
   align-items: center;
-  margin: 0 0 10px;
+  margin: 0;
 }
 
 .timeline-pan-row button {
@@ -1234,6 +1288,17 @@ textarea {
   width: 100%;
   min-height: 32px;
   padding: 0;
+}
+
+.timeline-zoom-range {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .timeline-toggle,
@@ -1255,7 +1320,8 @@ textarea {
 
 .waveform-wrap {
   flex: 1 1 auto;
-  min-height: 260px;
+  order: 5;
+  min-height: 320px;
   position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1269,7 +1335,7 @@ textarea {
   display: block;
   width: 100%;
   height: 100%;
-  min-height: 260px;
+  min-height: 320px;
   cursor: grab;
   touch-action: none;
 }
@@ -1346,9 +1412,13 @@ body[data-view="editor"] .player-dock {
   display: none;
 }
 
+body[data-view="editor"] .page-head {
+  display: none;
+}
+
 body[data-view="editor"] .main {
   grid-column: 1 / -1;
-  padding-bottom: 96px;
+  padding: 12px 12px calc(92px + env(safe-area-inset-bottom, 0px));
 }
 
 .source-credit a {
@@ -2504,21 +2574,28 @@ body[data-view="editor"] .main {
   .editor-command-bar {
     display: grid;
     grid-template-columns: 1fr;
+    padding: 6px;
   }
 
   .editor-main-panel {
-    height: calc(100dvh - 104px);
+    height: calc(100dvh - 96px);
     min-height: 0;
+    padding: 8px;
   }
 
   .studio-transport {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .studio-timecode {
-    grid-column: 1 / -1;
-    grid-row: 1;
+    grid-column: auto;
+    grid-row: auto;
     padding-bottom: 2px;
+  }
+
+  .studio-timecode strong {
+    font-size: 16px;
   }
 
   .editor-tool-group {
@@ -2543,13 +2620,38 @@ body[data-view="editor"] .main {
     display: none;
   }
 
-  .editor-track-strip,
-  .editor-fast-actions {
+  .editor-track-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .editor-fast-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .simple-track {
+    min-height: 34px;
+    padding: 5px 7px;
+  }
+
+  .editor-fast-actions button {
+    min-height: 30px;
+    padding: 4px 6px;
+    font-size: 12px;
+  }
+
+  .editor-fast-status {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .editor-fast-status span {
+    padding: 4px 5px;
+    font-size: 11px;
+  }
+
   .editor-fast-workflow {
-    max-height: 30vh;
+    max-height: 22vh;
+    gap: 6px;
+    padding: 7px;
   }
 
   .timeline-toolbar {
@@ -2557,12 +2659,12 @@ body[data-view="editor"] .main {
     margin: 6px 0;
   }
 
-  .timeline-resize-actions {
+  .timeline-status-card {
     width: 100%;
   }
 
-  .timeline-resize-actions button {
-    flex: 1 1 0;
+  .timeline-resize-actions {
+    display: none;
   }
 
   .editor-selected-clip-bar {
@@ -2579,6 +2681,24 @@ body[data-view="editor"] .main {
 
   .editor-clip-inspector {
     grid-template-columns: 1fr;
+  }
+
+  .timeline-pan-row {
+    grid-template-columns: auto minmax(0, 1fr) auto minmax(96px, 0.36fr);
+    gap: 6px;
+  }
+
+  .timeline-zoom-range {
+    grid-column: auto;
+    font-size: 11px;
+  }
+
+  .editor-drawer {
+    left: 8px;
+    right: 8px;
+    top: 164px;
+    bottom: min(25vh, 188px);
+    max-height: none;
   }
 
   .selected-clip-actions button {
@@ -2626,11 +2746,11 @@ body[data-view="editor"] .main {
   }
 
   .waveform-wrap {
-    min-height: 220px;
+    min-height: 210px;
   }
 
   #waveformCanvas {
-    min-height: 220px;
+    min-height: 210px;
   }
 
   .api-input-row {
