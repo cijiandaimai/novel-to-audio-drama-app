@@ -62,6 +62,75 @@ body::before {
     linear-gradient(22deg, transparent 0 68%, rgba(49, 95, 76, 0.08) 68% 68.3%, transparent 68.3%);
 }
 
+.water-ripple {
+  position: fixed;
+  left: var(--ripple-x);
+  top: var(--ripple-y);
+  z-index: 9999;
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  pointer-events: none;
+  border-radius: 999px;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.62) 0 12%, rgba(164, 201, 200, 0.28) 24%, rgba(49, 95, 76, 0.08) 44%, transparent 68%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.5),
+    0 0 18px rgba(91, 137, 135, 0.28);
+  transform: translateZ(0) scale(0.4);
+  animation: water-ripple 900ms cubic-bezier(0.16, 0.72, 0.24, 1) forwards;
+}
+
+.water-ripple::before,
+.water-ripple::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  transform: scale(0.72);
+}
+
+.water-ripple::after {
+  border-color: rgba(143, 178, 176, 0.34);
+  animation: water-ripple-ring 900ms cubic-bezier(0.16, 0.72, 0.24, 1) forwards;
+}
+
+@keyframes water-ripple {
+  0% {
+    opacity: 0.68;
+    transform: translateZ(0) scale(0.35);
+    filter: blur(0);
+  }
+  55% {
+    opacity: 0.42;
+  }
+  100% {
+    opacity: 0;
+    transform: translateZ(0) scale(7.2);
+    filter: blur(0.8px);
+  }
+}
+
+@keyframes water-ripple-ring {
+  0% {
+    opacity: 0.72;
+    transform: scale(0.72);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water-ripple {
+    display: none;
+  }
+}
+
 button,
 input,
 textarea,

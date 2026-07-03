@@ -4802,6 +4802,27 @@ async function runPipeline() {
   }
 }
 
+function initWaterRippleTouch() {
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  let lastRippleAt = 0;
+  document.addEventListener("pointerdown", (event) => {
+    if (reducedMotion?.matches) return;
+    if (event.button && event.button !== 0) return;
+    if (event.isPrimary === false) return;
+    const now = Date.now();
+    if (now - lastRippleAt < 34) return;
+    lastRippleAt = now;
+    const ripple = document.createElement("span");
+    ripple.className = "water-ripple";
+    ripple.style.setProperty("--ripple-x", `${event.clientX}px`);
+    ripple.style.setProperty("--ripple-y", `${event.clientY}px`);
+    document.body.appendChild(ripple);
+    const ripples = Array.from(document.querySelectorAll(".water-ripple"));
+    ripples.slice(0, Math.max(0, ripples.length - 10)).forEach((item) => item.remove());
+    ripple.addEventListener("animationend", () => ripple.remove(), { once: true });
+  }, { capture: true, passive: true });
+}
+
 function bindEvents() {
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
   $("#appLanguageSelect")?.addEventListener("change", (event) => applyAppLanguage(event.target.value));
@@ -5198,6 +5219,7 @@ renderWaveform();
 loadPlan();
 updateMidnightState();
 bindEvents();
+initWaterRippleTouch();
 syncPlayerControls();
 initRouteNavigation();
 registerNativeBackHandler();
