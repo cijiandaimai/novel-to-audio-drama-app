@@ -323,6 +323,8 @@ const editorState = {
   redoStack: [],
   renderedUrl: "",
   pendingDrag: null,
+  lastTimelineTap: null,
+  lastTimelineClick: null,
   longPressTimer: null,
   playheadRaf: 0,
   playbackStartClock: 0,
@@ -3911,8 +3913,10 @@ function renderWaveform() {
   if (track?.buffer && selection.sourceEnd > selection.sourceStart) {
     const lane = layout.find((item) => item.track.id === selection.trackId);
     if (!lane) return;
-    const x1 = timeToX(selection.sourceStart, width, duration, offset);
-    const x2 = timeToX(selection.sourceEnd, width, duration, offset);
+    const selectionDuration = Math.max(0, selection.sourceEnd - selection.sourceStart);
+    const selectionStart = Number.isFinite(selection.timelineStart) ? selection.timelineStart : selection.sourceStart;
+    const x1 = timeToX(selectionStart, width, duration, offset);
+    const x2 = timeToX(selectionStart + selectionDuration, width, duration, offset);
     const y = lane.top;
     ctx.fillStyle = "rgba(111, 31, 27, 0.16)";
     ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), lane.height);
@@ -3929,6 +3933,18 @@ function renderWaveform() {
     ctx.moveTo(playheadX, 0);
     ctx.lineTo(playheadX, height);
     ctx.stroke();
+    const handleY = height - 15 * ratio;
+    ctx.fillStyle = "rgba(31, 33, 31, 0.92)";
+    ctx.beginPath();
+    ctx.arc(playheadX, handleY, 10 * ratio, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#fffaf0";
+    ctx.beginPath();
+    ctx.moveTo(playheadX - 4 * ratio, handleY - 3 * ratio);
+    ctx.lineTo(playheadX + 4 * ratio, handleY);
+    ctx.lineTo(playheadX - 4 * ratio, handleY + 3 * ratio);
+    ctx.closePath();
+    ctx.fill();
   }
 }
 
@@ -3962,6 +3978,17 @@ function hitTestClip(point) {
     return { clip, edge };
   }
   return null;
+}
+
+function hitTestPlayheadHandle(point) {
+  const playheadX = timeToX(editorState.timeline.playhead, point.width, point.duration, point.offset);
+  const nearHandle = Math.abs(point.x - playheadX) <= 22 * point.ratio;
+  return nearHandle && point.y >= point.height - 44 * point.ratio;
+}
+
+function getClipSourceAtTimelineTime(clip, timelineTime) {
+  const sourceTime = clip.sourceStart + (timelineTime - clip.timelineStart);
+  return clamp(sourceTime, clip.sourceStart, clip.sourceEnd);
 }
 
 function hitTestTrackDivider(point) {
@@ -4034,6 +4061,48 @@ function beginClipDrag(hit, point) {
   setPlayhead(point.time);
 }
 
+function beginClipRangeSelect(hit, point) {
+  const sourceTime = getClipSourceAtTimelineTime(hit.clip, point.time);
+  editorState.drag = {
+    type: "clip-range-select",
+    trackId: hit.clip.trackId,
+    clipId: hit.clip.id,
+    anchorSource: sourceTime,
+    clipSourceStart: hit.clip.sourceStart,
+    clipSourceEnd: hit.clip.sourceEnd,
+    clipTimelineStart: hit.clip.timelineStart
+  };
+  setTimelineDragClass("long-press-armed", false);
+  setTimelineDragClass("range-selecting", true);
+  setClipInputs(sourceTime, sourceTime, point.time);
+  setPlayhead(point.time, { snap: false });
+}
+
+function placePlayheadInClip(hit, point, { notify = false } = {}) {
+  selectEditorClip(hit.clip);
+  setPlayhead(point.time, { snap: false, follow: true });
+  if (notify) showToast("播放头已放到片段内部。", "ok");
+}
+
+function handleTimelineDoubleTap(point, hit) {
+  const now = Date.now();
+  const previous = editorState.lastTimelineTap;
+  editorState.lastTimelineTap = {
+    time: now,
+    x: point.x,
+    y: point.y,
+    clipId: hit?.clip?.id || ""
+  };
+  if (!hit || !previous) return false;
+  const sameClip = previous.clipId === hit.clip.id;
+  const closeInTime = now - previous.time <= 900;
+  const closeInSpace = Math.hypot(point.x - previous.x, point.y - previous.y) <= 28 * point.ratio;
+  if (!sameClip || !closeInTime || !closeInSpace) return false;
+  clearPendingTimelineDrag();
+  placePlayheadInClip(hit, point, { notify: true });
+  return true;
+}
+
 function clearPendingTimelineDrag() {
   clearTimeout(editorState.longPressTimer);
   editorState.longPressTimer = null;
@@ -4044,6 +4113,13 @@ function clearPendingTimelineDrag() {
 function startTimelineDrag(event) {
   const point = getCanvasPointer(event);
   event.preventDefault();
+  if (hitTestPlayheadHandle(point)) {
+    point.canvas.setPointerCapture?.(event.pointerId);
+    editorState.drag = { type: "playhead" };
+    setTimelineDragClass("playhead-dragging", true);
+    setPlayhead(point.time, { snap: false, follow: true });
+    return;
+  }
   const dividerIndex = hitTestTrackDivider(point);
   if (dividerIndex >= 0) {
     point.canvas.setPointerCapture?.(event.pointerId);
@@ -4056,6 +4132,8 @@ function startTimelineDrag(event) {
   if (hit) {
     point.canvas.setPointerCapture?.(event.pointerId);
     selectEditorClip(hit.clip);
+    setPlayhead(point.time, { snap: false, follow: true });
+    if (handleTimelineDoubleTap(point, hit)) return;
     if (event.pointerType === "touch") {
       editorState.pendingDrag = { hit, point, x: point.x, y: point.y };
       setTimelineDragClass("long-press-armed", true);
@@ -4064,9 +4142,9 @@ function startTimelineDrag(event) {
         if (!editorState.pendingDrag || editorState.drag) return;
         const pending = editorState.pendingDrag;
         clearPendingTimelineDrag();
-        beginClipDrag(pending.hit, pending.point);
+        beginClipRangeSelect(pending.hit, pending.point);
       }, 360);
-      showToast("已选中片段，长按保持后拖动可移动。");
+      showToast("已选中片段，长按后滑动可框选片段内部。");
       return;
     }
     beginClipDrag(hit, point);
@@ -4102,6 +4180,10 @@ function moveTimelineDrag(event) {
   if (!editorState.drag) return;
   const point = getCanvasPointer(event);
   const drag = editorState.drag;
+  if (drag.type === "playhead") {
+    setPlayhead(point.time, { snap: false, follow: true });
+    return;
+  }
   if (drag.type === "track-resize") {
     moveTrackResize(point);
     return;
@@ -4109,6 +4191,17 @@ function moveTimelineDrag(event) {
   const track = getTrack(drag.trackId);
   const maxTime = track.buffer?.duration || 0;
   if (!maxTime) return;
+  if (drag.type === "clip-range-select") {
+    const clip = editorState.clips.find((item) => item.id === drag.clipId);
+    if (!clip) return;
+    const sourceTime = getClipSourceAtTimelineTime(clip, point.time);
+    const start = Math.min(drag.anchorSource, sourceTime);
+    const end = Math.max(drag.anchorSource, sourceTime);
+    const timelineStart = clip.timelineStart + (start - clip.sourceStart);
+    setClipInputs(start, end, timelineStart);
+    setPlayhead(point.time, { snap: false });
+    return;
+  }
   if (drag.type.startsWith("clip-")) {
     const clip = editorState.clips.find((item) => item.id === drag.clipId);
     if (!clip) return;
@@ -4153,6 +4246,8 @@ function endTimelineDrag() {
   editorState.drag = null;
   setTimelineDragClass("dragging", false);
   setTimelineDragClass("resizing-track", false);
+  setTimelineDragClass("range-selecting", false);
+  setTimelineDragClass("playhead-dragging", false);
 }
 
 function handleTimelineWheel(event) {
@@ -4165,6 +4260,44 @@ function handleTimelineWheel(event) {
   const visible = getVisibleTimelineDuration();
   const delta = (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY) / 400;
   setTimelineOffset(editorState.timeline.offset + delta * visible);
+}
+
+function handleTimelineDoubleClick(event) {
+  if (document.body.dataset.view !== "editor") return;
+  const point = getCanvasPointer(event);
+  const hit = hitTestClip(point);
+  if (!hit) return;
+  event.preventDefault();
+  placePlayheadInClip(hit, point);
+}
+
+function handleTimelineClick(event) {
+  if (document.body.dataset.view !== "editor") return;
+  const point = getCanvasPointer(event);
+  const hit = hitTestClip(point);
+  if (!hit) return;
+  const now = Date.now();
+  const previous = editorState.lastTimelineClick;
+  editorState.lastTimelineClick = {
+    time: now,
+    x: point.x,
+    y: point.y,
+    clipId: hit.clip.id
+  };
+  const isDoubleClick = event.detail >= 2 || (
+    previous
+    && previous.clipId === hit.clip.id
+    && now - previous.time <= 900
+    && Math.hypot(point.x - previous.x, point.y - previous.y) <= 28 * point.ratio
+  );
+  if (!isDoubleClick) return;
+  event.preventDefault();
+  placePlayheadInClip(hit, point, { notify: true });
+}
+
+function handleTimelineMouseDown(event) {
+  if (event.detail < 2) return;
+  handleTimelineDoubleClick(event);
 }
 
 function addEditorClip(start, end, timelineStart = editorState.selection.timelineStart, trackId = editorState.selection.trackId) {
@@ -5565,6 +5698,9 @@ function bindEvents() {
   $("#waveformCanvas").addEventListener("pointerup", endTimelineDrag);
   $("#waveformCanvas").addEventListener("pointercancel", endTimelineDrag);
   $("#waveformCanvas").addEventListener("pointerleave", endTimelineDrag);
+  $("#waveformCanvas").addEventListener("mousedown", handleTimelineMouseDown);
+  $("#waveformCanvas").addEventListener("click", handleTimelineClick);
+  $("#waveformCanvas").addEventListener("dblclick", handleTimelineDoubleClick);
   $("#waveformCanvas").addEventListener("wheel", handleTimelineWheel, { passive: false });
   $("#setClipStartFromPlayer").addEventListener("click", () => {
     const preview = $("#editorPreview");
