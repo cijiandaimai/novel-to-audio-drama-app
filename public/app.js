@@ -1230,6 +1230,14 @@ function normalizeMediaBaseName(fileName = "") {
     .toLowerCase();
 }
 
+function normalizeLyricMatchKey(fileName = "") {
+  return normalizeMediaBaseName(fileName)
+    .replace(/^\s*\d{1,4}\s*[-_.、]\s*/, "")
+    .replace(/\s*[\[(（]?\d{1,4}[\])）]?\s*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function normalizeMediaCollectionKey(name = "") {
   return String(name || "")
     .split(/[\\/]/)
@@ -1336,7 +1344,7 @@ async function scanDownloadsToPlaylist() {
     const lyricItems = sortMediaRecords(result.lyrics || []);
     const lyricsByName = new Map();
     lyricItems.forEach((item) => {
-      const base = normalizeMediaBaseName(item.name);
+      const base = normalizeLyricMatchKey(item.name);
       const list = lyricsByName.get(base) || [];
       list.push(item);
       lyricsByName.set(base, list);
@@ -1344,7 +1352,7 @@ async function scanDownloadsToPlaylist() {
     const collectionCounts = buildCollectionCounts(audioItems, getDownloadsCollectionName);
     let firstAddedId = "";
     audioItems.forEach((item) => {
-      const base = normalizeMediaBaseName(item.name);
+      const base = normalizeLyricMatchKey(item.name);
       const lyric = (lyricsByName.get(base) || [])[0];
       const collectionName = getDownloadsCollectionName(item);
       const playlistItem = createPlaylistItem({
@@ -1376,7 +1384,8 @@ async function scanDownloadsToPlaylist() {
     }));
     recordNativeDownloadScan(audioItems, lyricItems);
     renderPlayerImportLocation();
-    showToast(`下载文件夹扫描完成：${audioItems.length} 个音频，${lyricItems.length} 个歌词。`, "ok");
+    const lyricHint = lyricItems.length ? "" : " 未找到歌词时，可用“导入歌词”手动绑定当前歌曲。";
+    showToast(`下载文件夹扫描完成：${audioItems.length} 个音频，${lyricItems.length} 个歌词。${lyricHint}`, lyricItems.length || !audioItems.length ? "ok" : "fail");
   } catch (error) {
     showToast(`扫描失败：${error.message || error}`, "fail");
     $("#playerFolderInput")?.click();
@@ -2254,14 +2263,14 @@ async function importPlayerFolder(files) {
       directory: getMediaDirectory(file)
     };
     lyricsByRelative.set(normalizeMediaRelativeBase(file), record);
-    const baseName = normalizeMediaBaseName(file.name);
+    const baseName = normalizeLyricMatchKey(file.name);
     const list = lyricsByName.get(baseName) || [];
     list.push(record);
     lyricsByName.set(baseName, list);
   }));
   for (const [index, file] of audioFiles.entries()) {
     const relativeMatch = lyricsByRelative.get(normalizeMediaRelativeBase(file));
-    const sameNameMatches = lyricsByName.get(normalizeMediaBaseName(file.name)) || [];
+    const sameNameMatches = lyricsByName.get(normalizeLyricMatchKey(file.name)) || [];
     const lyric = relativeMatch
       || sameNameMatches.find((entry) => entry.directory === getMediaDirectory(file))
       || sameNameMatches[0];

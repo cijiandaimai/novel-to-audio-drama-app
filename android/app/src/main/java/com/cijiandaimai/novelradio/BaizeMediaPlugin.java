@@ -33,7 +33,9 @@ import java.nio.charset.StandardCharsets;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 
 @CapacitorPlugin(
     name = "BaizeMedia",
@@ -168,9 +170,25 @@ public class BaizeMediaPlugin extends Plugin {
 
     private JSArray queryLyricDownloads() throws Exception {
         JSArray result = new JSArray();
-        Uri uri = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-            ? MediaStore.Downloads.EXTERNAL_CONTENT_URI
-            : MediaStore.Files.getContentUri("external");
+        Set<String> seen = new HashSet<>();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                appendLyricMediaRows(MediaStore.Files.getContentUri("external"), result, seen);
+            } catch (Exception ignored) {
+                // Some Android builds restrict generic file queries; try Downloads below.
+            }
+            try {
+                appendLyricMediaRows(MediaStore.Downloads.EXTERNAL_CONTENT_URI, result, seen);
+            } catch (Exception ignored) {
+                // Keep audio scan usable even when text lyrics are not exposed by MediaStore.
+            }
+        } else {
+            scanLegacyLyrics(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), ""), result, seen);
+        }
+        return sortByName(result);
+    }
+
+    private void appendLyricMediaRows(Uri uri, JSArray result, Set<String> seen) throws Exception {
         String[] projection = {
             MediaStore.MediaColumns._ID,
             MediaStore.MediaColumns.DISPLAY_NAME,
@@ -178,30 +196,71 @@ public class BaizeMediaPlugin extends Plugin {
             MediaStore.MediaColumns.SIZE,
             MediaStore.MediaColumns.RELATIVE_PATH
         };
-        String selection = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-            ? MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?"
-            : null;
-        String[] args = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-            ? new String[]{Environment.DIRECTORY_DOWNLOADS + "%"}
-            : null;
+        String selection = MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
+        String[] args = new String[]{Environment.DIRECTORY_DOWNLOADS + "%"};
         try (Cursor cursor = getContext().getContentResolver().query(uri, projection, selection, args, null)) {
-            if (cursor == null) return result;
+            if (cursor == null) return;
             while (cursor.moveToNext()) {
                 String name = cursor.getString(1);
                 if (!isLyricName(name)) continue;
                 long id = cursor.getLong(0);
                 Uri contentUri = ContentUris.withAppendedId(uri, id);
+                String key = contentUri.toString();
+                if (seen.contains(key)) continue;
+                seen.add(key);
                 JSObject item = new JSObject();
                 item.put("name", name);
                 item.put("mimeType", cursor.getString(2));
                 item.put("size", cursor.getLong(3));
                 item.put("relativePath", cursor.getString(4));
                 item.put("uri", contentUri.toString());
-                item.put("text", readText(contentUri, 2 * 1024 * 1024));
+                item.put("text", safeReadText(contentUri, 2 * 1024 * 1024));
                 result.put(item);
             }
         }
-        return sortByName(result);
+    }
+
+    private void scanLegacyLyrics(File dir, JSArray result, Set<String> seen) throws Exception {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File file : files) {
+            if (file.isDirectory()) {
+                scanLegacyLyrics(file, result, seen);
+                continue;
+            }
+            if (!isLyricName(file.getName())) continue;
+            String key = file.getAbsolutePath();
+            if (seen.contains(key)) continue;
+            seen.add(key);
+            Uri uri = Uri.fromFile(file);
+            JSObject item = new JSObject();
+            item.put("name", file.getName());
+            item.put("mimeType", "text/plain");
+            item.put("size", file.length());
+            item.put("relativePath", relativeDownloadPath(file));
+            item.put("uri", uri.toString());
+            item.put("text", safeReadText(uri, 2 * 1024 * 1024));
+            result.put(item);
+        }
+    }
+
+    private String relativeDownloadPath(File file) {
+        String downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS).getAbsolutePath();
+        String path = file.getAbsolutePath();
+        if (path.startsWith(downloads)) {
+            String relative = path.substring(downloads.length()).replace(File.separatorChar, '/');
+            if (relative.startsWith("/")) relative = relative.substring(1);
+            return Environment.DIRECTORY_DOWNLOADS + "/" + relative;
+        }
+        return path;
+    }
+
+    private String safeReadText(Uri uri, int limit) {
+        try {
+            return readText(uri, limit);
+        } catch (Exception error) {
+            return "";
+        }
     }
 
     private String readText(Uri uri, int limit) throws Exception {
