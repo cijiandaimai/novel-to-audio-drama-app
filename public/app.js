@@ -253,6 +253,7 @@ const appIntroSeenKey = "appIntroSeen";
 const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
 const defaultPlayerBg = "/assets/player-default-bg.jpg";
+const midnightPlayerBg = "/assets/player-midnight-bg.png";
 const playerState = {
   audioUrl: "",
   objectUrl: "",
@@ -953,6 +954,11 @@ function setPlayerBackground(value) {
 
 function loadPlayerBackground() {
   setPlayerBackground(localStorage.getItem(playerBgKey));
+}
+
+function applyMidnightPlayerBackground() {
+  localStorage.setItem(playerBgKey, midnightPlayerBg);
+  setPlayerBackground(midnightPlayerBg);
 }
 
 function readPlayerPlaylist() {
@@ -4378,6 +4384,7 @@ async function submitMidnightQuiz() {
   localStorage.setItem(midnightUnlockKey, "yes");
   localStorage.removeItem(midnightFailKey);
   localStorage.removeItem(midnightQuizSessionKey);
+  applyMidnightPlayerBackground();
   $("#midnightQuizResult").innerHTML = "<p class=\"ok\">门禁已通过。请继续填写 Grok API Key，并只用于合规的成年人成熟向氛围改编。</p>";
   updateMidnightState();
 }
