@@ -314,6 +314,7 @@ const editorState = {
   sourceUrl: "",
   sourceName: "",
   clips: [],
+  selectedClipId: "",
   pickNext: "start",
   clipTimer: null,
   playingNodes: [],
@@ -2954,6 +2955,7 @@ function getTimelineDuration() {
 function snapshotEditor() {
   return JSON.stringify({
     clips: editorState.clips,
+    selectedClipId: editorState.selectedClipId,
     selection: editorState.selection,
     timeline: editorState.timeline
   });
@@ -2962,6 +2964,7 @@ function snapshotEditor() {
 function restoreEditor(snapshot) {
   const data = JSON.parse(snapshot);
   editorState.clips = data.clips || [];
+  editorState.selectedClipId = data.selectedClipId && editorState.clips.some((clip) => clip.id === data.selectedClipId) ? data.selectedClipId : "";
   editorState.selection = data.selection || editorState.selection;
   editorState.timeline = { ...editorState.timeline, ...(data.timeline || {}) };
   syncTimelineControls();
@@ -3009,6 +3012,19 @@ function handleEditorShortcut(event) {
   if (document.body.dataset.view !== "editor" || isTextEditingTarget(event.target)) return;
   const key = event.key.toLowerCase();
   const modifier = event.ctrlKey || event.metaKey;
+  const selectedClip = getSelectedClip();
+  if (!modifier && !event.altKey && selectedClip) {
+    if (key === "delete" || key === "backspace") {
+      event.preventDefault();
+      removeSelectedClip();
+      return;
+    }
+    if (key === "arrowleft" || key === "arrowright") {
+      event.preventDefault();
+      nudgeSelectedClip(key === "arrowleft" ? -1 : 1, event.shiftKey ? 4 : 1);
+      return;
+    }
+  }
   if (!modifier || event.altKey) return;
   const isUndo = key === "z" && !event.shiftKey;
   const isRedo = key === "y" || (key === "z" && event.shiftKey);
@@ -3039,6 +3055,19 @@ function setTimelineZoom(nextZoom) {
   renderWaveform();
 }
 
+function setTimelineOffset(nextOffset) {
+  const projectDuration = getTimelineDuration();
+  const visible = getVisibleTimelineDuration(projectDuration);
+  editorState.timeline.offset = clamp(nextOffset, 0, Math.max(0, projectDuration - visible));
+  syncTimelineControls();
+  renderWaveform();
+}
+
+function panTimeline(direction = 1) {
+  const visible = getVisibleTimelineDuration();
+  setTimelineOffset(editorState.timeline.offset + direction * Math.max(0.5, visible * 0.35));
+}
+
 function fitTimeline() {
   editorState.timeline.zoom = 1;
   editorState.timeline.offset = 0;
@@ -3057,6 +3086,16 @@ function syncTimelineControls() {
   $("#snapTimeline").checked = editorState.timeline.snap;
   $("#snapGridSize").value = String(editorState.timeline.grid);
   $("#playheadInput").value = editorState.timeline.playhead.toFixed(2);
+  const offsetInput = $("#timelineOffset");
+  if (offsetInput) {
+    const projectDuration = getTimelineDuration();
+    const maxOffset = Math.max(0, projectDuration - getVisibleTimelineDuration(projectDuration));
+    offsetInput.max = maxOffset.toFixed(2);
+    offsetInput.value = Math.min(editorState.timeline.offset, maxOffset).toFixed(2);
+    offsetInput.disabled = maxOffset <= 0.01;
+  }
+  $("#timelinePanLeft")?.toggleAttribute("disabled", editorState.timeline.offset <= 0.01);
+  $("#timelinePanRight")?.toggleAttribute("disabled", Number($("#timelineOffset")?.max || 0) <= editorState.timeline.offset + 0.01);
   $("#undoEdit").disabled = !editorState.undoStack.length && !getActiveTrack().sourceHistory?.length;
   $("#redoEdit").disabled = !editorState.redoStack.length;
   syncEditorQuickState();
@@ -3093,7 +3132,11 @@ function syncEditorQuickState() {
   const selectionInfo = $("#quickSelectionInfo");
   if (selectionInfo) selectionInfo.textContent = `选区 ${formatSeconds(selectionLength)}`;
   const clipCount = $("#quickClipCount");
-  if (clipCount) clipCount.textContent = `片段 ${editorState.clips.length}`;
+  const selectedClip = getSelectedClip();
+  if (clipCount) {
+    clipCount.textContent = selectedClip ? `片段 ${editorState.clips.length}｜选中 ${selectedClip.name}` : `片段 ${editorState.clips.length}`;
+  }
+  updateSelectedClipControls(selectedClip);
   const playhead = $("#quickPlayheadInfo");
   if (playhead) playhead.textContent = `播放头 ${formatSeconds(editorState.timeline.playhead)}`;
   const micToggle = $("#quickMicToggle");
@@ -3164,6 +3207,96 @@ function getClipInputs() {
   };
 }
 
+function getSelectedClip() {
+  return editorState.clips.find((clip) => clip.id === editorState.selectedClipId) || null;
+}
+
+function updateSelectedClipControls(selectedClip = getSelectedClip()) {
+  const label = $("#selectedClipLabel");
+  if (label) {
+    label.textContent = selectedClip
+      ? `${selectedClip.name}｜${formatSeconds(selectedClip.timelineStart)}｜${formatSeconds(selectedClip.sourceEnd - selectedClip.sourceStart)}`
+      : "未选中片段";
+  }
+  ["#quickPreviewClip", "#nudgeClipLeft", "#nudgeClipRight", "#duplicateSelectedClip", "#deleteSelectedClip"].forEach((selector) => {
+    const button = $(selector);
+    if (button) button.disabled = !selectedClip;
+  });
+}
+
+function nudgeSelectedClip(direction = 1, multiplier = 1) {
+  const clip = getSelectedClip();
+  if (!clip) {
+    showToast("请先点选一个片段。", "fail");
+    return;
+  }
+  const step = editorState.timeline.snap ? Math.max(0.01, Number(editorState.timeline.grid) || 0.5) : 0.25;
+  pushEditorHistory();
+  clip.timelineStart = Math.max(0, Number((clip.timelineStart + direction * multiplier * step).toFixed(2)));
+  setPlayhead(clip.timelineStart);
+  renderClipList();
+  renderWaveform();
+}
+
+function duplicateSelectedClip() {
+  const clip = getSelectedClip();
+  if (!clip) {
+    showToast("请先点选一个片段。", "fail");
+    return;
+  }
+  const duration = Math.max(0.1, clip.sourceEnd - clip.sourceStart);
+  const gap = editorState.timeline.snap ? Math.max(0.01, Number(editorState.timeline.grid) || 0.5) : 0.25;
+  pushEditorHistory();
+  const copy = {
+    ...clip,
+    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: `${clip.name} 副本`,
+    timelineStart: Number((clip.timelineStart + duration + gap).toFixed(2))
+  };
+  editorState.clips.push(copy);
+  selectEditorClip(copy);
+  showToast("已复制到当前片段后方。", "ok");
+}
+
+function removeSelectedClip() {
+  const clip = getSelectedClip();
+  if (!clip) {
+    showToast("请先点选一个片段。", "fail");
+    return;
+  }
+  pushEditorHistory();
+  const index = editorState.clips.findIndex((item) => item.id === clip.id);
+  editorState.clips = editorState.clips.filter((item) => item.id !== clip.id);
+  editorState.selectedClipId = editorState.clips[Math.min(index, editorState.clips.length - 1)]?.id || "";
+  renderClipList();
+  renderWaveform();
+  showToast("已删除片段，可撤销。", "ok");
+}
+
+function previewSelectedClip() {
+  const clip = getSelectedClip();
+  if (!clip) {
+    showToast("请先点选一个片段。", "fail");
+    return;
+  }
+  playEditorClip(clip.id);
+}
+
+function selectEditorClip(clipOrId, { openPanel = false, notify = false } = {}) {
+  const clip = typeof clipOrId === "string"
+    ? editorState.clips.find((item) => item.id === clipOrId)
+    : clipOrId;
+  if (!clip) return;
+  editorState.selectedClipId = clip.id;
+  setActiveTrack(clip.trackId);
+  setClipInputs(clip.sourceStart, clip.sourceEnd, clip.timelineStart);
+  setPlayhead(clip.timelineStart);
+  if (openPanel) setEditorPanel("clips");
+  renderClipList();
+  renderWaveform();
+  if (notify) showToast("已选中片段，可在波形上长按拖动。", "ok");
+}
+
 function updateEditorSourceInfo() {
   editorState.tracks.forEach((track) => {
     const info = $(`#trackInfo${track.id}`);
@@ -3209,6 +3342,9 @@ function pruneClipsForTrack(trackId) {
     clip.sourceEnd = clamp(clip.sourceEnd, clip.sourceStart + 0.1, duration);
     return clip.sourceEnd > clip.sourceStart;
   });
+  if (editorState.selectedClipId && !editorState.clips.some((clip) => clip.id === editorState.selectedClipId)) {
+    editorState.selectedClipId = "";
+  }
 }
 
 function restoreTrackSource(trackId, source) {
@@ -3247,7 +3383,7 @@ function createWholeTrackClip(trackId) {
   const track = getTrack(trackId);
   if (!track?.buffer) return;
   editorState.clips = editorState.clips.filter((clip) => clip.trackId !== trackId);
-  editorState.clips.push({
+  const clip = {
     id: `clip-${Date.now()}-${trackId}-${Math.random().toString(16).slice(2)}`,
     name: `${track.name} 整轨`,
     trackId,
@@ -3258,7 +3394,9 @@ function createWholeTrackClip(trackId) {
     fadeIn: 0,
     fadeOut: 0,
     muted: false
-  });
+  };
+  editorState.clips.push(clip);
+  editorState.selectedClipId = clip.id;
 }
 
 async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.activeTrackId, remember = true }) {
@@ -3483,6 +3621,7 @@ function renderWaveform() {
   const ratio = window.devicePixelRatio || 1;
   const width = Math.max(360, Math.floor(rect.width * ratio));
   const height = Math.max(260, Math.floor(rect.height * ratio));
+  $(".waveform-wrap")?.classList.toggle("clip-selected", Boolean(editorState.selectedClipId));
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
@@ -3520,10 +3659,21 @@ function renderWaveform() {
     const w = Math.max(3 * ratio, ((clip.sourceEnd - clip.sourceStart) / duration) * width);
     const clipHeight = Math.min(40 * ratio, Math.max(24 * ratio, laneHeight - 44 * ratio));
     const y = trackIndex * laneHeight + laneHeight - clipHeight - 10 * ratio;
-    ctx.fillStyle = clip.muted ? "rgba(116, 111, 99, 0.28)" : "rgba(49, 95, 76, 0.2)";
-    ctx.strokeStyle = clip.trackId === "A" ? "rgba(49, 95, 76, 0.72)" : "rgba(111, 31, 27, 0.72)";
+    const selected = clip.id === editorState.selectedClipId;
+    ctx.fillStyle = clip.muted
+      ? "rgba(116, 111, 99, 0.28)"
+      : selected
+        ? "rgba(184, 139, 74, 0.34)"
+        : "rgba(49, 95, 76, 0.2)";
+    ctx.strokeStyle = selected ? "rgba(184, 139, 74, 0.95)" : clip.trackId === "A" ? "rgba(49, 95, 76, 0.72)" : "rgba(111, 31, 27, 0.72)";
+    ctx.lineWidth = selected ? 2 * ratio : 1 * ratio;
     ctx.fillRect(x, y, w, clipHeight);
     ctx.strokeRect(x, y, w, clipHeight);
+    if (selected) {
+      ctx.fillStyle = "rgba(255, 250, 238, 0.9)";
+      ctx.fillRect(x, y, Math.min(8 * ratio, w / 3), clipHeight);
+      ctx.fillRect(x + w - Math.min(8 * ratio, w / 3), y, Math.min(8 * ratio, w / 3), clipHeight);
+    }
     if (w > 70 * ratio) {
       ctx.fillStyle = "rgba(31, 33, 31, 0.72)";
       ctx.font = `${11 * ratio}px Microsoft YaHei, sans-serif`;
@@ -3620,6 +3770,20 @@ function startTimelineDrag(event) {
   const hit = hitTestClip(point);
   if (hit) {
     point.canvas.setPointerCapture?.(event.pointerId);
+    selectEditorClip(hit.clip);
+    if (event.pointerType === "touch") {
+      editorState.pendingDrag = { hit, point, x: point.x, y: point.y };
+      setTimelineDragClass("long-press-armed", true);
+      clearTimeout(editorState.longPressTimer);
+      editorState.longPressTimer = window.setTimeout(() => {
+        if (!editorState.pendingDrag || editorState.drag) return;
+        const pending = editorState.pendingDrag;
+        clearPendingTimelineDrag();
+        beginClipDrag(pending.hit, pending.point);
+      }, 360);
+      showToast("已选中片段，长按保持后拖动可移动。");
+      return;
+    }
     beginClipDrag(hit, point);
     return;
   }
@@ -3696,6 +3860,18 @@ function endTimelineDrag() {
   setTimelineDragClass("dragging", false);
 }
 
+function handleTimelineWheel(event) {
+  if (document.body.dataset.view !== "editor") return;
+  event.preventDefault();
+  if (event.ctrlKey || event.metaKey) {
+    setTimelineZoom(editorState.timeline.zoom * (event.deltaY < 0 ? 1.18 : 0.85));
+    return;
+  }
+  const visible = getVisibleTimelineDuration();
+  const delta = (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY) / 400;
+  setTimelineOffset(editorState.timeline.offset + delta * visible);
+}
+
 function addEditorClip(start, end, timelineStart = editorState.selection.timelineStart, trackId = editorState.selection.trackId) {
   const track = getTrack(trackId);
   if (!track?.buffer) {
@@ -3710,7 +3886,7 @@ function addEditorClip(start, end, timelineStart = editorState.selection.timelin
     return;
   }
   pushEditorHistory();
-  editorState.clips.push({
+  const clip = {
     id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     name: `${track.name} 片段 ${editorState.clips.filter((clip) => clip.trackId === trackId).length + 1}`,
     trackId,
@@ -3721,10 +3897,13 @@ function addEditorClip(start, end, timelineStart = editorState.selection.timelin
     fadeIn: 0,
     fadeOut: 0,
     muted: false
-  });
+  };
+  editorState.clips.push(clip);
+  editorState.selectedClipId = clip.id;
   renderClipList();
   renderWaveform();
   showToast(`已加入 ${track.name} 片段。`, "ok");
+  return clip;
 }
 
 function renderClipList() {
@@ -3743,7 +3922,7 @@ function renderClipList() {
       const duration = Math.max(0, clip.sourceEnd - clip.sourceStart);
       const trackOptions = editorState.tracks.map((track) => `<option value="${track.id}" ${track.id === clip.trackId ? "selected" : ""}>${track.name}</option>`).join("");
       const article = document.createElement("article");
-      article.className = "clip-item";
+      article.className = `clip-item${clip.id === editorState.selectedClipId ? " selected" : ""}`;
       article.dataset.clipId = clip.id;
       article.innerHTML = `
         <div class="clip-head">
@@ -3826,14 +4005,14 @@ function handleClipAction(clipId, action) {
   if (!clip) return;
   if (action === "preview") playEditorClip(clipId);
   if (action === "select") {
-    setActiveTrack(clip.trackId);
-    setClipInputs(clip.sourceStart, clip.sourceEnd, clip.timelineStart);
+    selectEditorClip(clip);
     setEditorPanel("select");
     showToast("已把片段载入选区。", "ok");
   }
   if (action === "remove") {
     pushEditorHistory();
     editorState.clips = editorState.clips.filter((item) => item.id !== clipId);
+    if (editorState.selectedClipId === clipId) editorState.selectedClipId = "";
     renderClipList();
     renderWaveform();
     showToast("已删除片段，可撤销。", "ok");
@@ -3863,6 +4042,7 @@ function splitClipAtPlayhead() {
   clip.name = `${clip.name} A`;
   clip.sourceEnd = sourceSplit;
   editorState.clips.push(right);
+  editorState.selectedClipId = right.id;
   renderClipList();
   renderWaveform();
   showToast("已在播放头处分割片段。", "ok");
@@ -3976,6 +4156,7 @@ function audioBufferToWav(buffer) {
 
 async function exportEditorMix() {
   setButtonBusy("#exportMix", true, "导出中...");
+  setButtonBusy("#quickExportMix", true, "导出中...");
   $("#editorResult").classList.add("hidden");
   try {
     const rendered = await renderEditorMixBuffer();
@@ -3992,7 +4173,6 @@ async function exportEditorMix() {
         <a download="${fileName}" href="${editorState.renderedUrl}">下载 WAV</a>
       </div>
     `;
-    playInApp(editorState.renderedUrl, fileName);
     showToast("双轨混音导出完成。", "ok");
     if (blob.size <= 3500000) {
       saveLocalHistory({
@@ -4009,6 +4189,7 @@ async function exportEditorMix() {
     showToast(`导出失败：${error.message}`, "fail");
   } finally {
     setButtonBusy("#exportMix", false);
+    setButtonBusy("#quickExportMix", false);
   }
 }
 
@@ -4890,6 +5071,11 @@ function bindEvents() {
   $("#quickSplitClip")?.addEventListener("click", splitClipAtPlayhead);
   $("#quickPreviewMix")?.addEventListener("click", previewTimelineMix);
   $("#quickExportMix")?.addEventListener("click", exportEditorMix);
+  $("#quickPreviewClip")?.addEventListener("click", previewSelectedClip);
+  $("#nudgeClipLeft")?.addEventListener("click", () => nudgeSelectedClip(-1));
+  $("#nudgeClipRight")?.addEventListener("click", () => nudgeSelectedClip(1));
+  $("#duplicateSelectedClip")?.addEventListener("click", duplicateSelectedClip);
+  $("#deleteSelectedClip")?.addEventListener("click", removeSelectedClip);
   $$("[data-editor-panel]").forEach((button) => {
     button.addEventListener("click", () => setEditorPanel(button.dataset.editorPanel));
   });
@@ -4961,6 +5147,9 @@ function bindEvents() {
   $("#zoomOutTimeline").addEventListener("click", () => setTimelineZoom(editorState.timeline.zoom / 1.35));
   $("#zoomInTimeline").addEventListener("click", () => setTimelineZoom(editorState.timeline.zoom * 1.35));
   $("#fitTimeline").addEventListener("click", fitTimeline);
+  $("#timelineOffset").addEventListener("input", (event) => setTimelineOffset(Number(event.target.value) || 0));
+  $("#timelinePanLeft").addEventListener("click", () => panTimeline(-1));
+  $("#timelinePanRight").addEventListener("click", () => panTimeline(1));
   $("#snapTimeline").addEventListener("change", (event) => {
     editorState.timeline.snap = event.target.checked;
     syncTimelineControls();
@@ -4979,6 +5168,7 @@ function bindEvents() {
   $("#waveformCanvas").addEventListener("pointerup", endTimelineDrag);
   $("#waveformCanvas").addEventListener("pointercancel", endTimelineDrag);
   $("#waveformCanvas").addEventListener("pointerleave", endTimelineDrag);
+  $("#waveformCanvas").addEventListener("wheel", handleTimelineWheel, { passive: false });
   $("#setClipStartFromPlayer").addEventListener("click", () => {
     const preview = $("#editorPreview");
     const { end } = getClipInputs();
@@ -5001,6 +5191,7 @@ function bindEvents() {
   $("#clearClips").addEventListener("click", () => {
     if (editorState.clips.length) pushEditorHistory();
     editorState.clips = [];
+    editorState.selectedClipId = "";
     renderClipList();
     renderWaveform();
     showToast("已清空时间线片段。", "ok");
@@ -5013,8 +5204,12 @@ function bindEvents() {
   });
   $("#clipList").addEventListener("click", (event) => {
     const action = event.target.dataset.clipAction;
-    if (!action) return;
     const clipId = event.target.closest("[data-clip-id]")?.dataset.clipId;
+    if (!clipId) return;
+    if (!action) {
+      selectEditorClip(clipId);
+      return;
+    }
     handleClipAction(clipId, action);
   });
   $("#exportMix").addEventListener("click", exportEditorMix);

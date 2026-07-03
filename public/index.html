@@ -341,16 +341,31 @@
                   <span id="quickClipCount">片段 0</span>
                   <span id="quickPlayheadInfo">播放头 0.00s</span>
                 </div>
+                <div class="editor-selected-clip-bar" id="selectedClipBar" aria-live="polite">
+                  <span id="selectedClipLabel">未选中片段</span>
+                  <div class="selected-clip-actions">
+                    <button id="quickPreviewClip" class="secondary" type="button" disabled>试听片段</button>
+                    <button id="nudgeClipLeft" class="secondary" type="button" disabled>左挪</button>
+                    <button id="nudgeClipRight" class="secondary" type="button" disabled>右挪</button>
+                    <button id="duplicateSelectedClip" class="secondary" type="button" disabled>复制</button>
+                    <button id="deleteSelectedClip" class="secondary danger" type="button" disabled>删除</button>
+                  </div>
+                </div>
               </div>
 
               <div class="timeline-toolbar">
                 <div id="editorSourceInfo">当前选中：轨道 1</div>
                 <audio id="editorPreview" controls></audio>
               </div>
+              <div class="timeline-pan-row" aria-label="时间线视窗">
+                <button id="timelinePanLeft" class="secondary" type="button">左移</button>
+                <input id="timelineOffset" type="range" min="0" max="0" step="0.01" value="0" aria-label="时间线横向位置" />
+                <button id="timelinePanRight" class="secondary" type="button">右移</button>
+              </div>
 
               <div class="waveform-wrap">
                 <canvas id="waveformCanvas" width="960" height="320"></canvas>
-                <div class="waveform-hint">拖选区生成片段，直接拖动片段调整位置</div>
+                <div class="waveform-hint">拖选区生成片段，点选片段；手机长按后拖动片段</div>
               </div>
 
               <div class="editor-drawer" data-editor-drawer="import">
