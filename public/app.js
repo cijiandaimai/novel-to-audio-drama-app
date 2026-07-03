@@ -3765,17 +3765,35 @@ function getTrackLayout(height) {
   });
 }
 
+function getPlayheadScrubHeight(ratio = window.devicePixelRatio || 1, canvasHeight = 0) {
+  return Math.min(42 * ratio, Math.max(30 * ratio, canvasHeight * 0.16));
+}
+
 function canvasTimelineInfo(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   const width = canvas.width;
   const height = canvas.height;
-  const layout = getTrackLayout(height);
-  const laneHeight = height / editorState.tracks.length;
+  const scrubHeight = getPlayheadScrubHeight(ratio, height);
+  const trackAreaHeight = Math.max(160 * ratio, height - scrubHeight);
+  const layout = getTrackLayout(trackAreaHeight);
+  const laneHeight = trackAreaHeight / editorState.tracks.length;
   const projectDuration = getTimelineDuration();
   const visibleDuration = getVisibleTimelineDuration(projectDuration);
   editorState.timeline.offset = clamp(editorState.timeline.offset, 0, Math.max(0, projectDuration - visibleDuration));
-  return { ratio, rect, width, height, laneHeight, layout, duration: visibleDuration, projectDuration, offset: editorState.timeline.offset };
+  return {
+    ratio,
+    rect,
+    width,
+    height,
+    laneHeight,
+    layout,
+    scrubHeight,
+    scrubTop: trackAreaHeight,
+    duration: visibleDuration,
+    projectDuration,
+    offset: editorState.timeline.offset
+  };
 }
 
 function timeToX(time, width, duration, offset = 0) {
@@ -3829,6 +3847,53 @@ function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDurati
   ctx.stroke();
 }
 
+function drawPlayheadScrub(ctx, playheadX, info) {
+  const { width, scrubTop, scrubHeight, ratio } = info;
+  const railY = scrubTop + scrubHeight / 2;
+  ctx.fillStyle = "rgba(31, 33, 31, 0.08)";
+  ctx.fillRect(0, scrubTop, width, scrubHeight);
+  ctx.strokeStyle = "rgba(31, 33, 31, 0.18)";
+  ctx.lineWidth = Math.max(1, ratio);
+  ctx.beginPath();
+  ctx.moveTo(0, scrubTop + 0.5 * ratio);
+  ctx.lineTo(width, scrubTop + 0.5 * ratio);
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(49, 95, 76, 0.28)";
+  ctx.lineWidth = Math.max(2 * ratio, 2);
+  ctx.beginPath();
+  ctx.moveTo(12 * ratio, railY);
+  ctx.lineTo(width - 12 * ratio, railY);
+  ctx.stroke();
+
+  const clampedX = clamp(playheadX, 12 * ratio, width - 12 * ratio);
+  ctx.fillStyle = "rgba(31, 33, 31, 0.92)";
+  ctx.beginPath();
+  ctx.arc(clampedX, railY, 10 * ratio, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fffaf0";
+  ctx.beginPath();
+  ctx.moveTo(clampedX - 4 * ratio, railY - 3 * ratio);
+  ctx.lineTo(clampedX + 4 * ratio, railY);
+  ctx.lineTo(clampedX - 4 * ratio, railY + 3 * ratio);
+  ctx.closePath();
+  ctx.fill();
+
+  const label = formatSeconds(editorState.timeline.playhead);
+  ctx.font = `${10 * ratio}px Consolas, "SFMono-Regular", monospace`;
+  const labelWidth = Math.max(58 * ratio, ctx.measureText(label).width + 18 * ratio);
+  const labelHeight = 18 * ratio;
+  const labelX = clamp(clampedX - labelWidth / 2, 6 * ratio, width - labelWidth - 6 * ratio);
+  const labelY = scrubTop + 4 * ratio;
+  ctx.fillStyle = "rgba(31, 33, 31, 0.86)";
+  ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+  ctx.fillStyle = "#fffaf0";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, labelX + labelWidth / 2, labelY + labelHeight / 2 + 0.5 * ratio);
+  ctx.textAlign = "start";
+  ctx.textBaseline = "alphabetic";
+}
+
 function renderWaveform() {
   const canvas = $("#waveformCanvas");
   if (!canvas) return;
@@ -3841,7 +3906,8 @@ function renderWaveform() {
     canvas.width = width;
     canvas.height = height;
   }
-  const { layout, duration, projectDuration, offset } = canvasTimelineInfo(canvas);
+  const info = canvasTimelineInfo(canvas);
+  const { layout, duration, projectDuration, offset, scrubTop } = info;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "rgba(255, 250, 238, 0.86)";
@@ -3854,7 +3920,7 @@ function renderWaveform() {
     const x = timeToX(time, width, duration, offset);
     ctx.beginPath();
     ctx.moveTo(x, 0);
-    ctx.lineTo(x, height);
+    ctx.lineTo(x, scrubTop);
     ctx.stroke();
     ctx.fillStyle = "rgba(116, 111, 99, 0.75)";
     ctx.font = `${10 * ratio}px Microsoft YaHei, sans-serif`;
@@ -3931,21 +3997,10 @@ function renderWaveform() {
     ctx.lineWidth = 2 * ratio;
     ctx.beginPath();
     ctx.moveTo(playheadX, 0);
-    ctx.lineTo(playheadX, height);
+    ctx.lineTo(playheadX, scrubTop);
     ctx.stroke();
-    const handleY = height - 15 * ratio;
-    ctx.fillStyle = "rgba(31, 33, 31, 0.92)";
-    ctx.beginPath();
-    ctx.arc(playheadX, handleY, 10 * ratio, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = "#fffaf0";
-    ctx.beginPath();
-    ctx.moveTo(playheadX - 4 * ratio, handleY - 3 * ratio);
-    ctx.lineTo(playheadX + 4 * ratio, handleY);
-    ctx.lineTo(playheadX - 4 * ratio, handleY + 3 * ratio);
-    ctx.closePath();
-    ctx.fill();
   }
+  drawPlayheadScrub(ctx, playheadX, info);
 }
 
 function getCanvasPointer(event) {
@@ -3982,8 +4037,9 @@ function hitTestClip(point) {
 
 function hitTestPlayheadHandle(point) {
   const playheadX = timeToX(editorState.timeline.playhead, point.width, point.duration, point.offset);
-  const nearHandle = Math.abs(point.x - playheadX) <= 22 * point.ratio;
-  return nearHandle && point.y >= point.height - 44 * point.ratio;
+  const nearHandle = Math.abs(point.x - playheadX) <= 24 * point.ratio;
+  const inScrubLane = point.y >= point.scrubTop;
+  return inScrubLane || (nearHandle && point.y >= point.scrubTop - 18 * point.ratio);
 }
 
 function getClipSourceAtTimelineTime(clip, timelineTime) {
