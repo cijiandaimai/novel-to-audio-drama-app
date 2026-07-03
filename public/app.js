@@ -60,6 +60,7 @@ const viewLabels = {
 const playerBgKey = "playerBackgroundImage";
 const playerPlaylistKey = "playerPlaylist";
 const playerLastImportKey = "playerLastImportLocation";
+const playerPlaybackDocKey = "playerPlaybackDocument";
 const appIntroSeenKey = "appIntroSeen";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const playerState = {
@@ -82,7 +83,9 @@ const playerState = {
   lyricHoldTimer: 0,
   lyricScrubbing: false,
   lyricScrubStartY: 0,
-  lyricScrubStartTime: 0
+  lyricScrubStartTime: 0,
+  playbackSaveTimer: 0,
+  lastPlaybackSyncAt: 0
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -618,18 +621,26 @@ function getImportedFilePath(file) {
   return file?.webkitRelativePath || file?.name || "本机音频";
 }
 
+function getImportRootLabel(file) {
+  const relativePath = file?.webkitRelativePath || "";
+  if (relativePath.includes("/")) return relativePath.split("/")[0];
+  return file?.name ? "最近一次文件选择" : "未记录导入位置";
+}
+
 function getImportFolderLabel(file) {
   const relativePath = file?.webkitRelativePath || "";
   if (relativePath.includes("/")) return relativePath.split("/").slice(0, -1).join("/");
   return file?.name ? "最近一次文件选择" : "未记录导入位置";
 }
 
-function rememberPlayerImportLocation(file, type = "导入") {
+function rememberPlayerImportLocation(file, type = "导入", details = {}) {
   const label = getImportFolderLabel(file);
   if (!label) return;
   localStorage.setItem(playerLastImportKey, JSON.stringify({
     label,
+    root: getImportRootLabel(file),
     type,
+    ...details,
     updatedAt: new Date().toISOString()
   }));
   renderPlayerImportLocation();
@@ -641,10 +652,177 @@ function renderPlayerImportLocation() {
   const fallback = "尚未记录导入位置";
   try {
     const value = JSON.parse(localStorage.getItem(playerLastImportKey) || "null");
-    target.textContent = value?.label ? `上次${value.type || "导入"}：${value.label}` : fallback;
+    if (!value?.label) {
+      target.textContent = fallback;
+      return;
+    }
+    const countText = value.audioCount !== undefined
+      ? `（音频 ${value.audioCount}，歌词 ${value.lyricCount || 0}）`
+      : "";
+    target.textContent = `上次${value.type || "导入"}：${value.root || value.label} / ${value.label}${countText}`;
   } catch {
     target.textContent = fallback;
   }
+}
+
+function readPlaybackDocument() {
+  const fallback = {
+    version: 1,
+    app: "白泽声工坊",
+    updatedAt: new Date().toISOString(),
+    currentPlaylistId: "",
+    playlistOrder: [],
+    folders: [],
+    tracks: [],
+    events: []
+  };
+  try {
+    const parsed = JSON.parse(localStorage.getItem(playerPlaybackDocKey) || "null");
+    return parsed && typeof parsed === "object" ? { ...fallback, ...parsed } : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function savePlaybackDocument(documentValue) {
+  localStorage.setItem(playerPlaybackDocKey, JSON.stringify({
+    ...documentValue,
+    updatedAt: new Date().toISOString(),
+    events: (documentValue.events || []).slice(-200),
+    tracks: (documentValue.tracks || []).slice(0, 200),
+    folders: (documentValue.folders || []).slice(0, 30)
+  }));
+}
+
+function getTrackDocumentId(item) {
+  if (!item) return "";
+  return item.blobId || item.src || item.id || item.fileName || item.title;
+}
+
+function getCurrentPlaybackItem() {
+  return playerState.playlist.find((item) => item.id === playerState.currentPlaylistId) || null;
+}
+
+function buildTrackRecord(item, player = $("#mainPlayer")) {
+  const existingDoc = readPlaybackDocument();
+  const docId = getTrackDocumentId(item);
+  const existing = existingDoc.tracks.find((track) => track.docId === docId) || {};
+  return {
+    ...existing,
+    docId,
+    playlistId: item.id,
+    title: item.title || "未命名音频",
+    fileName: item.fileName || "",
+    displayPath: item.displayPath || item.src || "",
+    sourceType: item.sourceType || "remote",
+    blobId: item.blobId || "",
+    src: item.sourceType === "remote" ? item.src || "" : "",
+    mimeType: item.mimeType || "",
+    fileSize: item.fileSize || 0,
+    lyricFileName: item.lyricFileName || "",
+    hasLyrics: Boolean(item.lyricText || item.lyricFileName),
+    duration: Number.isFinite(player?.duration) ? Math.round(player.duration * 1000) / 1000 : existing.duration || 0,
+    lastPosition: Number.isFinite(player?.currentTime) ? Math.round(player.currentTime * 1000) / 1000 : existing.lastPosition || 0,
+    importedAt: item.createdAt || existing.importedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function updatePlaybackDocument(updater) {
+  const doc = readPlaybackDocument();
+  updater(doc);
+  savePlaybackDocument(doc);
+  renderPlayerImportLocation();
+}
+
+function upsertPlaybackTrack(item, patch = {}) {
+  if (!item) return;
+  updatePlaybackDocument((doc) => {
+    const record = { ...buildTrackRecord(item), ...patch, updatedAt: new Date().toISOString() };
+    const index = doc.tracks.findIndex((track) => track.docId === record.docId);
+    if (index >= 0) doc.tracks[index] = { ...doc.tracks[index], ...record };
+    else doc.tracks.unshift(record);
+    doc.currentPlaylistId = playerState.currentPlaylistId;
+    doc.playlistOrder = playerState.playlist.map((entry) => getTrackDocumentId(entry)).filter(Boolean);
+  });
+}
+
+function recordPlaybackEvent(type, item = getCurrentPlaybackItem()) {
+  if (!item) return;
+  const player = $("#mainPlayer");
+  updatePlaybackDocument((doc) => {
+    const docId = getTrackDocumentId(item);
+    let track = doc.tracks.find((entry) => entry.docId === docId);
+    if (!track) {
+      track = buildTrackRecord(item, player);
+      doc.tracks.unshift(track);
+    }
+    const event = {
+      type,
+      docId,
+      title: item.title || "",
+      at: new Date().toISOString(),
+      position: Number.isFinite(player?.currentTime) ? Math.round(player.currentTime * 1000) / 1000 : 0,
+      duration: Number.isFinite(player?.duration) ? Math.round(player.duration * 1000) / 1000 : 0
+    };
+    doc.events.push(event);
+    if (track) {
+      track.lastEvent = type;
+      track.lastPlayedAt = event.at;
+      track.lastPosition = event.position;
+      track.duration = event.duration || track.duration || 0;
+      if (type === "play") track.playCount = Number(track.playCount || 0) + 1;
+      if (type === "ended") track.completedAt = event.at;
+    }
+  });
+}
+
+function syncCurrentPlaybackRecord(force = false) {
+  const now = Date.now();
+  if (!force && now - playerState.lastPlaybackSyncAt < 5000) return;
+  playerState.lastPlaybackSyncAt = now;
+  const item = getCurrentPlaybackItem();
+  if (item) upsertPlaybackTrack(item);
+}
+
+function recordFolderScan(files, audioCount, lyricCount) {
+  const fileList = Array.from(files || []);
+  if (!fileList.length) return;
+  const first = fileList[0];
+  const root = getImportRootLabel(first);
+  const label = getImportFolderLabel(first);
+  updatePlaybackDocument((doc) => {
+    const folder = {
+      id: root,
+      root,
+      label,
+      audioCount,
+      lyricCount,
+      totalFiles: fileList.length,
+      updatedAt: new Date().toISOString(),
+      files: fileList.slice(0, 500).map((file) => ({
+        name: file.name,
+        relativePath: file.webkitRelativePath || file.name,
+        size: file.size || 0,
+        type: isAudioFile(file) ? "audio" : (isLyricFile(file) ? "lyric" : "other"),
+        lastModified: file.lastModified || 0
+      }))
+    };
+    doc.folders = [folder, ...doc.folders.filter((entry) => entry.id !== folder.id)].slice(0, 30);
+  });
+}
+
+function exportPlaybackRecord() {
+  syncCurrentPlaybackRecord(true);
+  const doc = readPlaybackDocument();
+  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `白泽声工坊-播放记录-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  showToast("播放记录文档已导出。", "ok");
 }
 
 function normalizeMediaBaseName(fileName = "") {
@@ -654,6 +832,27 @@ function normalizeMediaBaseName(fileName = "") {
     .replace(/\.[^.]+$/, "")
     .trim()
     .toLowerCase();
+}
+
+function normalizeMediaRelativeBase(file) {
+  return String(file?.webkitRelativePath || file?.name || "")
+    .replace(/\.[^.]+$/, "")
+    .trim()
+    .toLowerCase();
+}
+
+function getMediaDirectory(file) {
+  const path = String(file?.webkitRelativePath || "");
+  return path.includes("/") ? path.split("/").slice(0, -1).join("/").toLowerCase() : "";
+}
+
+function sortMediaFiles(files) {
+  return Array.from(files || []).sort((a, b) =>
+    String(a.webkitRelativePath || a.name).localeCompare(String(b.webkitRelativePath || b.name), "zh-Hans-CN", {
+      numeric: true,
+      sensitivity: "base"
+    })
+  );
 }
 
 function isAudioFile(file) {
@@ -686,7 +885,10 @@ function createPlaylistItem({ title, src, file, sourceType = "remote", blobId = 
 function upsertPlaylistItem(item) {
   if (!item?.id) return item;
   const sameIndex = playerState.playlist.findIndex((existing) =>
-    (item.src && existing.src === item.src) || (item.blobId && existing.blobId === item.blobId)
+    (item.src && existing.src === item.src)
+    || (item.blobId && existing.blobId === item.blobId)
+    || (item.displayPath && existing.displayPath === item.displayPath && existing.fileSize === item.fileSize)
+    || (item.fileName && existing.fileName === item.fileName && existing.fileSize === item.fileSize)
   );
   if (sameIndex >= 0) {
     playerState.playlist[sameIndex] = { ...playerState.playlist[sameIndex], ...item, id: playerState.playlist[sameIndex].id };
@@ -738,6 +940,7 @@ function renderPlayerPlaylist() {
 function loadPlayerPlaylist() {
   playerState.playlist = readPlayerPlaylist();
   renderPlayerPlaylist();
+  playerState.playlist.forEach((item) => upsertPlaybackTrack(item));
 }
 
 function saveAndRenderPlayerPlaylist() {
@@ -809,6 +1012,10 @@ async function removePlaylistItem(id) {
     syncPlayerControls();
   }
   saveAndRenderPlayerPlaylist();
+  updatePlaybackDocument((doc) => {
+    doc.currentPlaylistId = playerState.currentPlaylistId;
+    doc.playlistOrder = playerState.playlist.map((entry) => getTrackDocumentId(entry)).filter(Boolean);
+  });
   if (item?.sourceType === "local") await deletePlayerMediaBlob(item.blobId);
 }
 
@@ -827,6 +1034,10 @@ async function clearPlayerPlaylist() {
   $("#playerTitle").textContent = "选择一段广播剧开始收听";
   resetPlayerLyrics();
   saveAndRenderPlayerPlaylist();
+  updatePlaybackDocument((doc) => {
+    doc.currentPlaylistId = "";
+    doc.playlistOrder = [];
+  });
   syncPlayerControls();
   await Promise.all(localBlobIds.map((id) => deletePlayerMediaBlob(id)));
   showToast("播放列表已清空。", "ok");
@@ -1155,6 +1366,7 @@ function attachLyricsToCurrentItem(rawText, fileName = "") {
   item.lyricText = rawText;
   item.lyricFileName = fileName;
   saveAndRenderPlayerPlaylist();
+  upsertPlaybackTrack(item, { hasLyrics: true, lyricFileName: fileName });
 }
 
 function getActiveWordIndex(line, currentTime) {
@@ -1252,6 +1464,7 @@ async function importPlayerAudio(file, { play = false, select = false, lyricText
   }
   const saved = upsertPlaylistItem(item);
   saveAndRenderPlayerPlaylist();
+  upsertPlaybackTrack(saved, { importedAt: saved.createdAt });
   if (play) await playPlaylistItem(saved.id);
   else if (select || !playerState.currentPlaylistId) await loadPlaylistItem(saved.id, { autoplay: false });
   rememberPlayerImportLocation(file, "音频");
@@ -1259,19 +1472,30 @@ async function importPlayerAudio(file, { play = false, select = false, lyricText
 }
 
 async function importPlayerFolder(files) {
-  const fileList = Array.from(files || []);
+  const fileList = sortMediaFiles(files);
   if (!fileList.length) return;
   const audioFiles = fileList.filter(isAudioFile);
   const lyricFiles = fileList.filter(isLyricFile);
+  const lyricsByRelative = new Map();
   const lyricsByName = new Map();
   await Promise.all(lyricFiles.map(async (file) => {
-    lyricsByName.set(normalizeMediaBaseName(file.name), {
+    const record = {
       text: await file.text(),
-      name: file.name
-    });
+      name: file.name,
+      directory: getMediaDirectory(file)
+    };
+    lyricsByRelative.set(normalizeMediaRelativeBase(file), record);
+    const baseName = normalizeMediaBaseName(file.name);
+    const list = lyricsByName.get(baseName) || [];
+    list.push(record);
+    lyricsByName.set(baseName, list);
   }));
   for (const [index, file] of audioFiles.entries()) {
-    const lyric = lyricsByName.get(normalizeMediaBaseName(file.name));
+    const relativeMatch = lyricsByRelative.get(normalizeMediaRelativeBase(file));
+    const sameNameMatches = lyricsByName.get(normalizeMediaBaseName(file.name)) || [];
+    const lyric = relativeMatch
+      || sameNameMatches.find((entry) => entry.directory === getMediaDirectory(file))
+      || sameNameMatches[0];
     await importPlayerAudio(file, {
       play: false,
       select: index === 0,
@@ -1283,7 +1507,8 @@ async function importPlayerFolder(files) {
   if (!audioFiles.length && lyricFiles[0]) {
     await importLyrics(lyricFiles[0]);
   }
-  rememberPlayerImportLocation(fileList[0], "文件夹");
+  rememberPlayerImportLocation(fileList[0], "文件夹", { audioCount: audioFiles.length, lyricCount: lyricFiles.length });
+  recordFolderScan(fileList, audioFiles.length, lyricFiles.length);
   showToast(`文件夹导入完成：${audioFiles.length} 个音频，${lyricFiles.length} 个歌词。`, "ok");
 }
 
@@ -1533,6 +1758,7 @@ function playInApp(src, title, options = {}) {
     }
     updatePlayerPathLabel(playlistItem);
     renderPlayerPlaylist();
+    upsertPlaybackTrack(playlistItem);
   }
   playerState.activeLyricIndex = -1;
   playerState.activeWordIndex = -1;
@@ -1546,7 +1772,9 @@ function playInApp(src, title, options = {}) {
     return;
   }
   player.play()
-    .then(syncPlayerControls)
+    .then(() => {
+      syncPlayerControls();
+    })
     .catch(() => {
       playerTitle.textContent = `${title || "广播剧"}（点击播放）`;
       syncPlayerControls();
@@ -3707,6 +3935,7 @@ function bindEvents() {
   $("#testNetwork").addEventListener("click", testNetworkRoutes);
   $("#openBluetoothSettings").addEventListener("click", openBluetoothSettings);
   $("#testBluetoothAudio").addEventListener("click", testBluetoothAudio);
+  $("#exportPlaybackRecord").addEventListener("click", exportPlaybackRecord);
   $("#midnightCatButton").addEventListener("click", openMidnightGate);
   $("#openMidnightGateFromConfig").addEventListener("click", openMidnightGate);
   $("#closeMidnightModal").addEventListener("click", () => setMidnightModal(false));
@@ -3822,12 +4051,25 @@ function bindEvents() {
   $("#mainPlayer").addEventListener("timeupdate", (event) => {
     syncLyrics(event.target.currentTime);
     syncPlayerControls();
+    syncCurrentPlaybackRecord(false);
   });
-  $("#mainPlayer").addEventListener("loadedmetadata", syncPlayerControls);
+  $("#mainPlayer").addEventListener("loadedmetadata", () => {
+    syncPlayerControls();
+    syncCurrentPlaybackRecord(true);
+  });
   $("#mainPlayer").addEventListener("durationchange", syncPlayerControls);
-  $("#mainPlayer").addEventListener("play", syncPlayerControls);
-  $("#mainPlayer").addEventListener("pause", syncPlayerControls);
-  $("#mainPlayer").addEventListener("ended", playNextPlaylistItem);
+  $("#mainPlayer").addEventListener("play", () => {
+    syncPlayerControls();
+    recordPlaybackEvent("play");
+  });
+  $("#mainPlayer").addEventListener("pause", () => {
+    syncPlayerControls();
+    recordPlaybackEvent("pause");
+  });
+  $("#mainPlayer").addEventListener("ended", () => {
+    recordPlaybackEvent("ended");
+    playNextPlaylistItem();
+  });
   $("#applyBgUrl").addEventListener("click", () => {
     const value = $("#playerBgUrl").value.trim();
     if (!value) {
