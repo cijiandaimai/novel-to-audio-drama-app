@@ -73,6 +73,15 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+button.attention {
+  box-shadow: 0 0 0 3px rgba(184, 139, 74, 0.18), var(--brush-shadow);
+}
+
 .app-shell {
   position: relative;
   min-height: 100vh;

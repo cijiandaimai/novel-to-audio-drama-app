@@ -63,6 +63,8 @@ const playerLastImportKey = "playerLastImportLocation";
 const playerPlaybackDocKey = "playerPlaybackDocument";
 const playerAudioGuardKey = "playerAudioGuard";
 const appIntroSeenKey = "appIntroSeen";
+const creatorDraftKey = "creatorDraft";
+const configDirtyKey = "configDirty";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const playerState = {
   audioUrl: "",
@@ -366,6 +368,60 @@ function readLocalHistory() {
   }
 }
 
+function readCreatorDraft() {
+  try {
+    return JSON.parse(localStorage.getItem(creatorDraftKey) || "{}") || {};
+  } catch {
+    localStorage.removeItem(creatorDraftKey);
+    return {};
+  }
+}
+
+function saveCreatorDraft() {
+  const draft = {
+    title: $("#titleInput")?.value || "",
+    novel: $("#novelInput")?.value || "",
+    directPrompt: $("#directPromptInput")?.value || "",
+    voiceRole: $("#voiceRoleInput")?.value || "",
+    updatedAt: new Date().toISOString()
+  };
+  localStorage.setItem(creatorDraftKey, JSON.stringify(draft));
+  syncCreatorReadyState();
+}
+
+function restoreCreatorDraft() {
+  const draft = readCreatorDraft();
+  if ($("#titleInput") && !$("#titleInput").value && draft.title) $("#titleInput").value = draft.title;
+  if ($("#novelInput") && !$("#novelInput").value && draft.novel) $("#novelInput").value = draft.novel;
+  if ($("#directPromptInput") && !$("#directPromptInput").value && draft.directPrompt) $("#directPromptInput").value = draft.directPrompt;
+  if ($("#voiceRoleInput") && !$("#voiceRoleInput").value && draft.voiceRole) $("#voiceRoleInput").value = draft.voiceRole;
+  syncCreatorReadyState();
+}
+
+function syncCreatorReadyState() {
+  const novelReady = Boolean($("#novelInput")?.value.trim());
+  const directReady = Boolean($("#directPromptInput")?.value.trim());
+  const runButton = $("#runButton");
+  const directButton = $("#runDirectAudioButton");
+  if (runButton) {
+    runButton.disabled = !novelReady;
+    runButton.title = novelReady ? "" : "请先上传或粘贴小说内容";
+  }
+  if (directButton) {
+    directButton.disabled = !directReady;
+    directButton.title = directReady ? "" : "请先填写或导入音频提示词";
+  }
+}
+
+function markConfigDirty(dirty = true) {
+  const button = $("#saveConfig");
+  if (!button) return;
+  localStorage.setItem(configDirtyKey, dirty ? "yes" : "no");
+  if (!button.dataset.cleanText) button.dataset.cleanText = button.textContent.trim();
+  button.textContent = dirty ? `${button.dataset.cleanText} *` : button.dataset.cleanText;
+  button.classList.toggle("attention", dirty);
+}
+
 function normalizeView(name) {
   return routeViews.includes(name) ? name : homeView;
 }
@@ -408,9 +464,11 @@ function closeApiHelpPanels(exceptKey = "") {
 
 function hasTransientSurface() {
   const midnightModal = $("#midnightModal");
+  const appIntroModal = $("#appIntroModal");
   return isPlayerFullscreen()
     || !!$(".player-more[open]")
     || !!$(".api-help:not(.hidden)")
+    || !!(appIntroModal && !appIntroModal.classList.contains("hidden"))
     || !!(midnightModal && !midnightModal.classList.contains("hidden"))
     || (document.body.dataset.view === "editor" && !!$("[data-editor-drawer].active"));
 }
@@ -426,6 +484,11 @@ function closeTransientSurfaces() {
     closed = true;
   });
   if (closeApiHelpPanels()) closed = true;
+  const appIntroModal = $("#appIntroModal");
+  if (appIntroModal && !appIntroModal.classList.contains("hidden")) {
+    setAppIntroModal(false);
+    closed = true;
+  }
   const midnightModal = $("#midnightModal");
   if (midnightModal && !midnightModal.classList.contains("hidden")) {
     setMidnightModal(false);
@@ -1028,6 +1091,7 @@ async function removePlaylistItem(id) {
 }
 
 async function clearPlayerPlaylist() {
+  if (playerState.playlist.length && !window.confirm("确定清空播放列表吗？本地缓存音频也会一并移除。")) return;
   const localBlobIds = playerState.playlist
     .filter((item) => item.sourceType === "local" && item.blobId)
     .map((item) => item.blobId);
@@ -1849,6 +1913,12 @@ function handlePlayerFullscreenKey(event) {
     return;
   }
   if (!isEscape) return;
+  const appIntroModal = $("#appIntroModal");
+  if (appIntroModal && !appIntroModal.classList.contains("hidden")) {
+    event.preventDefault();
+    setAppIntroModal(false);
+    return;
+  }
   const midnightModal = $("#midnightModal");
   if (midnightModal && !midnightModal.classList.contains("hidden")) {
     event.preventDefault();
@@ -3243,6 +3313,7 @@ function fillDirectPromptDemo() {
 【音效时间线】18 秒门轴轻响，42 秒杯子轻碰桌面。
 【混音要求】对白始终靠前，雨声和音乐在背景层。
 【禁止事项】不要朗诵腔，不要模仿真实名人声线。`;
+  saveCreatorDraft();
   showToast("已填入提示词示例。", "ok");
 }
 
@@ -3305,6 +3376,7 @@ function loadConfigIntoForm() {
   $$("[data-config]").forEach((field) => {
     field.value = getByPath(config, field.dataset.config) || "";
   });
+  markConfigDirty(localStorage.getItem(configDirtyKey) === "yes");
 }
 
 function saveConfigFromForm() {
@@ -3313,11 +3385,13 @@ function saveConfigFromForm() {
     setByPath(config, field.dataset.config, field.value.trim());
   });
   localStorage.setItem("apiConfig", JSON.stringify(config));
+  markConfigDirty(false);
   showToast("配置已保存在本机。正式产品建议改为服务端加密保存。", "ok");
 }
 
 function saveConfigObject(config) {
   localStorage.setItem("apiConfig", JSON.stringify(config));
+  markConfigDirty(false);
   loadConfigIntoForm();
 }
 
@@ -3851,6 +3925,7 @@ function fillDemo() {
 林舟笑了一下，笑意很短：“那你为什么给我写信？”
 
 窗外一辆车急刹，刺耳的声音划破雨夜。档案室里，两个人同时沉默。`;
+  saveCreatorDraft();
   showToast("已填入演示小说片段。", "ok");
 }
 
@@ -3926,6 +4001,13 @@ function bindEvents() {
     showView(button.dataset.jump);
     if (button.closest("#appIntroModal")) closeAppIntroModal();
   }));
+  ["#titleInput", "#novelInput", "#directPromptInput", "#voiceRoleInput"].forEach((selector) => {
+    $(selector)?.addEventListener("input", saveCreatorDraft);
+  });
+  $$("[data-config]").forEach((field) => {
+    field.addEventListener("input", () => markConfigDirty(true));
+    field.addEventListener("change", () => markConfigDirty(true));
+  });
   $("#saveConfig").addEventListener("click", saveConfigFromForm);
   $("#demoButton").addEventListener("click", fillDemo);
   $("#runButton").addEventListener("click", runPipeline);
@@ -4253,6 +4335,9 @@ function bindEvents() {
   });
   $("#closeAppIntro").addEventListener("click", closeAppIntroModal);
   $("#closeAppIntroTop").addEventListener("click", closeAppIntroModal);
+  $("#appIntroModal").addEventListener("click", (event) => {
+    if (event.target.id === "appIntroModal") setAppIntroModal(false);
+  });
   $("#fileInput").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -4261,6 +4346,7 @@ function bindEvents() {
     if (!$("#titleInput").value.trim()) {
       $("#titleInput").value = file.name.replace(/\.[^.]+$/, "");
     }
+    saveCreatorDraft();
     showToast(`已导入小说文本：${file.name}`, "ok");
     event.target.value = "";
   });
@@ -4271,6 +4357,7 @@ function bindEvents() {
     if (!$("#titleInput").value.trim()) {
       $("#titleInput").value = file.name.replace(/\.[^.]+$/, "");
     }
+    saveCreatorDraft();
     showToast(`已导入提示词文件：${file.name}`, "ok");
     event.target.value = "";
   });
@@ -4279,6 +4366,7 @@ function bindEvents() {
 decorateApiHelpFields();
 document.body.dataset.view = "discover";
 loadConfigIntoForm();
+restoreCreatorDraft();
 loadPlayerBackground();
 loadPlayerPlaylist();
 renderPlayerImportLocation();
