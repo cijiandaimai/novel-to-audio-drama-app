@@ -314,6 +314,19 @@
                 </div>
               </div>
 
+              <div class="studio-transport" aria-label="剪辑播放控制">
+                <button id="transportPlay" class="primary" type="button">播放</button>
+                <button id="transportStop" class="secondary" type="button">停止</button>
+                <button id="transportRecord" class="secondary" type="button">录音</button>
+                <div class="studio-timecode">
+                  <strong id="transportPlayheadLabel">0:00.00</strong>
+                  <span id="transportDurationLabel">总长 0:00.00</span>
+                </div>
+                <button class="secondary" type="button" data-editor-panel="import">添加</button>
+                <button id="transportSplit" class="secondary" type="button">分割</button>
+                <button class="primary" type="button" data-editor-panel="export">导出</button>
+              </div>
+
               <div class="editor-fast-workflow" aria-label="快捷剪辑台">
                 <div class="editor-track-strip">
                   <button class="simple-track active" data-track-card="A" data-select-track="A">
@@ -368,6 +381,10 @@
 
               <div class="timeline-toolbar">
                 <div id="editorSourceInfo">当前选中：轨道 1</div>
+                <div class="timeline-resize-actions" aria-label="轨道高度">
+                  <button id="expandActiveTrack" class="secondary" type="button">放大轨道</button>
+                  <button id="resetTrackHeights" class="secondary" type="button">均分轨道</button>
+                </div>
                 <audio id="editorPreview" controls></audio>
               </div>
               <div class="timeline-pan-row" aria-label="时间线视窗">

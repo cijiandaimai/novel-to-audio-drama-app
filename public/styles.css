@@ -743,11 +743,12 @@ textarea {
 
 .editor-main-panel {
   position: relative;
-  display: grid;
-  grid-template-rows: auto auto minmax(320px, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   min-width: 0;
   min-height: calc(100vh - 250px);
+  height: calc(100dvh - 150px);
   overflow: hidden;
 }
 
@@ -758,6 +759,7 @@ textarea {
 }
 
 .editor-command-bar {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -767,6 +769,51 @@ textarea {
   border: 1px solid rgba(78, 73, 60, 0.14);
   border-radius: 8px;
   background: rgba(255, 253, 247, 0.72);
+}
+
+.studio-transport {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(64px, auto)) minmax(130px, 1fr) repeat(3, minmax(64px, auto));
+  gap: 8px;
+  align-items: center;
+  padding: 9px;
+  border: 1px solid rgba(78, 73, 60, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.9);
+  box-shadow: 0 8px 22px rgba(31, 33, 31, 0.05);
+}
+
+.studio-transport button {
+  min-height: 38px;
+  padding: 7px 10px;
+}
+
+.studio-transport button.playing {
+  box-shadow: 0 0 0 3px rgba(49, 95, 76, 0.14);
+}
+
+.studio-timecode {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  min-width: 0;
+  color: var(--muted);
+}
+
+.studio-timecode strong {
+  color: var(--ink);
+  font-family: Consolas, "SFMono-Regular", monospace;
+  font-size: 20px;
+  letter-spacing: 0;
+}
+
+.studio-timecode span {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editor-menu-tabs {
@@ -805,8 +852,11 @@ textarea {
 }
 
 .editor-fast-workflow {
+  flex: 0 0 auto;
   display: grid;
   gap: 8px;
+  max-height: min(32vh, 280px);
+  overflow: auto;
   padding: 10px;
   border: 1px solid rgba(78, 73, 60, 0.14);
   border-radius: 8px;
@@ -1151,9 +1201,23 @@ textarea {
 .timeline-toolbar {
   margin: 12px 0;
   color: var(--muted);
+  flex: 0 0 auto;
+}
+
+.timeline-resize-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.timeline-resize-actions button {
+  min-height: 34px;
+  padding: 7px 10px;
 }
 
 .timeline-pan-row {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 8px;
@@ -1190,6 +1254,8 @@ textarea {
 }
 
 .waveform-wrap {
+  flex: 1 1 auto;
+  min-height: 260px;
   position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1202,10 +1268,14 @@ textarea {
 #waveformCanvas {
   display: block;
   width: 100%;
-  height: min(58vh, 560px);
-  min-height: 320px;
+  height: 100%;
+  min-height: 260px;
   cursor: grab;
   touch-action: none;
+}
+
+.waveform-wrap.resizing-track #waveformCanvas {
+  cursor: row-resize;
 }
 
 .waveform-wrap.long-press-armed #waveformCanvas {
@@ -2339,7 +2409,6 @@ body[data-view="editor"] .main {
   .config-grid,
   .creator-layout,
   .editor-workbench,
-  .editor-command-bar,
   .editor-fast-actions,
   .track-import-grid,
   .voice-ref-form,
@@ -2437,6 +2506,21 @@ body[data-view="editor"] .main {
     grid-template-columns: 1fr;
   }
 
+  .editor-main-panel {
+    height: calc(100dvh - 104px);
+    min-height: 0;
+  }
+
+  .studio-transport {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .studio-timecode {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    padding-bottom: 2px;
+  }
+
   .editor-tool-group {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2462,6 +2546,23 @@ body[data-view="editor"] .main {
   .editor-track-strip,
   .editor-fast-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .editor-fast-workflow {
+    max-height: 30vh;
+  }
+
+  .timeline-toolbar {
+    gap: 8px;
+    margin: 6px 0;
+  }
+
+  .timeline-resize-actions {
+    width: 100%;
+  }
+
+  .timeline-resize-actions button {
+    flex: 1 1 0;
   }
 
   .editor-selected-clip-bar {
@@ -2524,8 +2625,12 @@ body[data-view="editor"] .main {
     grid-template-columns: 1fr;
   }
 
+  .waveform-wrap {
+    min-height: 220px;
+  }
+
   #waveformCanvas {
-    height: 260px;
+    min-height: 220px;
   }
 
   .api-input-row {

@@ -303,8 +303,8 @@ const midnightQuizState = {
 const editorState = {
   audioContext: null,
   tracks: [
-    { id: "A", name: "轨道 1", label: "人声/主轨", buffer: null, url: "", fileName: "", volume: 1, muted: false, solo: false, sourceHistory: [] },
-    { id: "B", name: "轨道 2", label: "音乐/环境", buffer: null, url: "", fileName: "", volume: 0.75, muted: false, solo: false, sourceHistory: [] }
+    { id: "A", name: "轨道 1", label: "人声/主轨", buffer: null, url: "", fileName: "", volume: 1, muted: false, solo: false, sourceHistory: [], heightWeight: 1 },
+    { id: "B", name: "轨道 2", label: "音乐/环境", buffer: null, url: "", fileName: "", volume: 0.75, muted: false, solo: false, sourceHistory: [], heightWeight: 1 }
   ],
   activeTrackId: "A",
   selection: { trackId: "A", sourceStart: 0, sourceEnd: 0, timelineStart: 0 },
@@ -324,6 +324,10 @@ const editorState = {
   renderedUrl: "",
   pendingDrag: null,
   longPressTimer: null,
+  playheadRaf: 0,
+  playbackStartClock: 0,
+  playbackStartPlayhead: 0,
+  playbackDuration: 0,
   micTrackId: "A",
   micStream: null,
   micRecorder: null,
@@ -2958,7 +2962,8 @@ function snapshotEditor() {
     clips: editorState.clips,
     selectedClipId: editorState.selectedClipId,
     selection: editorState.selection,
-    timeline: editorState.timeline
+    timeline: editorState.timeline,
+    trackHeights: editorState.tracks.map((track) => ({ id: track.id, heightWeight: track.heightWeight || 1 }))
   });
 }
 
@@ -2968,6 +2973,10 @@ function restoreEditor(snapshot) {
   editorState.selectedClipId = data.selectedClipId && editorState.clips.some((clip) => clip.id === data.selectedClipId) ? data.selectedClipId : "";
   editorState.selection = data.selection || editorState.selection;
   editorState.timeline = { ...editorState.timeline, ...(data.timeline || {}) };
+  (data.trackHeights || []).forEach((saved) => {
+    const track = getTrack(saved.id);
+    if (track) track.heightWeight = clamp(Number(saved.heightWeight) || 1, 0.45, 3.2);
+  });
   syncTimelineControls();
   renderClipList();
   renderWaveform();
@@ -3155,6 +3164,10 @@ function syncEditorQuickState() {
   updateSelectedClipControls(selectedClip);
   const playhead = $("#quickPlayheadInfo");
   if (playhead) playhead.textContent = `播放头 ${formatSeconds(editorState.timeline.playhead)}`;
+  const transportPlayhead = $("#transportPlayheadLabel");
+  if (transportPlayhead) transportPlayhead.textContent = formatSeconds(editorState.timeline.playhead);
+  const transportDuration = $("#transportDurationLabel");
+  if (transportDuration) transportDuration.textContent = `总长 ${formatSeconds(getTimelineDuration())}`;
   const micToggle = $("#quickMicToggle");
   if (micToggle) {
     const recording = editorState.micRecorder?.state === "recording";
@@ -3696,16 +3709,29 @@ async function loadDemoEditorAudio() {
   setEditorPanel("");
 }
 
+function getTrackLayout(height) {
+  const totalWeight = editorState.tracks.reduce((sum, track) => sum + Math.max(0.45, track.heightWeight || 1), 0) || editorState.tracks.length;
+  let top = 0;
+  return editorState.tracks.map((track, index) => {
+    const isLast = index === editorState.tracks.length - 1;
+    const laneHeight = isLast ? Math.max(1, height - top) : Math.max(1, (height * Math.max(0.45, track.heightWeight || 1)) / totalWeight);
+    const item = { track, index, top, height: laneHeight };
+    top += laneHeight;
+    return item;
+  });
+}
+
 function canvasTimelineInfo(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
   const width = canvas.width;
   const height = canvas.height;
+  const layout = getTrackLayout(height);
   const laneHeight = height / editorState.tracks.length;
   const projectDuration = getTimelineDuration();
   const visibleDuration = getVisibleTimelineDuration(projectDuration);
   editorState.timeline.offset = clamp(editorState.timeline.offset, 0, Math.max(0, projectDuration - visibleDuration));
-  return { ratio, rect, width, height, laneHeight, duration: visibleDuration, projectDuration, offset: editorState.timeline.offset };
+  return { ratio, rect, width, height, laneHeight, layout, duration: visibleDuration, projectDuration, offset: editorState.timeline.offset };
 }
 
 function timeToX(time, width, duration, offset = 0) {
@@ -3771,7 +3797,7 @@ function renderWaveform() {
     canvas.width = width;
     canvas.height = height;
   }
-  const { laneHeight, duration, projectDuration, offset } = canvasTimelineInfo(canvas);
+  const { layout, duration, projectDuration, offset } = canvasTimelineInfo(canvas);
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
   ctx.fillStyle = "rgba(255, 250, 238, 0.86)";
@@ -3791,19 +3817,31 @@ function renderWaveform() {
     ctx.fillText(formatSeconds(time), x + 4 * ratio, 12 * ratio);
   }
 
-  editorState.tracks.forEach((track, index) => {
-    drawTrackWaveform(ctx, track, index * laneHeight, laneHeight, width, duration, offset, projectDuration, ratio);
+  layout.forEach((lane) => {
+    drawTrackWaveform(ctx, lane.track, lane.top, lane.height, width, duration, offset, projectDuration, ratio);
+  });
+
+  ctx.strokeStyle = "rgba(31, 33, 31, 0.22)";
+  ctx.lineWidth = Math.max(1, ratio);
+  layout.slice(0, -1).forEach((lane) => {
+    const y = lane.top + lane.height;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(49, 95, 76, 0.28)";
+    ctx.fillRect(0, y - 3 * ratio, width, 6 * ratio);
   });
 
   editorState.clips.forEach((clip) => {
-    const trackIndex = editorState.tracks.findIndex((track) => track.id === clip.trackId);
-    if (trackIndex < 0) return;
+    const lane = layout.find((item) => item.track.id === clip.trackId);
+    if (!lane) return;
     const clipEnd = clip.timelineStart + clip.sourceEnd - clip.sourceStart;
     if (clipEnd < offset || clip.timelineStart > offset + duration) return;
     const x = timeToX(clip.timelineStart, width, duration, offset);
     const w = Math.max(3 * ratio, ((clip.sourceEnd - clip.sourceStart) / duration) * width);
-    const clipHeight = Math.min(40 * ratio, Math.max(24 * ratio, laneHeight - 44 * ratio));
-    const y = trackIndex * laneHeight + laneHeight - clipHeight - 10 * ratio;
+    const clipHeight = Math.min(40 * ratio, Math.max(24 * ratio, lane.height - 44 * ratio));
+    const y = lane.top + lane.height - clipHeight - 10 * ratio;
     const selected = clip.id === editorState.selectedClipId;
     ctx.fillStyle = clip.muted
       ? "rgba(116, 111, 99, 0.28)"
@@ -3829,15 +3867,16 @@ function renderWaveform() {
   const selection = editorState.selection;
   const track = getTrack(selection.trackId);
   if (track?.buffer && selection.sourceEnd > selection.sourceStart) {
-    const trackIndex = editorState.tracks.findIndex((item) => item.id === selection.trackId);
+    const lane = layout.find((item) => item.track.id === selection.trackId);
+    if (!lane) return;
     const x1 = timeToX(selection.sourceStart, width, duration, offset);
     const x2 = timeToX(selection.sourceEnd, width, duration, offset);
-    const y = trackIndex * laneHeight;
+    const y = lane.top;
     ctx.fillStyle = "rgba(111, 31, 27, 0.16)";
-    ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), laneHeight);
+    ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), lane.height);
     ctx.strokeStyle = "rgba(111, 31, 27, 0.82)";
     ctx.lineWidth = 2 * ratio;
-    ctx.strokeRect(x1, y + 1 * ratio, Math.max(2 * ratio, x2 - x1), laneHeight - 2 * ratio);
+    ctx.strokeRect(x1, y + 1 * ratio, Math.max(2 * ratio, x2 - x1), lane.height - 2 * ratio);
   }
 
   const playheadX = timeToX(editorState.timeline.playhead, width, duration, offset);
@@ -3856,10 +3895,11 @@ function getCanvasPointer(event) {
   const info = canvasTimelineInfo(canvas);
   const x = (event.clientX - info.rect.left) * info.ratio;
   const y = (event.clientY - info.rect.top) * info.ratio;
-  const trackIndex = clamp(Math.floor(y / info.laneHeight), 0, editorState.tracks.length - 1);
-  const track = editorState.tracks[trackIndex];
+  const lane = info.layout.find((item) => y >= item.top && y <= item.top + item.height) || info.layout[info.layout.length - 1];
+  const trackIndex = lane?.index ?? 0;
+  const track = lane?.track || editorState.tracks[trackIndex];
   const time = xToTime(x, info.width, info.duration, info.offset, info.projectDuration);
-  return { canvas, ...info, x, y, trackIndex, track, time };
+  return { canvas, ...info, x, y, lane, trackIndex, track, time };
 }
 
 function hitTestClip(point) {
@@ -3867,17 +3907,69 @@ function hitTestClip(point) {
   for (let index = editorState.clips.length - 1; index >= 0; index -= 1) {
     const clip = editorState.clips[index];
     if (clip.trackId !== point.track.id) continue;
+    const lane = point.layout.find((item) => item.track.id === clip.trackId);
+    if (!lane) continue;
     const start = clip.timelineStart;
     const end = clip.timelineStart + clip.sourceEnd - clip.sourceStart;
     const x1 = timeToX(start, point.width, point.duration, point.offset);
     const x2 = timeToX(end, point.width, point.duration, point.offset);
-    const y1 = point.trackIndex * point.laneHeight;
-    const y2 = y1 + point.laneHeight;
+    const y1 = lane.top;
+    const y2 = y1 + lane.height;
     if (point.x < x1 || point.x > x2 || point.y < y1 || point.y > y2) continue;
     const edge = Math.abs(point.x - x1) < handleSize ? "clip-left" : Math.abs(point.x - x2) < handleSize ? "clip-right" : "clip-move";
     return { clip, edge };
   }
   return null;
+}
+
+function hitTestTrackDivider(point) {
+  const threshold = 10 * point.ratio;
+  for (let index = 0; index < point.layout.length - 1; index += 1) {
+    const boundary = point.layout[index].top + point.layout[index].height;
+    if (Math.abs(point.y - boundary) <= threshold) return index;
+  }
+  return -1;
+}
+
+function beginTrackResize(boundaryIndex, point) {
+  editorState.drag = {
+    type: "track-resize",
+    boundaryIndex,
+    startY: point.y,
+    originalWeights: editorState.tracks.map((track) => track.heightWeight || 1)
+  };
+  setTimelineDragClass("resizing-track", true);
+}
+
+function moveTrackResize(point) {
+  const drag = editorState.drag;
+  const upper = editorState.tracks[drag.boundaryIndex];
+  const lower = editorState.tracks[drag.boundaryIndex + 1];
+  if (!upper || !lower) return;
+  const totalWeight = drag.originalWeights.reduce((sum, value) => sum + value, 0) || editorState.tracks.length;
+  const deltaWeight = ((point.y - drag.startY) / Math.max(1, point.height)) * totalWeight;
+  const upperNext = clamp(drag.originalWeights[drag.boundaryIndex] + deltaWeight, 0.45, 3.2);
+  const lowerNext = clamp(drag.originalWeights[drag.boundaryIndex + 1] - deltaWeight, 0.45, 3.2);
+  upper.heightWeight = upperNext;
+  lower.heightWeight = lowerNext;
+  renderWaveform();
+}
+
+function expandActiveTrackHeight() {
+  const active = getActiveTrack();
+  editorState.tracks.forEach((track) => {
+    track.heightWeight = track.id === active.id ? 1.85 : 0.8;
+  });
+  renderWaveform();
+  showToast(`已放大 ${active.name}，也可以拖动轨道分隔线。`, "ok");
+}
+
+function resetTrackHeights() {
+  editorState.tracks.forEach((track) => {
+    track.heightWeight = 1;
+  });
+  renderWaveform();
+  showToast("轨道高度已均分。", "ok");
 }
 
 function setTimelineDragClass(className, enabled) {
@@ -3909,8 +4001,14 @@ function clearPendingTimelineDrag() {
 
 function startTimelineDrag(event) {
   const point = getCanvasPointer(event);
-  if (!point.track?.buffer) return;
   event.preventDefault();
+  const dividerIndex = hitTestTrackDivider(point);
+  if (dividerIndex >= 0) {
+    point.canvas.setPointerCapture?.(event.pointerId);
+    beginTrackResize(dividerIndex, point);
+    return;
+  }
+  if (!point.track?.buffer) return;
   setActiveTrack(point.track.id);
   const hit = hitTestClip(point);
   if (hit) {
@@ -3961,6 +4059,10 @@ function moveTimelineDrag(event) {
   if (!editorState.drag) return;
   const point = getCanvasPointer(event);
   const drag = editorState.drag;
+  if (drag.type === "track-resize") {
+    moveTrackResize(point);
+    return;
+  }
   const track = getTrack(drag.trackId);
   const maxTime = track.buffer?.duration || 0;
   if (!maxTime) return;
@@ -4003,6 +4105,7 @@ function endTimelineDrag() {
   clearPendingTimelineDrag();
   editorState.drag = null;
   setTimelineDragClass("dragging", false);
+  setTimelineDragClass("resizing-track", false);
 }
 
 function handleTimelineWheel(event) {
@@ -4125,10 +4228,28 @@ function updateClipField(clipId, field, value, checked) {
 
 function stopEditorPlayback() {
   clearTimeout(editorState.clipTimer);
+  cancelAnimationFrame(editorState.playheadRaf);
+  editorState.playheadRaf = 0;
   editorState.playingNodes.forEach((node) => {
     try { node.stop(); } catch {}
   });
   editorState.playingNodes = [];
+  $("#transportPlay")?.classList.remove("playing");
+}
+
+function animatePreviewPlayhead() {
+  cancelAnimationFrame(editorState.playheadRaf);
+  const tick = () => {
+    const next = editorState.playbackStartPlayhead + Math.max(0, Date.now() / 1000 - editorState.playbackStartClock);
+    setPlayhead(Math.min(editorState.playbackDuration, next));
+    if (next < editorState.playbackDuration && editorState.playingNodes.length) {
+      editorState.playheadRaf = requestAnimationFrame(tick);
+    } else {
+      editorState.playheadRaf = 0;
+      $("#transportPlay")?.classList.remove("playing");
+    }
+  };
+  editorState.playheadRaf = requestAnimationFrame(tick);
 }
 
 function playEditorClip(clipId) {
@@ -4137,6 +4258,7 @@ function playEditorClip(clipId) {
   if (!clip || !track?.buffer) return;
   stopEditorPlayback();
   const context = getEditorAudioContext();
+  if (context.state === "suspended") context.resume();
   const source = context.createBufferSource();
   const gain = context.createGain();
   source.buffer = track.buffer;
@@ -4251,13 +4373,62 @@ async function renderEditorMixBuffer() {
 async function previewTimelineMix() {
   stopEditorPlayback();
   try {
-    const rendered = await renderEditorMixBuffer();
+    const { clips } = getRenderableClips();
     const context = getEditorAudioContext();
-    const source = context.createBufferSource();
-    source.buffer = rendered;
-    source.connect(context.destination);
-    source.start(0, Math.min(editorState.timeline.playhead, Math.max(0, rendered.duration - 0.05)));
-    editorState.playingNodes = [source];
+    if (context.state === "suspended") context.resume();
+    const totalDuration = clips.reduce((max, clip) => Math.max(max, clip.timelineStart + getClipDuration(clip)), 0);
+    const startAt = Math.min(editorState.timeline.playhead, Math.max(0, totalDuration - 0.05));
+    const now = context.currentTime;
+    const nodes = [];
+    clips.forEach((clip) => {
+      const track = getTrack(clip.trackId);
+      if (!track?.buffer) return;
+      const clipDuration = getClipDuration(clip);
+      const clipEnd = clip.timelineStart + clipDuration;
+      if (clipEnd <= startAt) return;
+      const delay = Math.max(0, clip.timelineStart - startAt);
+      const skipped = Math.max(0, startAt - clip.timelineStart);
+      const sourceOffset = clip.sourceStart + skipped;
+      const duration = Math.max(0.05, clip.sourceEnd - sourceOffset);
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      const volume = clamp((clip.volume || 1) * (track.volume || 1), 0, 2);
+      const startTime = now + delay;
+      source.buffer = track.buffer;
+      gain.gain.setValueAtTime(volume, startTime);
+      if (clip.fadeIn > 0 && skipped < clip.fadeIn) {
+        const initial = clamp(skipped / clip.fadeIn, 0, 1) * volume;
+        gain.gain.setValueAtTime(initial, startTime);
+        gain.gain.linearRampToValueAtTime(volume, startTime + Math.max(0.01, clip.fadeIn - skipped));
+      }
+      if (clip.fadeOut > 0) {
+        const fadeStartInClip = Math.max(0, clipDuration - clip.fadeOut);
+        const fadeStart = startTime + Math.max(0, fadeStartInClip - skipped);
+        if (fadeStart < startTime + duration) {
+          gain.gain.setValueAtTime(volume, fadeStart);
+          gain.gain.linearRampToValueAtTime(0, startTime + duration);
+        }
+      }
+      source.connect(gain).connect(context.destination);
+      source.onended = () => {
+        editorState.playingNodes = editorState.playingNodes.filter((node) => node !== source);
+        if (!editorState.playingNodes.length) {
+          cancelAnimationFrame(editorState.playheadRaf);
+          editorState.playheadRaf = 0;
+          $("#transportPlay")?.classList.remove("playing");
+          syncEditorQuickState();
+        }
+      };
+      source.start(startTime, sourceOffset, duration);
+      nodes.push(source);
+    });
+    if (!nodes.length) throw new Error("播放头后面没有可预听的片段。");
+    editorState.playingNodes = nodes;
+    editorState.playbackStartClock = Date.now() / 1000;
+    editorState.playbackStartPlayhead = startAt;
+    editorState.playbackDuration = totalDuration;
+    $("#transportPlay")?.classList.add("playing");
+    animatePreviewPlayhead();
   } catch (error) {
     showToast(`预听失败：${error.message}`, "fail");
   }
@@ -5217,6 +5388,12 @@ function bindEvents() {
   $("#quickSplitClip")?.addEventListener("click", splitClipAtPlayhead);
   $("#quickPreviewMix")?.addEventListener("click", previewTimelineMix);
   $("#quickExportMix")?.addEventListener("click", exportEditorMix);
+  $("#transportPlay")?.addEventListener("click", previewTimelineMix);
+  $("#transportStop")?.addEventListener("click", stopEditorPlayback);
+  $("#transportRecord")?.addEventListener("click", () => $("#quickMicToggle")?.click());
+  $("#transportSplit")?.addEventListener("click", splitClipAtPlayhead);
+  $("#expandActiveTrack")?.addEventListener("click", expandActiveTrackHeight);
+  $("#resetTrackHeights")?.addEventListener("click", resetTrackHeights);
   $("#quickPreviewClip")?.addEventListener("click", previewSelectedClip);
   $("#nudgeClipLeft")?.addEventListener("click", () => nudgeSelectedClip(-1));
   $("#nudgeClipRight")?.addEventListener("click", () => nudgeSelectedClip(1));
