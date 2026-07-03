@@ -273,6 +273,7 @@ const playerState = {
   lastLyricScrollIndex: -1,
   lyricScrollFrame: 0,
   lastFullscreenTapAt: 0,
+  lastFullscreenPointerTouchAt: 0,
   fullscreenPointerStartY: 0,
   lyricHoldTimer: 0,
   lyricScrubbing: false,
@@ -2475,6 +2476,7 @@ function syncPlayerFullscreenUi() {
   }
   if (!active) {
     playerState.lastFullscreenTapAt = 0;
+    playerState.lastFullscreenPointerTouchAt = 0;
     playerState.fullscreenPointerStartY = 0;
     stopLyricScrub();
   }
@@ -2556,6 +2558,7 @@ function exitPlayerFullscreenOnDoubleTap(event) {
   if (exitPlayerFullscreenOnSwipe(event.clientY)) return;
   if (event.pointerType !== "touch") return;
   const now = Date.now();
+  playerState.lastFullscreenPointerTouchAt = now;
   if (now - playerState.lastFullscreenTapAt < 320) {
     playerState.lastFullscreenTapAt = 0;
     exitPlayerFullscreen();
@@ -2568,9 +2571,10 @@ function exitPlayerFullscreenOnTouchEnd(event) {
   const target = $("#playerArt");
   if (!isPlayerFullscreen(target)) return;
   if (playerState.lyricScrubbing) return;
+  const now = Date.now();
+  if (now - playerState.lastFullscreenPointerTouchAt < 90) return;
   const endY = event.changedTouches?.[0]?.clientY || 0;
   if (exitPlayerFullscreenOnSwipe(endY)) return;
-  const now = Date.now();
   if (now - playerState.lastFullscreenTapAt < 320) {
     playerState.lastFullscreenTapAt = 0;
     exitPlayerFullscreen();
