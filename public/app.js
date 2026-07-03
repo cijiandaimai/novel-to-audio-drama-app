@@ -267,6 +267,9 @@ const playerState = {
   activeLyricIndex: -1,
   activeWordIndex: -1,
   seeking: false,
+  seekWasPlaying: false,
+  pendingSeekTime: 0,
+  seekResumeTimer: 0,
   lastLyricScrollIndex: -1,
   lyricScrollFrame: 0,
   lastFullscreenTapAt: 0,
@@ -1652,6 +1655,66 @@ function syncPlayerControls() {
   updateMediaSessionState();
 }
 
+function isPlayerActivelyPlaying(player = $("#mainPlayer")) {
+  return Boolean(player && !player.paused && !player.ended && (player.currentSrc || player.src));
+}
+
+function clampPlayerTime(player, time) {
+  const rawTime = Number(time) || 0;
+  const duration = Number.isFinite(player?.duration) ? player.duration : rawTime;
+  return Math.max(0, Math.min(duration || rawTime, rawTime));
+}
+
+function beginPlayerSeek() {
+  const player = $("#mainPlayer");
+  if (!player || !(player.currentSrc || player.src)) return;
+  playerState.seeking = true;
+  playerState.pendingSeekTime = Number.isFinite(player.currentTime) ? player.currentTime : 0;
+  playerState.seekWasPlaying = isPlayerActivelyPlaying(player) || playerState.expectedPlaying;
+  clearTimeout(playerState.seekResumeTimer);
+  if (playerState.seekWasPlaying) {
+    playerState.userPaused = false;
+    playerState.expectedPlaying = true;
+  }
+}
+
+function setPlayerSeekTime(time) {
+  const player = $("#mainPlayer");
+  if (!player || !(player.currentSrc || player.src)) return;
+  const nextTime = clampPlayerTime(player, time);
+  playerState.pendingSeekTime = nextTime;
+  player.currentTime = nextTime;
+  syncLyrics(nextTime);
+  syncPlayerControls();
+}
+
+function previewPlayerSeekTime(time) {
+  const player = $("#mainPlayer");
+  if (!player || !(player.currentSrc || player.src)) return;
+  const nextTime = clampPlayerTime(player, time);
+  playerState.pendingSeekTime = nextTime;
+  const seek = $("#playerSeek");
+  if (seek) seek.value = String(nextTime);
+  const currentLabel = $("#playerCurrentTime");
+  if (currentLabel) currentLabel.textContent = formatLyricTime(nextTime);
+  syncLyrics(nextTime);
+}
+
+function finishPlayerSeek(reason = "seek") {
+  const player = $("#mainPlayer");
+  if (!player) return;
+  const shouldResume = playerState.seekWasPlaying;
+  if (playerState.seeking) setPlayerSeekTime(playerState.pendingSeekTime);
+  playerState.seeking = false;
+  playerState.seekWasPlaying = false;
+  clearTimeout(playerState.seekResumeTimer);
+  syncPlayerControls();
+  syncCurrentPlaybackRecord(true);
+  if (shouldResume && (player.currentSrc || player.src)) {
+    playerState.seekResumeTimer = window.setTimeout(() => resumeMainPlayer(reason), 100);
+  }
+}
+
 function readPlayerLoopMode() {
   const value = localStorage.getItem(playerLoopModeKey);
   return ["none", "single", "list"].includes(value) ? value : "none";
@@ -1728,11 +1791,10 @@ function updateMediaSessionMetadata(item = getCurrentPlaybackItem()) {
     navigator.mediaSession.setActionHandler("previoustrack", playPreviousPlaylistItem);
     navigator.mediaSession.setActionHandler("nexttrack", playNextPlaylistItem);
     navigator.mediaSession.setActionHandler("seekto", (details) => {
-      const player = $("#mainPlayer");
-      if (!player || !Number.isFinite(details.seekTime)) return;
-      player.currentTime = Math.max(0, Math.min(player.duration || details.seekTime, details.seekTime));
-      syncLyrics(player.currentTime);
-      syncPlayerControls();
+      if (!Number.isFinite(details.seekTime)) return;
+      beginPlayerSeek();
+      setPlayerSeekTime(details.seekTime);
+      finishPlayerSeek("media-seek");
     });
   } catch {
     // Some WebView builds expose Media Session partially.
@@ -1835,6 +1897,7 @@ function scheduleInterruptedResume(reason = "interrupted", delay = 1200) {
 function handlePlayerPauseEvent() {
   syncPlayerControls();
   recordPlaybackEvent("pause");
+  if (playerState.seeking) return;
   scheduleInterruptedResume("audio-focus");
 }
 
@@ -2381,6 +2444,7 @@ function startFullscreenLyricScrub(event) {
   playerState.lyricScrubStartY = event.clientY;
   playerState.lyricScrubStartTime = player.currentTime || 0;
   playerState.lyricHoldTimer = window.setTimeout(() => {
+    beginPlayerSeek();
     playerState.lyricScrubbing = true;
     $("#lyricPanel")?.classList.add("is-scrubbing");
   }, 360);
@@ -2395,18 +2459,18 @@ function moveFullscreenLyricScrub(event) {
   if (!player?.duration) return;
   const deltaY = event.clientY - playerState.lyricScrubStartY;
   const nextTime = Math.max(0, Math.min(player.duration, playerState.lyricScrubStartTime - deltaY * 0.08));
-  player.currentTime = nextTime;
-  syncLyrics(nextTime);
-  syncPlayerControls();
+  previewPlayerSeekTime(nextTime);
 }
 
 function endFullscreenLyricScrub(event) {
+  const wasScrubbing = playerState.lyricScrubbing;
   if (playerState.lyricScrubbing) {
     event.preventDefault();
     event.stopPropagation();
     playerState.lastFullscreenTapAt = 0;
   }
   stopLyricScrub();
+  if (wasScrubbing) finishPlayerSeek("lyric-scrub");
 }
 
 function startPlayerFullscreenGesture(event) {
@@ -4967,17 +5031,25 @@ function bindEvents() {
   $("#playerNext").addEventListener("click", playNextPlaylistItem);
   $("#playerLoopMode").addEventListener("click", togglePlayerLoopMode);
   $("#playerRate").addEventListener("change", (event) => setPlayerPlaybackRate(event.target.value));
+  $("#playerSeek").addEventListener("pointerdown", beginPlayerSeek);
+  $("#playerSeek").addEventListener("touchstart", beginPlayerSeek, { passive: true });
+  $("#playerSeek").addEventListener("mousedown", beginPlayerSeek);
   $("#playerSeek").addEventListener("input", (event) => {
-    const player = $("#mainPlayer");
-    if (!player) return;
-    playerState.seeking = true;
-    player.currentTime = Number(event.target.value) || 0;
-    syncLyrics(player.currentTime);
-    syncPlayerControls();
+    if (!playerState.seeking) beginPlayerSeek();
+    previewPlayerSeekTime(event.target.value);
   });
-  $("#playerSeek").addEventListener("change", () => {
-    playerState.seeking = false;
-    syncPlayerControls();
+  $("#playerSeek").addEventListener("change", (event) => {
+    if (!playerState.seeking) beginPlayerSeek();
+    previewPlayerSeekTime(event.target.value);
+    finishPlayerSeek("seek");
+  });
+  ["pointerup", "pointercancel", "touchend", "touchcancel", "mouseup", "blur"].forEach((eventName) => {
+    $("#playerSeek").addEventListener(eventName, () => {
+      if (playerState.seeking) finishPlayerSeek("seek");
+    });
+  });
+  $("#playerSeek").addEventListener("keyup", (event) => {
+    if (["Enter", " ", "Spacebar"].includes(event.key) && playerState.seeking) finishPlayerSeek("seek");
   });
   $("#playerVolume").addEventListener("input", (event) => {
     const player = $("#mainPlayer");
