@@ -3149,6 +3149,16 @@ button:not(:disabled):active,
   font-weight: 900;
 }
 
+.tavern-badge.api {
+  background: rgba(111, 31, 27, 0.12);
+  color: var(--accent-dark);
+}
+
+.tavern-badge.auto {
+  background: rgba(184, 139, 74, 0.15);
+  color: #7a5623;
+}
+
 .tavern-chat-actions {
   display: inline-flex;
   gap: 8px;
@@ -3162,7 +3172,7 @@ button:not(:disabled):active,
 
 .tavern-mode-row {
   display: grid;
-  grid-template-columns: minmax(180px, 0.7fr) minmax(0, 1.3fr);
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: 10px;
   align-items: center;
   padding: 10px;
@@ -3187,6 +3197,7 @@ button:not(:disabled):active,
 }
 
 .tavern-quick-actions {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(58px, 1fr));
   gap: 7px;
@@ -3247,7 +3258,7 @@ button:not(:disabled):active,
 
 .tavern-compose {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 10px;
   align-items: end;
 }
@@ -3259,6 +3270,16 @@ button:not(:disabled):active,
 
 .tavern-compose button {
   min-height: 72px;
+}
+
+.speech-input-button.recording {
+  border-color: rgba(111, 31, 27, 0.38);
+  background: rgba(111, 31, 27, 0.12);
+  color: var(--accent-dark);
+}
+
+.speech-input-button[aria-busy="true"] {
+  opacity: 0.82;
 }
 
 .tavern-editor-panel textarea.short-textarea {
@@ -3524,7 +3545,11 @@ button:not(:disabled):active,
   }
 
   .tavern-compose {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .tavern-compose textarea {
+    grid-column: 1 / -1;
   }
 
   .tavern-compose button {

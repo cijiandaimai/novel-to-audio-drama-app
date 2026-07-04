@@ -223,7 +223,7 @@
             <section class="panel tavern-chat-panel">
               <div class="tavern-chat-head">
                 <div>
-                  <span class="tavern-badge">Local</span>
+                  <span id="tavernEngineBadge" class="tavern-badge">Local</span>
                   <h3 id="tavernActiveName">白泽酒馆</h3>
                   <p id="tavernActiveTagline">选择角色后开始对话。</p>
                 </div>
@@ -242,6 +242,26 @@
                     <option value="recap">线索复盘</option>
                   </select>
                 </label>
+                <label>
+                  <span>回复方式</span>
+                  <select id="tavernEngineSelect">
+                    <option value="local">本地</option>
+                    <option value="api">API</option>
+                    <option value="auto">自动</option>
+                  </select>
+                </label>
+                <label>
+                  <span>API 模型</span>
+                  <select id="tavernProviderSelect">
+                    <option value="auto">自动选择</option>
+                    <option value="doubao">豆包</option>
+                    <option value="qwen">千问</option>
+                    <option value="kimi">Kimi</option>
+                    <option value="gpt">GPT</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="grok">Grok</option>
+                  </select>
+                </label>
                 <div class="tavern-quick-actions" id="tavernQuickActions">
                   <button class="secondary" type="button" data-tavern-action="continue">继续</button>
                   <button class="secondary" type="button" data-tavern-action="rewrite">重写</button>
@@ -253,7 +273,8 @@
               <div id="tavernChatLog" class="tavern-chat-log" aria-live="polite"></div>
               <div class="tavern-compose">
                 <textarea id="tavernUserInput" placeholder="输入你想对角色说的话。Ctrl + Enter 发送。"></textarea>
-                <button id="sendTavernMessage" class="primary">本地回复</button>
+                <button class="secondary speech-input-button" type="button" data-speech-input="tavernUserInput">语音输入</button>
+                <button id="sendTavernMessage" class="primary">发送</button>
               </div>
             </section>
 
@@ -324,6 +345,7 @@
               <div class="actions">
                 <button id="runButton" class="primary">自动执行完整方案</button>
                 <button id="demoButton" class="secondary">填入演示片段</button>
+                <button class="secondary speech-input-button" type="button" data-speech-input="novelInput">语音输入</button>
               </div>
             </section>
 
@@ -392,6 +414,7 @@
               <div class="actions">
                 <button id="runDirectAudioButton" class="primary">直接生成音频</button>
                 <button id="fillDirectPromptDemo" class="secondary">填入提示词示例</button>
+                <button class="secondary speech-input-button" type="button" data-speech-input="directPromptInput">语音输入</button>
               </div>
               <div id="directResultBox" class="result-box hidden"></div>
             </section>
@@ -794,6 +817,18 @@
               <label>模型 ID<input data-config="audio.model" placeholder="seed-audio-1.0" /></label>
               <label>API Key<input data-config="audio.apiKey" type="password" placeholder="豆包语音 API Key" /></label>
               <div class="tutorial compact">官方音频生成 HTTP 使用 X-Api-Key 鉴权；模型 ID 当前填 seed-audio-1.0。</div>
+            </section>
+
+            <section class="panel provider essential-provider">
+              <h3>Doubao-语音识别</h3>
+              <p>用于语音输入，把麦克风录音转成小说内容、提示词或酒馆对话。</p>
+              <label>接口地址<input data-config="asr.endpoint" placeholder="https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash" /></label>
+              <label>ASR 模型名<input data-config="asr.model" placeholder="bigmodel" /></label>
+              <label>资源 ID<input data-config="asr.resourceId" placeholder="volc.bigasr.auc_turbo" /></label>
+              <label>新版 API Key<input data-config="asr.apiKey" type="password" placeholder="豆包语音识别 X-Api-Key" /></label>
+              <label>旧版 App Key<input data-config="asr.appKey" type="password" placeholder="可留空" /></label>
+              <label>旧版 Access Key<input data-config="asr.accessKey" type="password" placeholder="可留空" /></label>
+              <div class="tutorial compact">优先使用新版 X-Api-Key；旧版控制台才需要 App Key + Access Key。正式发布建议放在后端中转里。</div>
             </section>
 
             <section class="panel provider">
