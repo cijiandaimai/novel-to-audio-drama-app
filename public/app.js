@@ -4006,6 +4006,33 @@ function nudgeSelectedClip(direction = 1, multiplier = 1) {
   renderWaveform();
 }
 
+function bindPressRepeat(selector, callback) {
+  const button = $(selector);
+  if (!button) return;
+  let repeatTimer = 0;
+  let repeatInterval = 0;
+  const stop = () => {
+    window.clearTimeout(repeatTimer);
+    window.clearInterval(repeatInterval);
+    repeatTimer = 0;
+    repeatInterval = 0;
+  };
+  button.addEventListener("pointerdown", (event) => {
+    if (button.disabled) return;
+    event.preventDefault();
+    button.setPointerCapture?.(event.pointerId);
+    callback();
+    stop();
+    repeatTimer = window.setTimeout(() => {
+      repeatInterval = window.setInterval(callback, 95);
+    }, 320);
+  });
+  ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"].forEach((eventName) => {
+    button.addEventListener(eventName, stop);
+  });
+  button.addEventListener("click", (event) => event.preventDefault());
+}
+
 function duplicateSelectedClip() {
   const clip = getSelectedClip();
   if (!clip) {
@@ -4056,7 +4083,6 @@ function selectEditorClip(clipOrId, { openPanel = false, notify = false } = {}) 
   ensureClipVisible(clip);
   setPlayhead(clip.timelineStart);
   if (openPanel) setEditorPanel("clips");
-  else setEditorContext("clips");
   renderClipList();
   renderWaveform();
   if (notify) showToast("已选中片段，可在波形上长按拖动。", "ok");
@@ -4697,8 +4723,8 @@ function beginClipRangeSelect(hit, point) {
   setPlayhead(point.time, { snap: false });
 }
 
-function placePlayheadInClip(hit, point, { notify = false } = {}) {
-  selectEditorClip(hit.clip);
+function placePlayheadInClip(hit, point, { notify = false, openPanel = false } = {}) {
+  selectEditorClip(hit.clip, { openPanel });
   setPlayhead(point.time, { snap: false, follow: true });
   if (notify) showToast("播放头已放到片段内部。", "ok");
 }
@@ -4718,7 +4744,7 @@ function handleTimelineDoubleTap(point, hit) {
   const closeInSpace = Math.hypot(point.x - previous.x, point.y - previous.y) <= 28 * point.ratio;
   if (!sameClip || !closeInTime || !closeInSpace) return false;
   clearPendingTimelineDrag();
-  placePlayheadInClip(hit, point, { notify: true });
+  placePlayheadInClip(hit, point, { notify: true, openPanel: true });
   return true;
 }
 
@@ -4754,14 +4780,14 @@ function startTimelineDrag(event) {
     setPlayhead(point.time, { snap: false, follow: true });
     if (handleTimelineDoubleTap(point, hit)) return;
     if (event.pointerType === "touch") {
-      editorState.pendingDrag = { mode: "touch-range", hit, point, x: point.x, y: point.y };
+      editorState.pendingDrag = { mode: "touch-clip-drag", hit, point, x: point.x, y: point.y };
       setTimelineDragClass("long-press-armed", true);
       clearTimeout(editorState.longPressTimer);
       editorState.longPressTimer = window.setTimeout(() => {
         if (!editorState.pendingDrag || editorState.drag) return;
         const pending = editorState.pendingDrag;
         clearPendingTimelineDrag();
-        beginClipRangeSelect(pending.hit, pending.point);
+        beginClipDrag(pending.hit, pending.point);
       }, 360);
       return;
     }
@@ -4891,7 +4917,7 @@ function handleTimelineDoubleClick(event) {
   const hit = hitTestClip(point);
   if (!hit) return;
   event.preventDefault();
-  placePlayheadInClip(hit, point);
+  placePlayheadInClip(hit, point, { openPanel: true });
 }
 
 function handleTimelineClick(event) {
@@ -4915,7 +4941,7 @@ function handleTimelineClick(event) {
   );
   if (!isDoubleClick) return;
   event.preventDefault();
-  placePlayheadInClip(hit, point, { notify: true });
+  placePlayheadInClip(hit, point, { notify: true, openPanel: true });
 }
 
 function handleTimelineMouseDown(event) {
@@ -6054,6 +6080,7 @@ async function runPipeline() {
   }
 
   setButtonBusy("#runButton", true, "生成中...");
+  $("#creatorMainLayout")?.classList.add("status-active");
   $("#runStatusPanel").classList.remove("hidden");
   $("#runStatusPanel").scrollIntoView({ block: "start", behavior: "smooth" });
   $("#runStatus").textContent = "正在执行";
@@ -6146,6 +6173,24 @@ function initFocusScrollAssist() {
       target.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "smooth" });
     }, 160);
   });
+}
+
+function initInteractionSelectionGuards() {
+  const editor = $(".editor-workbench");
+  if (editor) {
+    ["selectstart", "dragstart"].forEach((eventName) => {
+      editor.addEventListener(eventName, (event) => {
+        if (editorTextInputFocused(event.target)) return;
+        event.preventDefault();
+      });
+    });
+    editor.addEventListener("contextmenu", (event) => {
+      if (editorTextInputFocused(event.target)) return;
+      if (event.target.closest("audio")) return;
+      event.preventDefault();
+    });
+  }
+  $("#waveformCanvas")?.addEventListener("contextmenu", (event) => event.preventDefault());
 }
 
 function bindEvents() {
@@ -6243,8 +6288,8 @@ function bindEvents() {
   $("#expandActiveTrack")?.addEventListener("click", expandActiveTrackHeight);
   $("#resetTrackHeights")?.addEventListener("click", resetTrackHeights);
   $("#quickPreviewClip")?.addEventListener("click", previewSelectedClip);
-  $("#nudgeClipLeft")?.addEventListener("click", () => nudgeSelectedClip(-1));
-  $("#nudgeClipRight")?.addEventListener("click", () => nudgeSelectedClip(1));
+  bindPressRepeat("#nudgeClipLeft", () => nudgeSelectedClip(-1));
+  bindPressRepeat("#nudgeClipRight", () => nudgeSelectedClip(1));
   $("#duplicateSelectedClip")?.addEventListener("click", duplicateSelectedClip);
   $("#deleteSelectedClip")?.addEventListener("click", removeSelectedClip);
   $("#copySelectedClip")?.addEventListener("click", copySelectedClip);
@@ -6621,6 +6666,7 @@ updateMidnightState();
 bindEvents();
 initWaterRippleTouch();
 initFocusScrollAssist();
+initInteractionSelectionGuards();
 syncPlayerControls();
 initRouteNavigation();
 registerNativeBackHandler();
