@@ -63,10 +63,12 @@ const stageNames = [
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 const homeView = "discover";
-const routeViews = ["discover", "create", "editor", "config", "history"];
+const routeViews = ["discover", "create", "tavern", "editor", "config", "history"];
+const mainNavViews = ["discover", "tavern", "create", "editor"];
 const viewLabels = {
   discover: "音箱",
   create: "创作",
+  tavern: "酒馆",
   editor: "剪辑",
   config: "API 配置",
   history: "创作历史"
@@ -78,6 +80,7 @@ const i18n = {
     tagline: "编剧、配音、配乐、合成",
     navDiscover: "音箱",
     navCreate: "创作",
+    navTavern: "酒馆",
     navEditor: "剪辑",
     language: "语言",
     startCreate: "开始创作",
@@ -117,6 +120,7 @@ const i18n = {
     clear: "清空",
     playlistEmpty: "导入音频或播放作品后，会自动生成播放列表。",
     apiConfig: "API 配置",
+    tavern: "白泽酒馆",
     history: "创作历史",
     createEyebrow: "创作台",
     createTitle: "上传小说，生成广播剧",
@@ -134,6 +138,7 @@ const i18n = {
     tagline: "脚本、音声、音楽、ミックス",
     navDiscover: "音箱",
     navCreate: "制作",
+    navTavern: "酒場",
     navEditor: "編集",
     language: "言語",
     startCreate: "制作を始める",
@@ -173,6 +178,7 @@ const i18n = {
     clear: "クリア",
     playlistEmpty: "音声を追加または再生すると、プレイリストが自動作成されます。",
     apiConfig: "API設定",
+    tavern: "白沢酒場",
     history: "制作履歴",
     createEyebrow: "制作台",
     createTitle: "小説をアップロードして音声ドラマを生成",
@@ -190,6 +196,7 @@ const i18n = {
     tagline: "Script, voice, music, mix",
     navDiscover: "Speaker",
     navCreate: "Create",
+    navTavern: "Tavern",
     navEditor: "Edit",
     language: "Language",
     startCreate: "Start",
@@ -229,6 +236,7 @@ const i18n = {
     clear: "Clear",
     playlistEmpty: "Import or play audio to build a playlist automatically.",
     apiConfig: "API Config",
+    tavern: "Tavern",
     history: "History",
     createEyebrow: "Studio",
     createTitle: "Upload a novel and generate an audio drama",
@@ -252,6 +260,12 @@ const playerRateKey = "playerPlaybackRate";
 const appIntroSeenKey = "appIntroSeen";
 const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
+const tavernCharactersKey = "tavernCharacters";
+const tavernSessionsKey = "tavernSessions";
+const tavernActiveCharacterKey = "tavernActiveCharacter";
+const tavernWorldKey = "tavernWorld";
+const tavernMemoryKey = "tavernMemory";
+const tavernModeKey = "tavernMode";
 const defaultPlayerBg = "/assets/player-default-bg.jpg";
 const midnightPlayerBg = "/assets/player-midnight-bg.png";
 const playerState = {
@@ -299,6 +313,52 @@ const midnightQuizState = {
   bank: [],
   selected: [],
   loading: null
+};
+const defaultTavernCharacters = [
+  {
+    id: "baize-keeper",
+    name: "白泽掌柜",
+    tagline: "记忆很好、语气温和的酒馆掌柜",
+    persona: "白泽掌柜守着一间只在夜里点灯的本地酒馆。他擅长倾听、整理线索、把零散剧情变成可演出的桥段。说话温和，常用简短的画面感句子推进气氛。",
+    greeting: "门帘响了一下。白泽掌柜抬头看你，灯火在杯沿晃了晃：今晚想把哪段故事寄存在酒馆里？"
+  },
+  {
+    id: "night-archivist",
+    name: "夜档案员",
+    tagline: "冷静、敏锐，擅长悬疑线索复盘",
+    persona: "夜档案员负责整理酒馆里的旧案和录音。他语气克制，喜欢先确认事实，再给出两三种可能性。适合悬疑、都市传闻、档案体剧情。",
+    greeting: "夜档案员合上牛皮纸夹：说吧，从第一个异常细节开始。不要急，矛盾自己会发声。"
+  }
+];
+const tavernModes = {
+  story: {
+    label: "剧情推进",
+    guide: "推动下一幕，让角色用动作和短句制造选择。",
+    ending: "把下一步落在一个可演、可听、可继续的行动上。"
+  },
+  dialogue: {
+    label: "台词对话",
+    guide: "减少解释，优先生成角色能直接说出口的对白。",
+    ending: "用两三句台词拉开人物关系的张力。"
+  },
+  scene: {
+    label: "广播剧场景",
+    guide: "把对话转换成场景提示、环境声、人物入场和节奏。",
+    ending: "给出场景标题、环境声和可进入配音流程的片段。"
+  },
+  recap: {
+    label: "线索复盘",
+    guide: "整理事实、矛盾、人物动机和未解决问题。",
+    ending: "最后列出下一轮最值得追问的一条线索。"
+  }
+};
+const tavernState = {
+  characters: [],
+  sessions: {},
+  activeId: "",
+  world: "",
+  memory: "",
+  mode: "story"
 };
 const editorState = {
   audioContext: null,
@@ -532,6 +592,7 @@ function applyAppLanguage(language = getAppLanguage()) {
   setText(".brand p", t("tagline"));
   setNavItemText("discover", t("navDiscover"));
   setNavItemText("create", t("navCreate"));
+  setNavItemText("tavern", t("navTavern"));
   setNavItemText("editor", t("navEditor"));
   setText("#discover .page-head .eyebrow", t("speakerEyebrow"));
   setText("#discover .page-head h2", t("speakerTitle"));
@@ -556,6 +617,7 @@ function applyAppLanguage(language = getAppLanguage()) {
   setText("#bluetoothStatus", t("bluetoothHint"));
   setText(".player-playlist-head strong", t("playlist"));
   setText("#clearPlaylist", t("clear"));
+  setText(".home-actions [data-jump='tavern']", t("tavern"));
   setText(".home-actions [data-jump='config']", t("apiConfig"));
   setText(".home-actions [data-jump='history']", t("history"));
   setText("#create .page-head .eyebrow", t("createEyebrow"));
@@ -665,6 +727,7 @@ async function apiGetJson(path, config = getConfig()) {
 
 let toastTimer = null;
 let routeSwipe = null;
+let lastRouteView = homeView;
 
 function showToast(message, type = "") {
   const toast = $("#appToast");
@@ -673,7 +736,7 @@ function showToast(message, type = "") {
   toast.textContent = message;
   toast.className = `app-toast ${type}`.trim();
   toast.classList.remove("hidden");
-  toastTimer = setTimeout(() => toast.classList.add("hidden"), 2600);
+  toastTimer = setTimeout(() => toast.classList.add("hidden"), type === "fail" ? 3600 : 2200);
 }
 
 function setButtonBusy(buttonOrSelector, busy, busyLabel = "处理中...") {
@@ -743,6 +806,486 @@ function syncCreatorReadyState() {
     directButton.disabled = !directReady;
     directButton.title = directReady ? "" : "请先填写或导入音频提示词";
   }
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "null");
+    return value === null ? fallback : value;
+  } catch {
+    localStorage.removeItem(key);
+    return fallback;
+  }
+}
+
+function createLocalId(prefix) {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function normalizeTavernCharacter(character = {}) {
+  return {
+    id: String(character.id || createLocalId("char")),
+    name: String(character.name || "未命名角色").trim() || "未命名角色",
+    tagline: String(character.tagline || "本地角色卡").trim(),
+    persona: String(character.persona || "").trim(),
+    greeting: String(character.greeting || "").trim()
+  };
+}
+
+function normalizeTavernMode(mode) {
+  return tavernModes[mode] ? mode : "story";
+}
+
+function saveTavernState() {
+  localStorage.setItem(tavernCharactersKey, JSON.stringify(tavernState.characters));
+  localStorage.setItem(tavernSessionsKey, JSON.stringify(tavernState.sessions));
+  localStorage.setItem(tavernActiveCharacterKey, tavernState.activeId);
+  localStorage.setItem(tavernWorldKey, tavernState.world);
+  localStorage.setItem(tavernMemoryKey, tavernState.memory);
+  localStorage.setItem(tavernModeKey, tavernState.mode);
+}
+
+function getTavernCharacter(id = tavernState.activeId) {
+  return tavernState.characters.find((character) => character.id === id) || tavernState.characters[0] || null;
+}
+
+function getTavernMessages(id = tavernState.activeId) {
+  if (!id) return [];
+  tavernState.sessions[id] = Array.isArray(tavernState.sessions[id]) ? tavernState.sessions[id] : [];
+  return tavernState.sessions[id];
+}
+
+function seedTavernSession(character) {
+  if (!character || getTavernMessages(character.id).length) return;
+  tavernState.sessions[character.id] = [{
+    role: "character",
+    text: character.greeting || `${character.name}向你点了点头：我在，开始吧。`,
+    at: new Date().toISOString()
+  }];
+}
+
+function loadTavernState() {
+  const storedCharacters = readJsonStorage(tavernCharactersKey, []);
+  tavernState.characters = (Array.isArray(storedCharacters) && storedCharacters.length ? storedCharacters : defaultTavernCharacters)
+    .map(normalizeTavernCharacter);
+  tavernState.sessions = readJsonStorage(tavernSessionsKey, {});
+  tavernState.activeId = localStorage.getItem(tavernActiveCharacterKey) || tavernState.characters[0]?.id || "";
+  if (!getTavernCharacter(tavernState.activeId)) tavernState.activeId = tavernState.characters[0]?.id || "";
+  tavernState.world = String(localStorage.getItem(tavernWorldKey) || "白泽酒馆在本机运行。这里适合记录角色关系、地点规则、长期伏笔和广播剧桥段。");
+  tavernState.memory = String(localStorage.getItem(tavernMemoryKey) || "暂无长期记忆。可在对话后点击“记忆”或“整理记忆”自动提取。");
+  tavernState.mode = normalizeTavernMode(localStorage.getItem(tavernModeKey) || "story");
+  tavernState.characters.forEach(seedTavernSession);
+  saveTavernState();
+}
+
+function renderTavernCharacterList() {
+  const list = $("#tavernCharacterList");
+  if (!list) return;
+  list.innerHTML = tavernState.characters.map((character) => `
+    <button class="tavern-character-card${character.id === tavernState.activeId ? " active" : ""}" data-tavern-character="${escapeHtml(character.id)}">
+      <strong>${escapeHtml(character.name)}</strong>
+      <span>${escapeHtml(character.tagline || "本地角色卡")}</span>
+      <small>${getTavernMessages(character.id).length} 条记录</small>
+    </button>
+  `).join("");
+}
+
+function renderTavernEditor(character = getTavernCharacter()) {
+  if (!character) return;
+  const modeSelect = $("#tavernModeSelect");
+  if (modeSelect) modeSelect.value = tavernState.mode;
+  if ($("#tavernNameInput")) $("#tavernNameInput").value = character.name;
+  if ($("#tavernTaglineInput")) $("#tavernTaglineInput").value = character.tagline;
+  if ($("#tavernPersonaInput")) $("#tavernPersonaInput").value = character.persona;
+  if ($("#tavernGreetingInput")) $("#tavernGreetingInput").value = character.greeting;
+  if ($("#tavernWorldInput")) $("#tavernWorldInput").value = tavernState.world;
+  if ($("#tavernMemoryInput")) $("#tavernMemoryInput").value = tavernState.memory;
+  if ($("#deleteTavernCharacter")) $("#deleteTavernCharacter").disabled = tavernState.characters.length <= 1;
+}
+
+function renderTavernChat(character = getTavernCharacter()) {
+  const log = $("#tavernChatLog");
+  if (!log || !character) return;
+  $("#tavernActiveName").textContent = character.name;
+  $("#tavernActiveTagline").textContent = character.tagline || "本地角色卡";
+  const messages = getTavernMessages(character.id);
+  log.innerHTML = messages.map((message) => `
+    <article class="tavern-message ${message.role === "user" ? "user" : "character"}">
+      <span>${message.role === "user" ? "你" : escapeHtml(character.name)}</span>
+      <p>${escapeHtml(message.text)}</p>
+    </article>
+  `).join("");
+  requestAnimationFrame(() => {
+    log.scrollTop = log.scrollHeight;
+  });
+}
+
+function renderTavern() {
+  const character = getTavernCharacter();
+  renderTavernCharacterList();
+  renderTavernEditor(character);
+  renderTavernChat(character);
+}
+
+function selectTavernCharacter(id) {
+  if (!getTavernCharacter(id)) return;
+  tavernState.activeId = id;
+  seedTavernSession(getTavernCharacter(id));
+  saveTavernState();
+  renderTavern();
+}
+
+function createTavernCharacter() {
+  const character = normalizeTavernCharacter({
+    id: createLocalId("char"),
+    name: "新角色",
+    tagline: "待完善的本地角色卡",
+    persona: "写下角色性格、口癖、目标、边界和适合的剧情类型。",
+    greeting: "新角色坐在酒馆灯下：我的故事还空着，你来写第一笔。"
+  });
+  tavernState.characters.unshift(character);
+  tavernState.activeId = character.id;
+  seedTavernSession(character);
+  saveTavernState();
+  renderTavern();
+  $("#tavernNameInput")?.focus();
+  showToast("已创建本地角色卡。", "ok");
+}
+
+function saveTavernCharacterFromForm() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const name = $("#tavernNameInput")?.value.trim();
+  if (!name) {
+    showToast("请先填写角色名。", "fail");
+    $("#tavernNameInput")?.focus();
+    return;
+  }
+  character.name = name;
+  character.tagline = $("#tavernTaglineInput")?.value.trim() || "本地角色卡";
+  character.persona = $("#tavernPersonaInput")?.value.trim();
+  character.greeting = $("#tavernGreetingInput")?.value.trim();
+  tavernState.world = $("#tavernWorldInput")?.value.trim() || tavernState.world;
+  tavernState.memory = $("#tavernMemoryInput")?.value.trim() || tavernState.memory;
+  tavernState.mode = normalizeTavernMode($("#tavernModeSelect")?.value || tavernState.mode);
+  saveTavernState();
+  renderTavern();
+  showToast("角色卡和世界书已保存在本机。", "ok");
+}
+
+function deleteTavernCharacter() {
+  const character = getTavernCharacter();
+  if (!character || tavernState.characters.length <= 1) {
+    showToast("至少保留一个角色卡。", "fail");
+    return;
+  }
+  if (!window.confirm(`删除「${character.name}」和它的本地聊天记录？`)) return;
+  tavernState.characters = tavernState.characters.filter((item) => item.id !== character.id);
+  delete tavernState.sessions[character.id];
+  tavernState.activeId = tavernState.characters[0]?.id || "";
+  saveTavernState();
+  renderTavern();
+  showToast("角色卡已删除。", "ok");
+}
+
+function appendTavernMessage(role, text, characterId = tavernState.activeId) {
+  const safeText = String(text || "").trim();
+  if (!safeText || !characterId) return;
+  getTavernMessages(characterId).push({
+    role,
+    text: safeText,
+    at: new Date().toISOString()
+  });
+}
+
+function getTavernSeeds(value) {
+  return String(value || "")
+    .split(/[。！？.!?\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildLocalTavernReply(userText, character = getTavernCharacter(), options = {}) {
+  const modeId = normalizeTavernMode(options.mode || tavernState.mode);
+  const mode = tavernModes[modeId] || tavernModes.story;
+  const personaSeeds = String(character?.persona || character?.tagline || "")
+    .split(/[。！？.!?\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const worldSeeds = getTavernSeeds(tavernState.world);
+  const memorySeeds = getTavernSeeds(tavernState.memory);
+  const messages = getTavernMessages(character?.id).slice(-4);
+  const seed = [...userText].reduce((sum, char) => sum + char.charCodeAt(0), userText.length);
+  const persona = personaSeeds[seed % Math.max(1, personaSeeds.length)] || "我会把这段对话先稳稳接住";
+  const world = worldSeeds[(seed + messages.length) % Math.max(1, worldSeeds.length)] || "白泽酒馆的灯还亮着";
+  const memory = memorySeeds[(seed + 2) % Math.max(1, memorySeeds.length)] || "这段关系还没有固定成长期记忆";
+  const hooks = [
+    "我听见这里有一个可以继续往下写的缝隙。",
+    "先别急着下结论，我们把声音、动机和场景分开看。",
+    "这句话适合留给角色说，但它背后还缺一个选择。",
+    "如果把它放进广播剧，最好让环境声先替情绪开口。"
+  ];
+  const hook = hooks[seed % hooks.length];
+  const cleanUserText = userText.replace(/\s+/g, " ").slice(0, 90);
+  const characterName = character?.name || "角色";
+  if (modeId === "dialogue") {
+    return `「${hook}」\n${characterName}：关于“${cleanUserText}”，我先不解释，我只问你一句：你愿意把真相交给谁？\n对方：如果答案会伤人呢？\n${characterName}：那就让声音先藏住它。记住「${memory}」，我们按「${persona}」继续往下说。`;
+  }
+  if (modeId === "scene") {
+    return `【${mode.label}】\n场景：${world}\n情绪：${persona}\n音效：门帘轻响，杯沿碰木桌，远处有低低的人声。\n对白：${characterName}压低声音：“${cleanUserText}。”\n推进：${mode.ending}`;
+  }
+  if (modeId === "recap") {
+    return `【${mode.label}】\n已知：${cleanUserText}\n人物状态：${persona}\n世界限制：${world}\n长期记忆：${memory}\n矛盾点：动机和行动还没有完全对上。\n下一问：谁最害怕这件事被公开？`;
+  }
+  return `「${hook}」${characterName}看着你，语气保持在「${persona}」的方向上。关于“${cleanUserText}”，${world}。${mode.guide} 记忆里要先扣住「${memory}」。${mode.ending}`;
+}
+
+function sendTavernMessage() {
+  const input = $("#tavernUserInput");
+  const character = getTavernCharacter();
+  const text = input?.value.trim();
+  if (!character || !text) {
+    showToast("先输入一句话再让角色回复。", "fail");
+    input?.focus();
+    return;
+  }
+  appendTavernMessage("user", text, character.id);
+  appendTavernMessage("character", buildLocalTavernReply(text, character), character.id);
+  input.value = "";
+  saveTavernState();
+  renderTavernChat(character);
+  renderTavernCharacterList();
+}
+
+function setTavernMode(mode) {
+  tavernState.mode = normalizeTavernMode(mode);
+  saveTavernState();
+  renderTavernEditor(getTavernCharacter());
+  showToast(`已切换到${tavernModes[tavernState.mode].label}。`, "ok");
+}
+
+function getLastTavernUserPrompt(character) {
+  return getTavernMessages(character?.id)
+    .slice()
+    .reverse()
+    .find((message) => message.role === "user")?.text || "";
+}
+
+function continueTavernStory() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const messages = getTavernMessages(character.id);
+  const lastText = messages.at(-1)?.text || character.greeting || "继续上一幕";
+  const prompt = `继续剧情：${lastText}`;
+  appendTavernMessage("user", "继续剧情", character.id);
+  appendTavernMessage("character", buildLocalTavernReply(prompt, character, { mode: tavernState.mode }), character.id);
+  saveTavernState();
+  renderTavern();
+}
+
+function regenerateTavernReply() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const messages = getTavernMessages(character.id);
+  const lastCharacterIndex = messages.map((message) => message.role).lastIndexOf("character");
+  if (lastCharacterIndex >= 0) messages.splice(lastCharacterIndex, 1);
+  const lastUser = getLastTavernUserPrompt(character);
+  if (!lastUser) {
+    seedTavernSession(character);
+    showToast("还没有可重写的用户输入。", "fail");
+    renderTavern();
+    return;
+  }
+  appendTavernMessage("character", buildLocalTavernReply(`重写上一句：${lastUser}`, character, { mode: tavernState.mode }), character.id);
+  saveTavernState();
+  renderTavern();
+  showToast("已重写最后一条角色回复。", "ok");
+}
+
+function undoLastTavernTurn() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const messages = getTavernMessages(character.id);
+  if (messages.length <= 1) {
+    showToast("已经回到开场，不能再撤回了。", "fail");
+    return;
+  }
+  messages.pop();
+  if (messages.at(-1)?.role === "user") messages.pop();
+  if (!messages.length) seedTavernSession(character);
+  saveTavernState();
+  renderTavern();
+  showToast("已撤回上一轮对话。", "ok");
+}
+
+function generateTavernScene() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const source = getLastTavernUserPrompt(character) || getTavernMessages(character.id).at(-1)?.text || "把当前关系写成广播剧场景";
+  appendTavernMessage("user", "生成广播剧场景", character.id);
+  appendTavernMessage("character", buildLocalTavernReply(source, character, { mode: "scene" }), character.id);
+  saveTavernState();
+  renderTavern();
+}
+
+function summarizeTavernMemory() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const messages = getTavernMessages(character.id).slice(-12);
+  const userLines = messages.filter((message) => message.role === "user").map((message) => message.text).slice(-3);
+  const characterLines = messages.filter((message) => message.role !== "user").map((message) => message.text).slice(-3);
+  const nextQuestion = userLines.at(-1) || "暂无明确追问";
+  tavernState.memory = [
+    `角色：${character.name}。${character.tagline || "本地角色卡"}`,
+    `当前模式：${tavernModes[tavernState.mode]?.label || "剧情推进"}。`,
+    `最近用户关注：${userLines.join(" / ") || "暂无"}`,
+    `最近角色回应：${characterLines.join(" / ") || "暂无"}`,
+    `下一步建议：围绕“${nextQuestion.slice(0, 80)}”继续推进。`
+  ].join("\n");
+  if ($("#tavernMemoryInput")) $("#tavernMemoryInput").value = tavernState.memory;
+  saveTavernState();
+  showToast("已整理本地记忆。", "ok");
+}
+
+function runTavernQuickAction(action) {
+  if (action === "continue") continueTavernStory();
+  if (action === "rewrite") regenerateTavernReply();
+  if (action === "undo") undoLastTavernTurn();
+  if (action === "scene") generateTavernScene();
+  if (action === "memory") summarizeTavernMemory();
+}
+
+function getTavernTranscript(character = getTavernCharacter()) {
+  if (!character) return "";
+  const messages = getTavernMessages(character.id);
+  return [
+    `# ${character.name}`,
+    `设定：${character.tagline}`,
+    `模式：${tavernModes[tavernState.mode]?.label || "剧情推进"}`,
+    "",
+    "## 角色设定",
+    character.persona,
+    "",
+    "## 世界书",
+    tavernState.world,
+    "",
+    "## 本地记忆",
+    tavernState.memory,
+    "",
+    "## 对话记录",
+    ...messages.map((message) => `${message.role === "user" ? "你" : character.name}：${message.text}`)
+  ].join("\n");
+}
+
+function exportTavernChat() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const blob = new Blob([getTavernTranscript(character)], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${character.name}-白泽酒馆.md`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  showToast("酒馆记录已导出。", "ok");
+}
+
+function exportTavernCharacter() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  const payload = {
+    app: "白泽声工坊",
+    type: "tavern-character",
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    character,
+    world: tavernState.world,
+    memory: tavernState.memory,
+    mode: tavernState.mode,
+    messages: getTavernMessages(character.id)
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${character.name}-角色卡.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  showToast("角色卡已导出。", "ok");
+}
+
+function importTavernCharacterPayload(payload, fallbackName = "导入角色") {
+  const source = payload?.character || payload?.data || payload || {};
+  const name = source.name || source.char_name || source.character_name || fallbackName.replace(/\.json$/i, "");
+  const personaParts = [
+    source.persona,
+    source.description,
+    source.personality,
+    source.scenario,
+    source.mes_example,
+    source.system_prompt
+  ].map((item) => String(item || "").trim()).filter(Boolean);
+  const imported = normalizeTavernCharacter({
+    id: createLocalId("char"),
+    name,
+    tagline: source.tagline || source.summary || source.description || "导入的本地角色卡",
+    persona: personaParts.join("\n\n") || "这是一个导入角色，请补充性格、目标、边界和剧情类型。",
+    greeting: source.greeting || source.first_mes || source.first_message || source.intro || `${name}推门走进白泽酒馆：我来了。`
+  });
+  tavernState.characters.unshift(imported);
+  tavernState.activeId = imported.id;
+  const importedMessages = Array.isArray(payload?.messages) ? payload.messages : Array.isArray(source.messages) ? source.messages : [];
+  tavernState.sessions[imported.id] = importedMessages
+    .map((message) => ({
+      role: message.role === "user" ? "user" : "character",
+      text: String(message.text || message.content || "").trim(),
+      at: message.at || new Date().toISOString()
+    }))
+    .filter((message) => message.text);
+  seedTavernSession(imported);
+  tavernState.world = String(payload?.world || source.world || source.worldbook || source.scenario || tavernState.world || "").trim();
+  tavernState.memory = String(payload?.memory || source.memory || tavernState.memory || "").trim();
+  tavernState.mode = normalizeTavernMode(payload?.mode || tavernState.mode);
+  saveTavernState();
+  renderTavern();
+  showToast("角色卡已导入本机。", "ok");
+}
+
+function importTavernCharacterFromFile(event) {
+  const input = event.currentTarget;
+  const file = input?.files?.[0];
+  if (!file) return;
+  file.text()
+    .then((text) => {
+      importTavernCharacterPayload(JSON.parse(text), file.name);
+    })
+    .catch((error) => {
+      showToast(`导入失败：${error.message}`, "fail");
+    })
+    .finally(() => {
+      if (input) input.value = "";
+    });
+}
+
+function clearTavernChat() {
+  const character = getTavernCharacter();
+  if (!character) return;
+  tavernState.sessions[character.id] = [];
+  seedTavernSession(character);
+  saveTavernState();
+  renderTavernChat(character);
+  renderTavernCharacterList();
+  showToast("当前角色聊天记录已清空。", "ok");
+}
+
+function sendTavernToCreate() {
+  const transcript = getTavernTranscript();
+  if (!transcript) return;
+  $("#novelInput").value = transcript;
+  if (!$("#titleInput").value.trim()) $("#titleInput").value = `${getTavernCharacter()?.name || "酒馆"}剧情记录`;
+  saveCreatorDraft();
+  showView("create", { announce: true });
+  showToast("已转入创作台，可继续生成广播剧。", "ok");
 }
 
 function markConfigDirty(dirty = true) {
@@ -835,6 +1378,13 @@ function closeTransientSurfaces() {
 
 function showView(name, options = {}) {
   const viewName = normalizeView(name);
+  const previousView = normalizeView(document.body.dataset.view || lastRouteView);
+  const previousMainIndex = mainNavViews.indexOf(previousView);
+  const nextMainIndex = mainNavViews.indexOf(viewName);
+  const routeMotion = nextMainIndex >= 0 && previousMainIndex >= 0 && nextMainIndex !== previousMainIndex
+    ? nextMainIndex > previousMainIndex ? "forward" : "back"
+    : viewName === homeView && previousView !== homeView ? "back" : "none";
+  document.body.dataset.routeMotion = routeMotion;
   if (options.updateHistory !== false) syncRoute(viewName, options.historyMode || "push");
   closeTransientSurfaces();
   document.body.dataset.view = viewName;
@@ -844,15 +1394,19 @@ function showView(name, options = {}) {
     const active = item.dataset.view === navView;
     item.classList.toggle("active", active);
     item.setAttribute("aria-current", active ? "page" : "false");
+    if (active) item.scrollIntoView?.({ block: "nearest", inline: "center" });
   });
   const activeView = $(`#${viewName}`);
   requestAnimationFrame(() => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    window.scrollTo({ top: 0, behavior: reduceMotion || options.updateHistory === false ? "auto" : "smooth" });
     activeView?.scrollIntoView({ block: "start" });
   });
   if (viewName === "history") loadHistory();
+  if (viewName === "tavern") renderTavern();
   if (viewName === "editor") requestAnimationFrame(renderWaveform);
   if (options.announce) showToast(`已切换到${viewLabels[viewName] || "页面"}。`, "ok");
+  lastRouteView = viewName;
 }
 
 function initRouteNavigation() {
@@ -953,6 +1507,15 @@ function handleRouteSwipeEnd(event) {
   if (fromEdge && dx > 72 && dy < 54 && elapsed < 700) {
     if (normalizeView(document.body.dataset.view) === homeView && !hasTransientSurface()) return;
     performBackNavigation({ canGoBack: window.history.length > 1, allowExit: false });
+    return;
+  }
+  if (!hasTransientSurface() && Math.abs(dx) > 96 && dy < 52 && elapsed < 700) {
+    const currentView = normalizeView(document.body.dataset.view);
+    const index = mainNavViews.indexOf(currentView);
+    if (index < 0) return;
+    const nextIndex = index + (dx < 0 ? 1 : -1);
+    const nextView = mainNavViews[nextIndex];
+    if (nextView) showView(nextView, { announce: true });
   }
 }
 
@@ -5574,6 +6137,17 @@ function initWaterRippleTouch() {
   }, { capture: true, passive: true });
 }
 
+function initFocusScrollAssist() {
+  document.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!target?.matches?.("input:not([type='range']):not([type='checkbox']):not([type='radio']), textarea, select")) return;
+    if (target.closest(".modal-panel")) return;
+    window.setTimeout(() => {
+      target.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "smooth" });
+    }, 160);
+  });
+}
+
 function bindEvents() {
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
   $("#appLanguageSelect")?.addEventListener("change", (event) => applyAppLanguage(event.target.value));
@@ -5608,6 +6182,32 @@ function bindEvents() {
   $("#fillDirectPromptDemo").addEventListener("click", fillDirectPromptDemo);
   $("#runDirectAudioButton").addEventListener("click", runDirectAudio);
   $("#refreshHistory").addEventListener("click", loadHistory);
+  $("#newTavernCharacter")?.addEventListener("click", createTavernCharacter);
+  $("#saveTavernCharacter")?.addEventListener("click", saveTavernCharacterFromForm);
+  $("#deleteTavernCharacter")?.addEventListener("click", deleteTavernCharacter);
+  $("#sendTavernMessage")?.addEventListener("click", sendTavernMessage);
+  $("#exportTavernChat")?.addEventListener("click", exportTavernChat);
+  $("#exportTavernCharacter")?.addEventListener("click", exportTavernCharacter);
+  $("#importTavernCharacter")?.addEventListener("click", () => $("#importTavernCharacterFile")?.click());
+  $("#importTavernCharacterFile")?.addEventListener("change", importTavernCharacterFromFile);
+  $("#clearTavernChat")?.addEventListener("click", clearTavernChat);
+  $("#sendTavernToCreate")?.addEventListener("click", sendTavernToCreate);
+  $("#summarizeTavernMemory")?.addEventListener("click", summarizeTavernMemory);
+  $("#tavernModeSelect")?.addEventListener("change", (event) => setTavernMode(event.target.value));
+  $("#tavernQuickActions")?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-tavern-action]")?.dataset.tavernAction;
+    if (action) runTavernQuickAction(action);
+  });
+  $("#tavernCharacterList")?.addEventListener("click", (event) => {
+    const id = event.target.closest("[data-tavern-character]")?.dataset.tavernCharacter;
+    if (id) selectTavernCharacter(id);
+  });
+  $("#tavernUserInput")?.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      sendTavernMessage();
+    }
+  });
   $("#loadPlayerAudio").addEventListener("click", loadEditorFromPlayer);
   $("#quickImportA")?.addEventListener("click", () => $("#editorAudioFileA")?.click());
   $("#quickImportB")?.addEventListener("click", () => $("#editorAudioFileB")?.click());
@@ -5666,7 +6266,11 @@ function bindEvents() {
   });
   $("#selectedClipFadeOut")?.addEventListener("change", (event) => setSelectedClipField("fadeOut", event.target.value));
   $$("[data-editor-panel]").forEach((button) => {
-    button.addEventListener("click", () => setEditorPanel(button.dataset.editorPanel));
+    button.addEventListener("click", () => {
+      const panel = button.dataset.editorPanel;
+      const activeDrawer = $(`[data-editor-drawer="${panel}"]`)?.classList.contains("active");
+      setEditorPanel(button.classList.contains("editor-menu-button") && activeDrawer ? "" : panel);
+    });
   });
   $$("[data-close-editor-drawer]").forEach((button) => {
     button.addEventListener("click", () => setEditorPanel(""));
@@ -6011,9 +6615,12 @@ renderVoiceReferences();
 renderClipList();
 renderWaveform();
 loadPlan();
+loadTavernState();
+renderTavern();
 updateMidnightState();
 bindEvents();
 initWaterRippleTouch();
+initFocusScrollAssist();
 syncPlayerControls();
 initRouteNavigation();
 registerNativeBackHandler();

@@ -25,6 +25,10 @@
             <span class="nav-icon nav-icon-discover"></span>
             音箱
           </button>
+          <button class="nav-item" data-view="tavern">
+            <span class="nav-icon nav-icon-tavern"></span>
+            酒馆
+          </button>
           <button class="nav-item" data-view="create">
             <span class="nav-icon nav-icon-create"></span>
             创作
@@ -179,10 +183,119 @@
             </article>
           </div>
           <div class="home-actions" aria-label="音箱快捷入口">
+            <button class="secondary" data-jump="tavern">白泽酒馆</button>
             <button class="secondary" data-jump="config">API 配置</button>
             <button class="secondary" data-jump="history">创作历史</button>
           </div>
           <section class="workflow-strip hidden" id="planStrip" aria-hidden="true"></section>
+        </section>
+
+        <section id="tavern" class="view">
+          <header class="page-head">
+            <div>
+              <p class="eyebrow">本地酒馆</p>
+              <h2>角色卡、世界书、剧情对话</h2>
+              <p class="page-note">不接外部接口也能运行。角色、世界观和聊天记录都只保存在本机。</p>
+            </div>
+            <button id="newTavernCharacter" class="primary">新建角色</button>
+          </header>
+
+          <div class="tavern-layout">
+            <section class="panel tavern-role-panel">
+              <div class="panel-title-row">
+                <div>
+                  <h3>角色卡</h3>
+                  <p>选择一个角色开始本地剧情对话。</p>
+                </div>
+                <div class="tavern-role-actions">
+                  <button id="importTavernCharacter" class="secondary" type="button">导入</button>
+                  <button id="exportTavernCharacter" class="secondary" type="button">导出</button>
+                  <input id="importTavernCharacterFile" type="file" accept=".json,application/json" hidden />
+                </div>
+              </div>
+              <div id="tavernCharacterList" class="tavern-character-list"></div>
+              <div class="tavern-local-note">
+                <strong>本地运行</strong>
+                <span>当前为本地规则引擎，不上传角色卡、世界书、记忆和聊天记录。</span>
+              </div>
+            </section>
+
+            <section class="panel tavern-chat-panel">
+              <div class="tavern-chat-head">
+                <div>
+                  <span class="tavern-badge">Local</span>
+                  <h3 id="tavernActiveName">白泽酒馆</h3>
+                  <p id="tavernActiveTagline">选择角色后开始对话。</p>
+                </div>
+                <div class="tavern-chat-actions">
+                  <button id="exportTavernChat" class="secondary">导出</button>
+                  <button id="clearTavernChat" class="secondary">清空</button>
+                </div>
+              </div>
+              <div class="tavern-mode-row">
+                <label>
+                  <span>酒馆模式</span>
+                  <select id="tavernModeSelect">
+                    <option value="story">剧情推进</option>
+                    <option value="dialogue">台词对话</option>
+                    <option value="scene">广播剧场景</option>
+                    <option value="recap">线索复盘</option>
+                  </select>
+                </label>
+                <div class="tavern-quick-actions" id="tavernQuickActions">
+                  <button class="secondary" type="button" data-tavern-action="continue">继续</button>
+                  <button class="secondary" type="button" data-tavern-action="rewrite">重写</button>
+                  <button class="secondary" type="button" data-tavern-action="undo">撤回</button>
+                  <button class="secondary" type="button" data-tavern-action="scene">场景</button>
+                  <button class="secondary" type="button" data-tavern-action="memory">记忆</button>
+                </div>
+              </div>
+              <div id="tavernChatLog" class="tavern-chat-log" aria-live="polite"></div>
+              <div class="tavern-compose">
+                <textarea id="tavernUserInput" placeholder="输入你想对角色说的话。Ctrl + Enter 发送。"></textarea>
+                <button id="sendTavernMessage" class="primary">本地回复</button>
+              </div>
+            </section>
+
+            <section class="panel tavern-editor-panel">
+              <div class="panel-title-row">
+                <div>
+                  <h3>角色与世界书</h3>
+                  <p>这里保存的是本地角色设定，不依赖云端。</p>
+                </div>
+              </div>
+              <label class="field">
+                <span>角色名</span>
+                <input id="tavernNameInput" type="text" placeholder="例如：白泽掌柜" />
+              </label>
+              <label class="field">
+                <span>一句话设定</span>
+                <input id="tavernTaglineInput" type="text" placeholder="例如：记忆很好、语气温和的酒馆掌柜" />
+              </label>
+              <label class="field">
+                <span>角色设定</span>
+                <textarea id="tavernPersonaInput" class="short-textarea" placeholder="写角色性格、说话方式、背景、禁忌。"></textarea>
+              </label>
+              <label class="field">
+                <span>开场白</span>
+                <textarea id="tavernGreetingInput" class="short-textarea" placeholder="角色第一次出场时说的话。"></textarea>
+              </label>
+              <label class="field">
+                <span>世界书</span>
+                <textarea id="tavernWorldInput" class="short-textarea" placeholder="地点、阵营、规则、重要道具、人物关系。"></textarea>
+              </label>
+              <label class="field">
+                <span>本地记忆</span>
+                <textarea id="tavernMemoryInput" class="short-textarea" placeholder="记录长期关系、伏笔、用户偏好和上一幕结论。可以点“整理记忆”从当前聊天自动提取。"></textarea>
+              </label>
+              <div class="actions">
+                <button id="saveTavernCharacter" class="primary">保存角色</button>
+                <button id="summarizeTavernMemory" class="secondary">整理记忆</button>
+                <button id="deleteTavernCharacter" class="secondary danger">删除角色</button>
+                <button id="sendTavernToCreate" class="secondary">转入创作台</button>
+              </div>
+            </section>
+          </div>
         </section>
 
         <section id="create" class="view">
