@@ -16,6 +16,10 @@ const DEFAULT_GPT_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const DEFAULT_GROK_URL = "https://api.x.ai/v1/chat/completions";
 const DEFAULT_QWEN_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DEFAULT_KIMI_URL = "https://api.moonshot.cn/v1/chat/completions";
+const DEFAULT_QWEN_TTS_URL = "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+const DEFAULT_GPT_IMAGE_URL = "https://api.openai.com/v1/images/generations";
+const DEFAULT_GPT_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
+const DEFAULT_DOUBAO_IMAGE_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
 
 const commonHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -264,6 +268,20 @@ function withServerProvider(clientProvider = {}, serverProvider = {}) {
   };
 }
 
+function applyCompatGptFallback(config = {}) {
+  const compat = config.compatGpt || {};
+  const hasCompat = Boolean(compat.baseUrl && compat.model && compat.apiKey);
+  const forceCompat = String(compat.enabled || "").toLowerCase() === "yes";
+  const disabled = String(compat.enabled || "").toLowerCase() === "no";
+  if (!disabled && hasCompat && (forceCompat || !config.gpt?.apiKey || !config.gpt?.model)) {
+    config.gpt ||= {};
+    config.gpt.baseUrl = compat.baseUrl;
+    config.gpt.model = compat.model;
+    config.gpt.apiKey = compat.apiKey;
+  }
+  return config;
+}
+
 function getServerManagedProviders() {
   return {
     gpt: {
@@ -285,6 +303,13 @@ function getServerManagedProviders() {
       baseUrl: envText("QWEN_BASE_URL", "DASHSCOPE_BASE_URL"),
       model: envText("QWEN_MODEL", "DASHSCOPE_MODEL"),
       apiKey: envText("QWEN_API_KEY", "DASHSCOPE_API_KEY")
+    },
+    qwenTts: {
+      endpoint: envText("QWEN_TTS_ENDPOINT", "DASHSCOPE_TTS_ENDPOINT"),
+      model: envText("QWEN_TTS_MODEL", "DASHSCOPE_TTS_MODEL"),
+      voice: envText("QWEN_TTS_VOICE", "DASHSCOPE_TTS_VOICE"),
+      languageType: envText("QWEN_TTS_LANGUAGE_TYPE", "DASHSCOPE_TTS_LANGUAGE_TYPE"),
+      apiKey: envText("QWEN_TTS_API_KEY", "DASHSCOPE_TTS_API_KEY", "DASHSCOPE_API_KEY")
     },
     kimi: {
       baseUrl: envText("KIMI_BASE_URL", "MOONSHOT_BASE_URL"),
@@ -309,6 +334,17 @@ function getServerManagedProviders() {
       model: envText("GROK_MODEL", "XAI_MODEL"),
       apiKey: envText("GROK_API_KEY", "XAI_API_KEY")
     },
+    gptImage: {
+      endpoint: envText("GPT_IMAGE_ENDPOINT", "OPENAI_IMAGE_ENDPOINT"),
+      editEndpoint: envText("GPT_IMAGE_EDIT_ENDPOINT", "OPENAI_IMAGE_EDIT_ENDPOINT"),
+      model: envText("GPT_IMAGE_MODEL", "OPENAI_IMAGE_MODEL"),
+      apiKey: envText("GPT_IMAGE_API_KEY", "OPENAI_IMAGE_API_KEY", "OPENAI_API_KEY")
+    },
+    doubaoImage: {
+      endpoint: envText("DOUBAO_IMAGE_ENDPOINT", "ARK_IMAGE_ENDPOINT"),
+      model: envText("DOUBAO_IMAGE_MODEL", "ARK_IMAGE_MODEL"),
+      apiKey: envText("DOUBAO_IMAGE_API_KEY", "ARK_IMAGE_API_KEY", "ARK_API_KEY")
+    },
     network: {
       timeoutSeconds: envText("NETWORK_TIMEOUT_SECONDS"),
       retryCount: envText("NETWORK_RETRY_COUNT")
@@ -323,14 +359,21 @@ function applyServerManagedConfig(clientConfig = {}) {
   config.gemini = withServerProvider(config.gemini, managed.gemini);
   config.doubao = withServerProvider(config.doubao, managed.doubao);
   config.qwen = withServerProvider(config.qwen, managed.qwen);
+  config.qwenTts = withServerProvider(config.qwenTts, managed.qwenTts);
   config.kimi = withServerProvider(config.kimi, managed.kimi);
   config.audio = withServerProvider(config.audio, managed.audio);
   config.asr = withServerProvider(config.asr, managed.asr);
   config.grok = withServerProvider(config.grok, managed.grok);
+  config.gptImage = withServerProvider(config.gptImage, managed.gptImage);
+  config.doubaoImage = withServerProvider(config.doubaoImage, managed.doubaoImage);
   config.network = withServerProvider(config.network, managed.network);
   config.gpt.baseUrl ||= DEFAULT_GPT_CHAT_URL;
   config.doubao.baseUrl ||= DEFAULT_DOUBAO_CHAT_URL;
   config.qwen.baseUrl ||= DEFAULT_QWEN_URL;
+  config.qwenTts.endpoint ||= DEFAULT_QWEN_TTS_URL;
+  config.qwenTts.model ||= "qwen3-tts-flash";
+  config.qwenTts.voice ||= "Cherry";
+  config.qwenTts.languageType ||= "Chinese";
   config.kimi.baseUrl ||= DEFAULT_KIMI_URL;
   config.audio.endpoint ||= DEFAULT_DOUBAO_AUDIO_URL;
   config.audio.model ||= "seed-audio-1.0";
@@ -338,7 +381,11 @@ function applyServerManagedConfig(clientConfig = {}) {
   config.asr.model ||= "bigmodel";
   config.asr.resourceId ||= "volc.bigasr.auc_turbo";
   config.grok.baseUrl ||= DEFAULT_GROK_URL;
-  return config;
+  config.gptImage.endpoint ||= DEFAULT_GPT_IMAGE_URL;
+  config.gptImage.editEndpoint ||= DEFAULT_GPT_IMAGE_EDIT_URL;
+  config.gptImage.model ||= "gpt-image-1";
+  config.doubaoImage.endpoint ||= DEFAULT_DOUBAO_IMAGE_URL;
+  return applyCompatGptFallback(config);
 }
 
 function serverCapabilities() {
@@ -352,10 +399,13 @@ function serverCapabilities() {
       gemini: { hasApiKey: !!managed.gemini.apiKey, hasModel: !!managed.gemini.model },
       doubao: { hasApiKey: !!managed.doubao.apiKey, hasModel: !!managed.doubao.model },
       qwen: { hasApiKey: !!managed.qwen.apiKey, hasModel: !!managed.qwen.model },
+      qwenTts: { hasApiKey: !!managed.qwenTts.apiKey, hasModel: !!managed.qwenTts.model },
       kimi: { hasApiKey: !!managed.kimi.apiKey, hasModel: !!managed.kimi.model },
       audio: { hasApiKey: !!managed.audio.apiKey, hasModel: !!managed.audio.model },
       asr: { hasApiKey: !!(managed.asr.apiKey || (managed.asr.appKey && managed.asr.accessKey)), hasModel: !!(managed.asr.model || managed.asr.resourceId) },
-      grok: { hasApiKey: !!managed.grok.apiKey, hasModel: !!managed.grok.model }
+      grok: { hasApiKey: !!managed.grok.apiKey, hasModel: !!managed.grok.model },
+      gptImage: { hasApiKey: !!managed.gptImage.apiKey, hasModel: !!managed.gptImage.model },
+      doubaoImage: { hasApiKey: !!managed.doubaoImage.apiKey, hasModel: !!managed.doubaoImage.model }
     },
     envNames: {
       doubaoText: ["ARK_API_KEY", "DOUBAO_TEXT_API_KEY", "DOUBAO_TEXT_MODEL"],
@@ -364,8 +414,11 @@ function serverCapabilities() {
       openaiCompatible: ["OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL"],
       gemini: ["GEMINI_API_KEY", "GEMINI_MODEL"],
       qwen: ["QWEN_API_KEY", "QWEN_MODEL", "QWEN_BASE_URL"],
+      qwenTts: ["QWEN_TTS_API_KEY", "QWEN_TTS_MODEL", "QWEN_TTS_ENDPOINT"],
       kimi: ["KIMI_API_KEY", "KIMI_MODEL", "KIMI_BASE_URL"],
-      grok: ["GROK_API_KEY", "GROK_MODEL"]
+      grok: ["GROK_API_KEY", "GROK_MODEL"],
+      gptImage: ["GPT_IMAGE_API_KEY", "GPT_IMAGE_MODEL", "GPT_IMAGE_ENDPOINT"],
+      doubaoImage: ["DOUBAO_IMAGE_API_KEY", "DOUBAO_IMAGE_MODEL", "DOUBAO_IMAGE_ENDPOINT"]
     }
   };
 }
@@ -398,6 +451,9 @@ async function fetchWithNetwork(url, options = {}, network = {}) {
 }
 
 function getProbeUrl(label, config = {}) {
+  if (String(label || "").includes("千问 TTS")) return config.qwenTts?.endpoint || DEFAULT_QWEN_TTS_URL;
+  if (String(label || "").includes("GPT 图片")) return config.gptImage?.endpoint || DEFAULT_GPT_IMAGE_URL;
+  if (String(label || "").includes("豆包图片")) return config.doubaoImage?.endpoint || DEFAULT_DOUBAO_IMAGE_URL;
   if (label === "GPT") return config.gpt?.baseUrl || envText("GPT_BASE_URL", "OPENAI_BASE_URL") || "https://api.openai.com/v1/chat/completions";
   if (label === "Gemini") return config.gemini?.endpoint || "https://generativelanguage.googleapis.com";
   if (label === "豆包文本") return config.doubao?.baseUrl || DEFAULT_DOUBAO_CHAT_URL;
@@ -603,6 +659,203 @@ async function runSpeechRecognition(input = {}) {
     text: resultText,
     status: apiStatus || "ok",
     logId: response.headers.get("X-Tt-Logid") || ""
+  };
+}
+
+function normalizeQwenTtsEndpoint(endpoint = "") {
+  const url = String(endpoint || "").trim();
+  if (!url) return "";
+  if (url.includes("/services/aigc/multimodal-generation/generation")) return url;
+  return `${url.replace(/\/+$/, "")}/services/aigc/multimodal-generation/generation`;
+}
+
+function extractQwenTtsAudio(data = {}) {
+  const url = data.output?.audio?.url
+    || data.output?.audio_url
+    || data.audio?.url
+    || data.data?.audio?.url
+    || "";
+  const base64 = data.output?.audio?.data
+    || data.output?.audio_base64
+    || data.audio?.data
+    || data.data?.audio?.data
+    || "";
+  return {
+    audioUrl: String(url || ""),
+    audioDataUrl: base64 ? `data:audio/mpeg;base64,${stripBase64Prefix(base64)}` : ""
+  };
+}
+
+async function runQwenTts(input = {}) {
+  const config = applyServerManagedConfig(input.config || {});
+  const qwenTts = config.qwenTts || {};
+  const apiKey = qwenTts.apiKey || config.qwen?.apiKey || "";
+  const endpoint = normalizeQwenTtsEndpoint(qwenTts.endpoint || DEFAULT_QWEN_TTS_URL);
+  if (!input.text) throw new Error("缺少需要合成的文本。");
+  if (!apiKey) throw new Error("请先配置千问 TTS API Key，或复用千问 API Key。");
+  if (!qwenTts.model) throw new Error("请先填写千问 TTS 模型 ID。");
+  if (!endpoint || endpoint.includes("{WorkspaceId}")) throw new Error("请把千问 TTS 接口里的 {WorkspaceId} 替换成你的百炼业务空间 ID。");
+  const response = await fetchWithNetwork(endpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: qwenTts.model,
+      input: {
+        text: String(input.text || "").slice(0, 1200),
+        voice: qwenTts.voice || "Cherry",
+        language_type: qwenTts.languageType || "Chinese"
+      }
+    })
+  }, config.network);
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`千问 TTS 调用失败：${response.status} ${raw.slice(0, 500)}`);
+  const audio = extractQwenTtsAudio(raw ? JSON.parse(raw) : {});
+  if (!audio.audioUrl && !audio.audioDataUrl) throw new Error("千问 TTS 没有返回可播放音频。");
+  return {
+    provider: "qwen-tts",
+    ...audio
+  };
+}
+
+function assistantSystemPrompt() {
+  return [
+    "你是白泽声工坊 App 内的使用指导和 AI 客服。",
+    "用简洁中文回答，优先帮助用户完成 API 配置、小说转广播剧、播放器、音频剪辑、酒馆角色和 APK 下载。",
+    "不要索要用户密钥；提醒用户正式使用时尽量通过自己的后端中转保护 Key。",
+    "用户要生成或修改图片时，引导他使用悬浮窗的图片页。"
+  ].join("\n");
+}
+
+function buildLocalAssistantReply(message = "") {
+  const text = String(message || "");
+  if (/图|图片|封面|背景|icon|logo|插画/i.test(text)) {
+    return "图片相关请点悬浮窗里的“图片”页：输入需求可生成图片，上传参考图后可让 GPT 图片模型优先改图；没有 GPT 图片配置时会尝试豆包图片模型。";
+  }
+  if (/第三方|兼容|Cockpit|One API|New API|localhost|50360/i.test(text)) {
+    return "第三方 GPT 兼容服务可以填在配置页的“第三方 GPT 兼容服务”。Cockpit Tools 这类工具通常填 Base URL：http://localhost:50360/v1，再填客户端 Key 和模型 ID。安卓真机不能直接访问电脑 localhost，需要改成电脑局域网 IP。";
+  }
+  if (/api|key|接口|配置|模型/i.test(text)) {
+    return "先到“配置”页填写 Key 和模型 ID。文本客服优先用 GPT，没有 GPT 就用豆包；酒馆配音用千问 TTS，接口里的 {WorkspaceId} 要替换成你的百炼业务空间 ID。";
+  }
+  if (/酒馆|角色|配音|tts/i.test(text)) {
+    return "酒馆可以本地运行，也可以切到 API 模式。角色回复旁边的“配音”按钮会调用千问 TTS，把当前角色台词直接生成音频并放进播放器。";
+  }
+  return "我可以帮你查使用说明、配置 API、解释 A/B/C 创作流程、排查播放器和剪辑问题。完整 AI 功能需要先去对应模型官网购买额度并填写 Key。";
+}
+
+function resolveAssistantProvider(config = {}) {
+  if (hasProvider(config.gpt) && config.gpt?.baseUrl) return { name: "gpt", label: "GPT", provider: config.gpt };
+  if (hasProvider(config.doubao) && config.doubao?.baseUrl) return { name: "doubao", label: "豆包", provider: config.doubao };
+  return null;
+}
+
+async function runAssistantChat(input = {}) {
+  const config = applyServerManagedConfig(input.config || {});
+  const selected = resolveAssistantProvider(config);
+  const message = String(input.message || "").trim();
+  if (!message) throw new Error("缺少客服对话内容。");
+  if (!selected) {
+    return { provider: "local-guide", text: buildLocalAssistantReply(message) };
+  }
+  const history = Array.isArray(input.messages) ? input.messages.slice(-10) : [];
+  if (history.at(-1)?.role === "user" && String(history.at(-1)?.text || history.at(-1)?.content || "") === message) history.pop();
+  const messages = [
+    { role: "system", content: assistantSystemPrompt() },
+    ...history.map((item) => ({
+      role: item.role === "user" ? "user" : "assistant",
+      content: String(item.text || item.content || "")
+    })).filter((item) => item.content),
+    { role: "user", content: message }
+  ];
+  const text = await callOpenAICompatible(selected.provider, messages, 0.35, config.network);
+  return {
+    provider: selected.name,
+    text: text?.trim() || buildLocalAssistantReply(message)
+  };
+}
+
+function resolveImageProvider(config = {}, wantsEdit = false) {
+  const gptImage = config.gptImage || {};
+  const gptApiKey = gptImage.apiKey || config.gpt?.apiKey || "";
+  if (gptApiKey && gptImage.model && (wantsEdit ? gptImage.editEndpoint : gptImage.endpoint)) {
+    return {
+      name: "gpt-image",
+      label: "GPT 图片",
+      provider: { ...gptImage, apiKey: gptApiKey }
+    };
+  }
+  const doubaoImage = config.doubaoImage || {};
+  const doubaoApiKey = doubaoImage.apiKey || config.doubao?.apiKey || "";
+  if (doubaoApiKey && doubaoImage.model && doubaoImage.endpoint) {
+    return {
+      name: "doubao-image",
+      label: "豆包图片",
+      provider: { ...doubaoImage, apiKey: doubaoApiKey }
+    };
+  }
+  return null;
+}
+
+function extractImageResult(data = {}) {
+  const item = Array.isArray(data.data) ? data.data[0] : data.output?.[0] || data.result?.[0] || data;
+  const b64 = item?.b64_json || item?.image_base64 || data.output?.image_base64 || data.image_base64 || "";
+  const url = item?.url || item?.image_url || data.output?.url || data.image_url || "";
+  return {
+    imageUrl: String(url || ""),
+    imageDataUrl: b64 ? `data:image/png;base64,${stripBase64Prefix(b64)}` : ""
+  };
+}
+
+function imageDataUrlToBlob(dataUrl = "", mimeType = "image/png") {
+  const clean = stripBase64Prefix(dataUrl);
+  return new Blob([Buffer.from(clean, "base64")], { type: mimeType || "image/png" });
+}
+
+async function runAssistantImage(input = {}) {
+  const config = applyServerManagedConfig(input.config || {});
+  const prompt = String(input.prompt || "").trim();
+  const wantsEdit = Boolean(input.imageBase64);
+  const selected = resolveImageProvider(config, wantsEdit);
+  if (!prompt) throw new Error("缺少图片生成提示词。");
+  if (!selected) throw new Error("请先配置 GPT 图片 API，或配置豆包图片 API。");
+  let response;
+  if (wantsEdit && selected.name === "gpt-image") {
+    const body = new FormData();
+    body.append("model", selected.provider.model);
+    body.append("prompt", prompt);
+    body.append("size", selected.provider.size || "1024x1024");
+    body.append("image", imageDataUrlToBlob(input.imageBase64, input.imageMimeType), "reference.png");
+    response = await fetchWithNetwork(selected.provider.editEndpoint || DEFAULT_GPT_IMAGE_EDIT_URL, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${selected.provider.apiKey}` },
+      body
+    }, config.network);
+  } else {
+    response = await fetchWithNetwork(selected.provider.endpoint, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${selected.provider.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: selected.provider.model,
+        prompt: wantsEdit ? `参考用户上传的图片意图进行新图生成或重绘：${prompt}` : prompt,
+        size: selected.provider.size || "1024x1024",
+        n: 1,
+        response_format: "b64_json"
+      })
+    }, config.network);
+  }
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`${selected.label} 调用失败：${response.status} ${raw.slice(0, 500)}`);
+  const result = extractImageResult(raw ? JSON.parse(raw) : {});
+  if (!result.imageUrl && !result.imageDataUrl) throw new Error(`${selected.label} 没有返回图片。`);
+  return {
+    provider: selected.name,
+    ...result
   };
 }
 
@@ -1296,6 +1549,24 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/tavern-chat") {
       const input = await readJson(req);
       const result = await runTavernChat(input);
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/qwen-tts") {
+      const input = await readJson(req);
+      const result = await runQwenTts(input);
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/assistant-chat") {
+      const input = await readJson(req);
+      const result = await runAssistantChat(input);
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/assistant-image") {
+      const input = await readJson(req);
+      const result = await runAssistantImage(input);
       sendJson(res, 200, result);
       return;
     }

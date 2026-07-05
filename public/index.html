@@ -841,6 +841,26 @@
             </section>
 
             <section class="panel provider">
+              <h3>第三方 GPT 兼容服务</h3>
+              <p>没有 OpenAI 官方 API 时，可以接入 Cockpit Tools、One API、New API 等 OpenAI 兼容入口。</p>
+              <label>启用方式
+                <select data-config="compatGpt.enabled">
+                  <option value="">官方 GPT 不可用时自动启用</option>
+                  <option value="yes">强制使用第三方兼容服务</option>
+                  <option value="no">关闭第三方兼容服务</option>
+                </select>
+              </label>
+              <label>Base URL<input data-config="compatGpt.baseUrl" placeholder="例如 http://localhost:50360/v1" /></label>
+              <label>模型 ID<input data-config="compatGpt.model" placeholder="填写第三方服务里的模型 ID" /></label>
+              <label>客户端 Key<input data-config="compatGpt.apiKey" type="password" placeholder="agt_codex_... / sk-..." /></label>
+              <div class="actions">
+                <button id="applyCockpitPreset" class="secondary" type="button">套用 Cockpit Tools</button>
+                <button id="copyCompatToGpt" class="secondary" type="button">接入 GPT 工作流</button>
+              </div>
+              <div class="tutorial">电脑本地测试可填 localhost；安卓真机里的 localhost 是手机自身，若第三方服务跑在电脑上，请改成同一局域网内电脑 IP，例如 http://192.168.x.x:50360/v1。</div>
+            </section>
+
+            <section class="panel provider">
               <h3>Gemini：场景扩写</h3>
               <p>用于补足剧情、场景动作和戏剧冲突。</p>
               <label>模型 ID<input data-config="gemini.model" placeholder="例如 gemini-..." /></label>
@@ -865,6 +885,17 @@
               <label>模型 ID<input data-config="qwen.model" placeholder="qwen-plus" /></label>
               <label>API Key<input data-config="qwen.apiKey" type="password" placeholder="阿里云百炼 API Key" /></label>
               <div class="tutorial">在阿里云百炼开通 Qwen；如果只想用国产增强方案，填千问、Kimi、豆包即可。</div>
+            </section>
+
+            <section class="panel provider">
+              <h3>千问 TTS：酒馆配音</h3>
+              <p>用于酒馆角色回复的一键朗读，返回音频后直接在 App 内播放。</p>
+              <label>接口地址<input data-config="qwenTts.endpoint" placeholder="https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation" /></label>
+              <label>模型 ID<input data-config="qwenTts.model" placeholder="qwen3-tts-flash" /></label>
+              <label>音色<input data-config="qwenTts.voice" placeholder="Cherry" /></label>
+              <label>语种<input data-config="qwenTts.languageType" placeholder="Chinese" /></label>
+              <label>API Key<input data-config="qwenTts.apiKey" type="password" placeholder="可留空，复用千问 API Key" /></label>
+              <div class="tutorial">千问 TTS 非流式接口会返回音频 URL，有效期通常为 24 小时。北京地域需要替换真实 WorkspaceId。</div>
             </section>
 
             <section class="panel provider">
@@ -911,6 +942,19 @@
               <label>API Key<input data-config="grok.apiKey" type="password" placeholder="xAI API Key" /></label>
               <div class="tutorial">仅允许成年、虚构、明确自愿的成熟向氛围改编；不允许未成年人、强迫、剥削、违法或露骨性行为细节。</div>
             </section>
+
+            <section class="panel provider">
+              <h3>AI 客服与图片生成</h3>
+              <p>悬浮小球优先调用 GPT；GPT 不可用时回退豆包。图片功能建议正式版走后端中转。</p>
+              <label>GPT 图片接口<input data-config="gptImage.endpoint" placeholder="https://api.openai.com/v1/images/generations" /></label>
+              <label>GPT 图片编辑接口<input data-config="gptImage.editEndpoint" placeholder="https://api.openai.com/v1/images/edits" /></label>
+              <label>GPT 图片模型<input data-config="gptImage.model" placeholder="gpt-image-1" /></label>
+              <label>GPT 图片 Key<input data-config="gptImage.apiKey" type="password" placeholder="可留空，复用 GPT API Key" /></label>
+              <label>豆包图片接口<input data-config="doubaoImage.endpoint" placeholder="https://ark.cn-beijing.volces.com/api/v3/images/generations" /></label>
+              <label>豆包图片模型<input data-config="doubaoImage.model" placeholder="填写 Seedream / 豆包图像模型 ID" /></label>
+              <label>豆包图片 Key<input data-config="doubaoImage.apiKey" type="password" placeholder="可留空，复用豆包 API Key" /></label>
+              <div class="tutorial">如果要“修改图片”，先在悬浮客服里上传参考图，再输入修改要求；没有图片模型时会返回可复制的图片提示词。</div>
+            </section>
           </div>
         </section>
 
@@ -926,6 +970,61 @@
         </section>
       </main>
 
+    </div>
+
+    <div id="assistantDock" class="assistant-dock" aria-live="polite">
+      <button id="assistantBubble" class="assistant-bubble" type="button" aria-expanded="false" aria-controls="assistantPanel">
+        <span>?</span>
+      </button>
+      <section id="assistantPanel" class="assistant-panel hidden" aria-label="使用指导和 AI 客服">
+        <div class="assistant-head">
+          <div>
+            <strong>白泽小助手</strong>
+            <span id="assistantProviderLabel">使用说明 / AI 客服</span>
+          </div>
+          <button id="closeAssistantPanel" class="secondary" type="button">收起</button>
+        </div>
+        <div class="assistant-tabs" role="tablist">
+          <button class="assistant-tab active" type="button" data-assistant-tab="guide">说明</button>
+          <button class="assistant-tab" type="button" data-assistant-tab="chat">对话</button>
+          <button class="assistant-tab" type="button" data-assistant-tab="image">图片</button>
+        </div>
+        <div class="assistant-body">
+          <section class="assistant-tab-panel" data-assistant-panel="guide">
+            <details open>
+              <summary>如何开始创作</summary>
+              <p>先到 API 配置填写需要的模型 Key；只用中国大陆线路时，优先填豆包文本、豆包音频、千问和 Kimi。回到创作页上传小说，点击自动执行完整方案。</p>
+            </details>
+            <details>
+              <summary>酒馆怎么用</summary>
+              <p>酒馆可以本地运行，也可以切换 API。角色回复旁的“配音”会调用千问 TTS，把角色台词直接变成可播放音频。</p>
+            </details>
+            <details>
+              <summary>图片功能</summary>
+              <p>在“图片”页输入要求，可生成插画、封面、播放器背景，也可以上传参考图后让模型改图。优先 GPT，失败后尝试豆包图片模型。</p>
+            </details>
+          </section>
+          <section class="assistant-tab-panel hidden" data-assistant-panel="chat">
+            <div id="assistantChatLog" class="assistant-chat-log"></div>
+            <div class="assistant-compose">
+              <textarea id="assistantInput" placeholder="问我怎么配置 API、怎么创作、哪里下载 APK，也可以让我帮你排查问题。"></textarea>
+              <button id="sendAssistantMessage" class="primary" type="button">发送</button>
+            </div>
+          </section>
+          <section class="assistant-tab-panel hidden" data-assistant-panel="image">
+            <label class="field">
+              <span>参考图片（可选）</span>
+              <input id="assistantImageFile" type="file" accept="image/*" />
+            </label>
+            <textarea id="assistantImagePrompt" class="short-textarea" placeholder="例如：生成一张中国水墨风格的可爱熊猫 App 图标，清爽、圆润、适合安卓图标。"></textarea>
+            <div class="actions">
+              <button id="runAssistantImage" class="primary" type="button">生成 / 修改图片</button>
+              <button id="clearAssistantImage" class="secondary" type="button">清空</button>
+            </div>
+            <div id="assistantImageResult" class="assistant-image-result"></div>
+          </section>
+        </div>
+      </section>
     </div>
 
     <div id="appToast" class="app-toast hidden" role="status" aria-live="polite"></div>

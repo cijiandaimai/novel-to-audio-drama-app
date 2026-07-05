@@ -3282,6 +3282,186 @@ button:not(:disabled):active,
   opacity: 0.82;
 }
 
+.tavern-speak-button {
+  justify-self: start;
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.assistant-dock {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+  z-index: 80;
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.assistant-bubble,
+.assistant-panel {
+  pointer-events: auto;
+}
+
+.assistant-bubble {
+  width: 58px;
+  height: 58px;
+  border-radius: 999px;
+  border: 1px solid rgba(49, 95, 76, 0.24);
+  background:
+    radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.94), rgba(223, 232, 223, 0.62) 38%, rgba(49, 95, 76, 0.88));
+  color: #fff;
+  box-shadow: 0 16px 34px rgba(39, 34, 26, 0.18);
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.assistant-bubble span {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(111, 31, 27, 0.86);
+}
+
+.assistant-panel {
+  width: min(420px, calc(100vw - 24px));
+  max-height: min(680px, calc(100dvh - 108px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(55, 50, 42, 0.16);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 247, 0.98), rgba(245, 238, 221, 0.95)),
+    var(--panel-solid);
+  box-shadow: 0 24px 60px rgba(39, 34, 26, 0.2);
+}
+
+.assistant-head,
+.assistant-tabs,
+.assistant-compose,
+.assistant-body {
+  padding: 10px;
+}
+
+.assistant-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid rgba(55, 50, 42, 0.1);
+}
+
+.assistant-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.assistant-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.assistant-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  border-bottom: 1px solid rgba(55, 50, 42, 0.08);
+}
+
+.assistant-tab.active {
+  background: rgba(49, 95, 76, 0.13);
+  color: var(--moss);
+}
+
+.assistant-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.assistant-tab-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.assistant-tab-panel details {
+  padding: 10px;
+  border: 1px solid rgba(55, 50, 42, 0.11);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.68);
+}
+
+.assistant-tab-panel p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.assistant-chat-log {
+  display: grid;
+  gap: 9px;
+  min-height: 220px;
+  max-height: 360px;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid rgba(55, 50, 42, 0.11);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.62);
+}
+
+.assistant-message {
+  display: grid;
+  gap: 4px;
+}
+
+.assistant-message span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.assistant-message p {
+  margin: 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(223, 232, 223, 0.52);
+  line-height: 1.65;
+}
+
+.assistant-message.user {
+  justify-items: end;
+}
+
+.assistant-message.user p {
+  background: rgba(239, 226, 199, 0.84);
+}
+
+.assistant-compose {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding-inline: 0;
+}
+
+.assistant-compose textarea {
+  min-height: 72px;
+}
+
+.assistant-image-result {
+  display: grid;
+  gap: 9px;
+}
+
+.assistant-image-result img {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(55, 50, 42, 0.12);
+}
+
 .tavern-editor-panel textarea.short-textarea {
   min-height: 110px;
 }
@@ -3554,6 +3734,25 @@ button:not(:disabled):active,
 
   .tavern-compose button {
     min-height: 44px;
+  }
+
+  .assistant-dock {
+    right: 12px;
+    bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .assistant-bubble {
+    width: 52px;
+    height: 52px;
+  }
+
+  .assistant-panel {
+    width: calc(100vw - 20px);
+    max-height: calc(100dvh - 92px);
+  }
+
+  .assistant-compose {
+    grid-template-columns: 1fr;
   }
 
   body[data-view="editor"] .main {

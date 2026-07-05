@@ -9,6 +9,12 @@ const defaultConfig = {
     model: "",
     apiKey: ""
   },
+  compatGpt: {
+    enabled: "",
+    baseUrl: "http://localhost:50360/v1",
+    model: "",
+    apiKey: ""
+  },
   gemini: {
     model: "",
     apiKey: "",
@@ -22,6 +28,13 @@ const defaultConfig = {
   qwen: {
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
     model: "qwen-plus",
+    apiKey: ""
+  },
+  qwenTts: {
+    endpoint: "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+    model: "qwen3-tts-flash",
+    voice: "Cherry",
+    languageType: "Chinese",
     apiKey: ""
   },
   kimi: {
@@ -47,6 +60,19 @@ const defaultConfig = {
     baseUrl: "https://api.x.ai/v1/chat/completions",
     model: "grok-4.3",
     apiKey: ""
+  },
+  gptImage: {
+    endpoint: "https://api.openai.com/v1/images/generations",
+    editEndpoint: "https://api.openai.com/v1/images/edits",
+    model: "gpt-image-1",
+    apiKey: "",
+    size: "1024x1024"
+  },
+  doubaoImage: {
+    endpoint: "https://ark.cn-beijing.volces.com/api/v3/images/generations",
+    model: "",
+    apiKey: "",
+    size: "1024x1024"
   },
   network: {
     profile: "china",
@@ -268,6 +294,8 @@ const playerRateKey = "playerPlaybackRate";
 const appIntroSeenKey = "appIntroSeen";
 const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
+const assistantMessagesKey = "assistantMessages";
+const assistantOpenKey = "assistantOpen";
 const tavernCharactersKey = "tavernCharacters";
 const tavernSessionsKey = "tavernSessions";
 const tavernActiveCharacterKey = "tavernActiveCharacter";
@@ -427,6 +455,15 @@ const speechInputState = {
   startedAt: 0,
   busy: false
 };
+const assistantState = {
+  open: false,
+  tab: "guide",
+  busy: false,
+  imageBusy: false,
+  imageDataUrl: "",
+  imageMimeType: "",
+  messages: []
+};
 
 let lastHomeBackAt = 0;
 
@@ -450,6 +487,26 @@ const apiHelp = {
     title: "GPT API Key",
     url: "https://platform.openai.com/api-keys",
     text: "进入 OpenAI API Keys 页面创建 Key。不要把 Key 发给陌生人；本 App 目前只保存在本机。"
+  },
+  "compatGpt.enabled": {
+    title: "第三方兼容开关",
+    url: "https://platform.openai.com/docs/api-reference/chat/create",
+    text: "开启后会把下方第三方 OpenAI 兼容服务当作 GPT 使用；官方 GPT 可用时也可以关闭它。"
+  },
+  "compatGpt.baseUrl": {
+    title: "第三方 Base URL",
+    url: "https://platform.openai.com/docs/api-reference/chat/create",
+    text: "填写第三方工具给出的 OpenAI 兼容地址。像 Cockpit Tools 这类服务可填 http://localhost:50360/v1，App 会自动拼成 /chat/completions。"
+  },
+  "compatGpt.model": {
+    title: "第三方模型 ID",
+    url: "https://platform.openai.com/docs/models",
+    text: "填写第三方服务暴露的模型 ID。不同工具名称不同，按它的模型与能力页复制。"
+  },
+  "compatGpt.apiKey": {
+    title: "第三方客户端 Key",
+    url: "https://platform.openai.com/docs/api-reference/authentication",
+    text: "填写第三方工具生成的客户端 Key。注意：电脑 localhost 服务打包到手机后不能直接访问，需要改成手机可访问的局域网 IP 或后端地址。"
   },
   "gemini.model": {
     title: "Gemini 模型 ID",
@@ -495,6 +552,31 @@ const apiHelp = {
     title: "千问 API Key",
     url: "https://bailian.console.aliyun.com/",
     text: "进入阿里云百炼创建 API Key。C 计划会优先让千问负责结构化剧本、角色表和 JSON 音频提示词。"
+  },
+  "qwenTts.endpoint": {
+    title: "千问 TTS 接口",
+    url: "https://help.aliyun.com/zh/model-studio/qwen-tts-api",
+    text: "千问 TTS 非实时语音合成接口。北京地域通常是 https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation。"
+  },
+  "qwenTts.model": {
+    title: "千问 TTS 模型",
+    url: "https://help.aliyun.com/zh/model-studio/qwen-tts-api",
+    text: "推荐先填 qwen3-tts-flash；需要指令控制时可按官方文档改成 instruct 系列。"
+  },
+  "qwenTts.voice": {
+    title: "千问 TTS 音色",
+    url: "https://help.aliyun.com/zh/model-studio/qwen-tts-api",
+    text: "官方示例音色为 Cherry。也可填你在百炼文档或控制台看到的系统音色。"
+  },
+  "qwenTts.languageType": {
+    title: "千问 TTS 语种",
+    url: "https://help.aliyun.com/zh/model-studio/qwen-tts-api",
+    text: "中文通常填写 Chinese；多语种音色请按百炼文档中的 language_type 参数填写。"
+  },
+  "qwenTts.apiKey": {
+    title: "千问 TTS API Key",
+    url: "https://help.aliyun.com/zh/model-studio/get-api-key",
+    text: "可单独填写；留空时会复用千问文本 API Key。"
   },
   "kimi.baseUrl": {
     title: "Kimi 接口地址",
@@ -590,6 +672,41 @@ const apiHelp = {
     title: "Grok API Key",
     url: "https://console.x.ai/",
     text: "进入 xAI Console 创建 API Key。午夜猫娘只做合规的成年人成熟向氛围改编。"
+  },
+  "gptImage.endpoint": {
+    title: "GPT 图片生成接口",
+    url: "https://platform.openai.com/docs/guides/images",
+    text: "默认使用 OpenAI Images API。悬浮客服生成/修改图片会优先尝试这里。"
+  },
+  "gptImage.editEndpoint": {
+    title: "GPT 图片编辑接口",
+    url: "https://platform.openai.com/docs/guides/images",
+    text: "上传参考图后会调用图片编辑接口；如果你用中转服务，需要填它提供的 edits 地址。"
+  },
+  "gptImage.model": {
+    title: "GPT 图片模型",
+    url: "https://platform.openai.com/docs/guides/images",
+    text: "默认 gpt-image-1；如果你的账号或中转服务提供其他图片模型，可在这里替换。"
+  },
+  "gptImage.apiKey": {
+    title: "GPT 图片 API Key",
+    url: "https://platform.openai.com/api-keys",
+    text: "可单独填写；留空时会复用 GPT 文本 API Key。"
+  },
+  "doubaoImage.endpoint": {
+    title: "豆包图片生成接口",
+    url: "https://www.volcengine.com/docs/82379/1541523",
+    text: "用于 GPT 图片不可用时兜底。请按火山方舟图片模型控制台提供的兼容接口填写。"
+  },
+  "doubaoImage.model": {
+    title: "豆包图片模型 ID",
+    url: "https://www.volcengine.com/docs/82379/1541523",
+    text: "填写你在火山方舟开通的 Seedream / 豆包图像模型 ID。"
+  },
+  "doubaoImage.apiKey": {
+    title: "豆包图片 API Key",
+    url: "https://console.volcengine.com/ark/",
+    text: "可单独填写；留空时会复用豆包文本 API Key。"
   }
 };
 
@@ -702,12 +819,32 @@ function applyAppLanguage(language = getAppLanguage()) {
   syncPlayerControls();
 }
 
-function getConfig() {
+function readStoredConfig() {
   try {
     return deepMerge(defaultConfig, JSON.parse(localStorage.getItem("apiConfig") || "{}"));
   } catch {
     return structuredClone(defaultConfig);
   }
+}
+
+function applyCompatGptFallback(config) {
+  const next = structuredClone(config || defaultConfig);
+  const compat = next.compatGpt || {};
+  const hasCompat = Boolean(compat.baseUrl && compat.model && compat.apiKey);
+  const forceCompat = String(compat.enabled || "").toLowerCase() === "yes";
+  const disabled = String(compat.enabled || "").toLowerCase() === "no";
+  if (!disabled && hasCompat && (forceCompat || !next.gpt?.apiKey || !next.gpt?.model)) {
+    next.gpt ||= {};
+    next.gpt.baseUrl = compat.baseUrl;
+    next.gpt.model = compat.model;
+    next.gpt.apiKey = compat.apiKey;
+  }
+  return next;
+}
+
+function getConfig(options = {}) {
+  const config = readStoredConfig();
+  return options.effective === false ? config : applyCompatGptFallback(config);
 }
 
 function setByPath(object, path, value) {
@@ -1271,10 +1408,11 @@ function renderTavernChat(character = getTavernCharacter()) {
   $("#tavernActiveName").textContent = character.name;
   $("#tavernActiveTagline").textContent = character.tagline || "本地角色卡";
   const messages = getTavernMessages(character.id);
-  log.innerHTML = messages.map((message) => `
+  log.innerHTML = messages.map((message, index) => `
     <article class="tavern-message ${message.role === "user" ? "user" : "character"}">
       <span>${message.role === "user" ? "你" : escapeHtml(character.name)}</span>
       <p>${escapeHtml(message.text)}</p>
+      ${message.role === "character" ? `<button class="secondary tavern-speak-button" type="button" data-tavern-speak="${index}">配音</button>` : ""}
     </article>
   `).join("");
   requestAnimationFrame(() => {
@@ -1541,6 +1679,382 @@ async function buildApiTavernReply(userText, character = getTavernCharacter(), o
     if (!providerName) throw new Error("请先在 API 配置里填写豆包、千问、Kimi、GPT、Gemini 或 Grok 的 Key 和模型，或配置可用的后端中转。");
     const prompt = buildTavernApiPrompt(userText, character, options);
     return await callTavernProviderDirect(providerName, config, prompt);
+  }
+}
+
+function normalizeQwenTtsEndpoint(endpoint = "") {
+  const url = String(endpoint || "").trim();
+  if (!url) return "";
+  if (url.includes("/services/aigc/multimodal-generation/generation")) return url;
+  return `${url.replace(/\/+$/, "")}/services/aigc/multimodal-generation/generation`;
+}
+
+function extractQwenTtsAudio(data = {}) {
+  const url = data.output?.audio?.url
+    || data.output?.audio_url
+    || data.audio?.url
+    || data.data?.audio?.url
+    || "";
+  const base64 = data.output?.audio?.data
+    || data.output?.audio_base64
+    || data.audio?.data
+    || data.data?.audio?.data
+    || "";
+  return {
+    audioUrl: String(url || ""),
+    audioDataUrl: base64 ? `data:audio/mpeg;base64,${stripBase64Prefix(base64)}` : ""
+  };
+}
+
+async function callQwenTtsDirect(text, config = getConfig()) {
+  const qwenTts = { ...defaultConfig.qwenTts, ...(config.qwenTts || {}) };
+  const apiKey = qwenTts.apiKey || config.qwen?.apiKey || "";
+  const endpoint = normalizeQwenTtsEndpoint(qwenTts.endpoint);
+  if (!apiKey) throw new Error("请先配置千问 TTS API Key，或复用千问 API Key。");
+  if (!qwenTts.model) throw new Error("请先填写千问 TTS 模型 ID。");
+  if (!endpoint || endpoint.includes("{WorkspaceId}")) throw new Error("请把千问 TTS 接口里的 {WorkspaceId} 替换成你的百炼业务空间 ID。");
+  const response = await tavernFetchWithNetwork(endpoint, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: qwenTts.model,
+      input: {
+        text: String(text || "").slice(0, 1200),
+        voice: qwenTts.voice || "Cherry",
+        language_type: qwenTts.languageType || "Chinese"
+      }
+    })
+  }, config.network);
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`千问 TTS 调用失败：${response.status} ${raw.slice(0, 400)}`);
+  const audio = extractQwenTtsAudio(raw ? JSON.parse(raw) : {});
+  if (!audio.audioUrl && !audio.audioDataUrl) throw new Error("千问 TTS 没有返回可播放音频。");
+  return { provider: "qwen-tts", ...audio };
+}
+
+async function synthesizeTavernMessage(index, button = null) {
+  const character = getTavernCharacter();
+  const message = getTavernMessages(character?.id)[index];
+  if (!character || !message || message.role !== "character") return;
+  const config = getConfig();
+  setButtonBusy(button, true, "生成中...");
+  try {
+    let result;
+    try {
+      result = await apiJson("/api/qwen-tts", { text: message.text, config }, config);
+    } catch {
+      result = await callQwenTtsDirect(message.text, config);
+    }
+    const src = result.audioUrl || result.audioDataUrl;
+    if (!src) throw new Error("没有可播放的音频地址。");
+    playInApp(src, `${character.name} · 配音`, { autoplay: true });
+    showToast("已生成角色配音。", "ok");
+  } catch (error) {
+    showToast(`千问 TTS 失败：${error.message}`, "fail");
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+function assistantSystemPrompt() {
+  return [
+    "你是白泽声工坊 App 内的使用指导和 AI 客服。",
+    "用简洁中文回答，优先帮助用户完成 API 配置、小说转广播剧、播放器、音频剪辑、酒馆角色和 APK 下载。",
+    "不要索要用户密钥；提醒用户正式使用时尽量通过自己的后端中转保护 Key。",
+    "用户要生成或修改图片时，引导他使用悬浮窗的“图片”页。"
+  ].join("\n");
+}
+
+function loadAssistantState() {
+  assistantState.open = localStorage.getItem(assistantOpenKey) === "yes";
+  assistantState.messages = readJsonStorage(assistantMessagesKey, []);
+  if (!assistantState.messages.length) {
+    assistantState.messages = [{
+      role: "assistant",
+      text: "你好，我是白泽小助。可以帮你看使用说明、排查 API 配置，也可以去“图片”页生成或修改图片。"
+    }];
+  }
+}
+
+function saveAssistantState() {
+  localStorage.setItem(assistantOpenKey, assistantState.open ? "yes" : "no");
+  localStorage.setItem(assistantMessagesKey, JSON.stringify(assistantState.messages.slice(-30)));
+}
+
+function resolveAssistantTextProvider(config = getConfig()) {
+  if (config.gpt?.apiKey && config.gpt?.model && config.gpt?.baseUrl) {
+    return { name: "gpt", label: "GPT", provider: config.gpt };
+  }
+  if (config.doubao?.apiKey && config.doubao?.model && config.doubao?.baseUrl) {
+    return { name: "doubao", label: "豆包", provider: config.doubao };
+  }
+  return null;
+}
+
+function renderAssistantProviderLabel() {
+  const label = $("#assistantProviderLabel");
+  if (!label) return;
+  const provider = resolveAssistantTextProvider();
+  const imageConfig = getConfig();
+  const imageReady = Boolean((imageConfig.gptImage?.apiKey || imageConfig.gpt?.apiKey) && imageConfig.gptImage?.model)
+    || Boolean((imageConfig.doubaoImage?.apiKey || imageConfig.doubao?.apiKey) && imageConfig.doubaoImage?.model);
+  label.textContent = provider
+    ? `AI 客服：${provider.label}${imageReady ? " / 图片已配置" : ""}`
+    : "使用说明 / 本地客服";
+}
+
+function renderAssistant() {
+  const dock = $("#assistantDock");
+  const panel = $("#assistantPanel");
+  const bubble = $("#assistantBubble");
+  if (!dock || !panel || !bubble) return;
+  panel.classList.toggle("hidden", !assistantState.open);
+  bubble.setAttribute("aria-expanded", assistantState.open ? "true" : "false");
+  $$(".assistant-tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.assistantTab === assistantState.tab);
+  });
+  $$("[data-assistant-panel]").forEach((section) => {
+    section.classList.toggle("hidden", section.dataset.assistantPanel !== assistantState.tab);
+  });
+  const log = $("#assistantChatLog");
+  if (log) {
+    log.innerHTML = assistantState.messages.map((message) => `
+      <article class="assistant-message ${message.role === "user" ? "user" : "assistant"}">
+        <span>${message.role === "user" ? "你" : "白泽小助"}</span>
+        <p>${escapeHtml(message.text)}</p>
+      </article>
+    `).join("");
+    requestAnimationFrame(() => {
+      log.scrollTop = log.scrollHeight;
+    });
+  }
+  const result = $("#assistantImageResult");
+  if (result && assistantState.imageDataUrl) {
+    result.innerHTML = `<img src="${assistantState.imageDataUrl}" alt="AI 生成图片" />`;
+  } else if (result && !assistantState.imageBusy) {
+    result.innerHTML = "";
+  }
+  renderAssistantProviderLabel();
+}
+
+function toggleAssistantPanel(open = !assistantState.open) {
+  assistantState.open = Boolean(open);
+  saveAssistantState();
+  renderAssistant();
+}
+
+function setAssistantTab(tab) {
+  assistantState.tab = ["guide", "chat", "image"].includes(tab) ? tab : "guide";
+  if (!assistantState.open) assistantState.open = true;
+  saveAssistantState();
+  renderAssistant();
+}
+
+function appendAssistantMessage(role, text) {
+  assistantState.messages.push({ role, text: String(text || "").trim() });
+  assistantState.messages = assistantState.messages.filter((message) => message.text).slice(-30);
+  saveAssistantState();
+  renderAssistant();
+}
+
+function buildLocalAssistantReply(userText = "") {
+  const text = String(userText || "");
+  if (/图|图片|封面|背景|icon|logo|插画/i.test(text)) {
+    return "图片相关请点悬浮窗里的“图片”页：输入需求可生成图片，上传参考图后可让 GPT 图片模型优先改图；没有 GPT 图片配置时会尝试豆包图片模型。";
+  }
+  if (/第三方|兼容|Cockpit|One API|New API|localhost|50360/i.test(text)) {
+    return "第三方 GPT 兼容服务可以填在配置页的“第三方 GPT 兼容服务”。Cockpit Tools 这类工具通常填 Base URL：http://localhost:50360/v1，再填客户端 Key 和模型 ID。安卓真机不能直接访问电脑 localhost，需要改成电脑局域网 IP。";
+  }
+  if (/api|key|接口|配置|模型/i.test(text)) {
+    return "先到“配置”页填写 Key 和模型 ID。文本客服优先用 GPT，没有 GPT 就用豆包；酒馆配音用千问 TTS，接口里的 {WorkspaceId} 要替换成你的百炼业务空间 ID。";
+  }
+  if (/酒馆|角色|配音|tts/i.test(text)) {
+    return "酒馆可以本地运行，也可以切到 API 模式。角色回复旁边的“配音”按钮会调用千问 TTS，把当前角色台词直接生成音频并放进播放器。";
+  }
+  if (/剪辑|编辑|音轨|波形/i.test(text)) {
+    return "剪辑页支持双轨导入、播放头拖动、音块移动和混音导出。移动端建议先用顶部小按钮导入，再在轨道里长按拖动音块。";
+  }
+  return "我可以帮你查使用说明、配置 API、解释 A/B/C 创作流程、排查播放器和剪辑问题。完整 AI 功能需要先去对应模型官网购买额度并填写 Key。";
+}
+
+async function callAssistantChatDirect(userText, config = getConfig()) {
+  const selected = resolveAssistantTextProvider(config);
+  if (!selected) return { provider: "local-guide", text: buildLocalAssistantReply(userText) };
+  const recent = assistantState.messages.slice(-10);
+  if (recent.at(-1)?.role === "user" && recent.at(-1)?.text === userText) recent.pop();
+  const messages = [
+    { role: "system", content: assistantSystemPrompt() },
+    ...recent.map((message) => ({
+      role: message.role === "user" ? "user" : "assistant",
+      content: message.text
+    })),
+    { role: "user", content: userText }
+  ];
+  const response = await tavernFetchWithNetwork(normalizeTavernChatUrl(selected.provider.baseUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${selected.provider.apiKey}`
+    },
+    body: JSON.stringify({
+      model: selected.provider.model,
+      messages,
+      temperature: 0.35
+    })
+  }, config.network);
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`${selected.label} 客服调用失败：${response.status} ${raw.slice(0, 400)}`);
+  const data = JSON.parse(raw);
+  return {
+    provider: selected.name,
+    text: data.choices?.[0]?.message?.content?.trim() || data.output_text?.trim() || buildLocalAssistantReply(userText)
+  };
+}
+
+async function sendAssistantMessage() {
+  const input = $("#assistantInput");
+  const button = $("#sendAssistantMessage");
+  const text = input?.value.trim();
+  if (!text || assistantState.busy) return;
+  input.value = "";
+  appendAssistantMessage("user", text);
+  assistantState.busy = true;
+  setButtonBusy(button, true, "回复中...");
+  const config = getConfig();
+  try {
+    let result;
+    try {
+      result = await apiJson("/api/assistant-chat", { message: text, messages: assistantState.messages.slice(-12), config }, config);
+    } catch {
+      result = await callAssistantChatDirect(text, config);
+    }
+    appendAssistantMessage("assistant", result.text || buildLocalAssistantReply(text));
+  } catch (error) {
+    appendAssistantMessage("assistant", `我这边调用失败了：${error.message}\n\n${buildLocalAssistantReply(text)}`);
+  } finally {
+    assistantState.busy = false;
+    setButtonBusy(button, false);
+  }
+}
+
+function dataUrlToBlob(dataUrl = "") {
+  const [meta = "", data = ""] = String(dataUrl).split(",");
+  const mime = /data:([^;]+)/i.exec(meta)?.[1] || "image/png";
+  return new Blob([bytesFromBase64(data)], { type: mime });
+}
+
+async function readAssistantImageFile(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  const dataUrl = await new Promise((resolve, reject) => {
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("图片读取失败"));
+    reader.readAsDataURL(file);
+  });
+  assistantState.imageDataUrl = dataUrl;
+  assistantState.imageMimeType = file.type || "image/png";
+  renderAssistant();
+}
+
+function extractImageResult(data = {}) {
+  const item = Array.isArray(data.data) ? data.data[0] : data.output?.[0] || data.result?.[0] || data;
+  const b64 = item?.b64_json || item?.image_base64 || data.output?.image_base64 || data.image_base64 || "";
+  const url = item?.url || item?.image_url || data.output?.url || data.image_url || "";
+  return {
+    imageUrl: String(url || ""),
+    imageDataUrl: b64 ? `data:image/png;base64,${stripBase64Prefix(b64)}` : ""
+  };
+}
+
+function resolveAssistantImageProvider(config = getConfig(), wantsEdit = false) {
+  const gptImage = { ...defaultConfig.gptImage, ...(config.gptImage || {}) };
+  gptImage.apiKey ||= config.gpt?.apiKey || "";
+  if (gptImage.apiKey && gptImage.model && (wantsEdit ? gptImage.editEndpoint : gptImage.endpoint)) {
+    return { name: "gpt-image", label: "GPT 图片", provider: gptImage };
+  }
+  const doubaoImage = { ...defaultConfig.doubaoImage, ...(config.doubaoImage || {}) };
+  doubaoImage.apiKey ||= config.doubao?.apiKey || "";
+  if (doubaoImage.apiKey && doubaoImage.model && doubaoImage.endpoint) {
+    return { name: "doubao-image", label: "豆包图片", provider: doubaoImage };
+  }
+  return null;
+}
+
+async function callAssistantImageDirect(prompt, config = getConfig()) {
+  const wantsEdit = Boolean(assistantState.imageDataUrl);
+  const selected = resolveAssistantImageProvider(config, wantsEdit);
+  if (!selected) throw new Error("请先配置 GPT 图片 API，或配置豆包图片 API。");
+  let response;
+  if (wantsEdit && selected.name === "gpt-image") {
+    const body = new FormData();
+    body.append("model", selected.provider.model);
+    body.append("prompt", prompt);
+    body.append("size", selected.provider.size || "1024x1024");
+    body.append("image", dataUrlToBlob(assistantState.imageDataUrl), "reference.png");
+    response = await tavernFetchWithNetwork(selected.provider.editEndpoint, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${selected.provider.apiKey}` },
+      body
+    }, config.network);
+  } else {
+    response = await tavernFetchWithNetwork(selected.provider.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${selected.provider.apiKey}`
+      },
+      body: JSON.stringify({
+        model: selected.provider.model,
+        prompt: wantsEdit ? `参考用户上传的图片意图进行新图生成或重绘：${prompt}` : prompt,
+        size: selected.provider.size || "1024x1024",
+        n: 1,
+        response_format: "b64_json"
+      })
+    }, config.network);
+  }
+  const raw = await response.text();
+  if (!response.ok) throw new Error(`${selected.label} 调用失败：${response.status} ${raw.slice(0, 400)}`);
+  const result = extractImageResult(raw ? JSON.parse(raw) : {});
+  if (!result.imageUrl && !result.imageDataUrl) throw new Error(`${selected.label} 没有返回图片。`);
+  return { provider: selected.name, ...result };
+}
+
+async function runAssistantImage() {
+  const prompt = $("#assistantImagePrompt")?.value.trim();
+  const button = $("#runAssistantImage");
+  const resultBox = $("#assistantImageResult");
+  if (!prompt || assistantState.imageBusy) {
+    showToast("先写清楚要生成或修改什么图片。", "fail");
+    return;
+  }
+  assistantState.imageBusy = true;
+  setButtonBusy(button, true, "生成中...");
+  if (resultBox) resultBox.innerHTML = "<p>正在生成图片...</p>";
+  const config = getConfig();
+  try {
+    let result;
+    try {
+      result = await apiJson("/api/assistant-image", {
+        prompt,
+        imageBase64: assistantState.imageDataUrl,
+        imageMimeType: assistantState.imageMimeType,
+        config
+      }, config);
+    } catch {
+      result = await callAssistantImageDirect(prompt, config);
+    }
+    assistantState.imageDataUrl = result.imageDataUrl || result.imageUrl || "";
+    renderAssistant();
+    showToast("图片已生成。", "ok");
+  } catch (error) {
+    if (resultBox) resultBox.innerHTML = `<p class="fail">${escapeHtml(error.message)}</p>`;
+    showToast(`图片生成失败：${error.message}`, "fail");
+  } finally {
+    assistantState.imageBusy = false;
+    setButtonBusy(button, false);
   }
 }
 
@@ -6098,7 +6612,7 @@ async function runDirectAudio() {
 }
 
 function loadConfigIntoForm() {
-  const config = getConfig();
+  const config = getConfig({ effective: false });
   if (config.network?.profile === "vpn") config.network.profile = "proxy";
   $$("[data-config]").forEach((field) => {
     field.value = getByPath(config, field.dataset.config) || "";
@@ -6107,7 +6621,7 @@ function loadConfigIntoForm() {
 }
 
 function saveConfigFromForm() {
-  const config = getConfig();
+  const config = getConfig({ effective: false });
   $$("[data-config]").forEach((field) => {
     setByPath(config, field.dataset.config, field.value.trim());
   });
@@ -6120,6 +6634,34 @@ function saveConfigObject(config) {
   localStorage.setItem("apiConfig", JSON.stringify(config));
   markConfigDirty(false);
   loadConfigIntoForm();
+}
+
+function applyCockpitCompatPreset() {
+  const config = getConfig({ effective: false });
+  config.compatGpt ||= {};
+  config.compatGpt.enabled = "yes";
+  config.compatGpt.baseUrl = config.compatGpt.baseUrl || "http://localhost:50360/v1";
+  config.compatGpt.model = config.compatGpt.model || "gpt-4o-mini";
+  config.compatGpt.apiKey = config.compatGpt.apiKey || "";
+  saveConfigObject(config);
+  $("#networkStatus").innerHTML = "<p class=\"ok\">已启用第三方 GPT 兼容服务。电脑端可用 localhost；安卓真机需要改成手机能访问的局域网 IP 或后端地址。</p>";
+  showToast("已套用第三方兼容服务预设。", "ok");
+}
+
+function copyCompatToGptFields() {
+  const config = getConfig({ effective: false });
+  const compat = config.compatGpt || {};
+  if (!compat.baseUrl || !compat.model || !compat.apiKey) {
+    showToast("先填完整第三方 Base URL、模型 ID 和客户端 Key。", "fail");
+    return;
+  }
+  config.gpt ||= {};
+  config.gpt.baseUrl = compat.baseUrl;
+  config.gpt.model = compat.model;
+  config.gpt.apiKey = compat.apiKey;
+  config.compatGpt.enabled = "yes";
+  saveConfigObject(config);
+  showToast("已把第三方兼容服务接入 GPT 工作流。", "ok");
 }
 
 function applyNetworkPreset(profile) {
@@ -6211,7 +6753,7 @@ async function testNetworkRoutes() {
     let results = [];
     let serverManaged = null;
     if (getRelayBaseUrl(config)) {
-      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "豆包语音识别", "Grok"] }, config);
+      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"] }, config);
       results = serverResult.results || [];
       serverManaged = serverResult.serverManaged;
     } else {
@@ -6855,11 +7397,39 @@ function bindEvents() {
     const id = event.target.closest("[data-tavern-character]")?.dataset.tavernCharacter;
     if (id) selectTavernCharacter(id);
   });
+  $("#tavernChatLog")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-tavern-speak]");
+    if (button) synthesizeTavernMessage(Number(button.dataset.tavernSpeak), button);
+  });
   $("#tavernUserInput")?.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
       sendTavernMessage().catch((error) => showToast(`酒馆回复失败：${error.message}`, "fail"));
     }
+  });
+  $("#assistantBubble")?.addEventListener("click", () => toggleAssistantPanel());
+  $("#closeAssistantPanel")?.addEventListener("click", () => toggleAssistantPanel(false));
+  $$(".assistant-tab").forEach((button) => {
+    button.addEventListener("click", () => setAssistantTab(button.dataset.assistantTab));
+  });
+  $("#sendAssistantMessage")?.addEventListener("click", () => sendAssistantMessage());
+  $("#assistantInput")?.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      sendAssistantMessage();
+    }
+  });
+  $("#assistantImageFile")?.addEventListener("change", (event) => {
+    readAssistantImageFile(event.target.files?.[0]).catch((error) => showToast(`读取图片失败：${error.message}`, "fail"));
+    event.target.value = "";
+  });
+  $("#runAssistantImage")?.addEventListener("click", () => runAssistantImage());
+  $("#clearAssistantImage")?.addEventListener("click", () => {
+    assistantState.imageDataUrl = "";
+    assistantState.imageMimeType = "";
+    const prompt = $("#assistantImagePrompt");
+    if (prompt) prompt.value = "";
+    renderAssistant();
   });
   $("#loadPlayerAudio").addEventListener("click", loadEditorFromPlayer);
   $("#quickImportA")?.addEventListener("click", () => $("#editorAudioFileA")?.click());
@@ -7065,6 +7635,8 @@ function bindEvents() {
   $("#exportMix").addEventListener("click", exportEditorMix);
   $("#applyChinaNetwork").addEventListener("click", () => applyNetworkPreset("china"));
   $("#applyVpnNetwork").addEventListener("click", () => applyNetworkPreset("proxy"));
+  $("#applyCockpitPreset")?.addEventListener("click", applyCockpitCompatPreset);
+  $("#copyCompatToGpt")?.addEventListener("click", copyCompatToGptFields);
   $("#testNetwork").addEventListener("click", testNetworkRoutes);
   $("#openBluetoothSettings").addEventListener("click", openBluetoothSettings);
   $("#testBluetoothAudio").addEventListener("click", testBluetoothAudio);
@@ -7270,6 +7842,8 @@ renderWaveform();
 loadPlan();
 loadTavernState();
 renderTavern();
+loadAssistantState();
+renderAssistant();
 updateMidnightState();
 bindEvents();
 initWaterRippleTouch();
