@@ -18,6 +18,8 @@ const DEFAULT_GROK_URL = "https://api.x.ai/v1/chat/completions";
 const DEFAULT_QWEN_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DEFAULT_KIMI_URL = "https://api.moonshot.cn/v1/chat/completions";
 const DEFAULT_QWEN_TTS_URL = "https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+const DEFAULT_VOICE_GATEWAY_URL = "https://epidemicsituation.pages.dev";
+const DEFAULT_VOICE_GATEWAY_SESSION_ENDPOINT = "/api/v1/auth/session";
 const DEFAULT_GPT_IMAGE_URL = "https://api.openai.com/v1/images/generations";
 const DEFAULT_GPT_IMAGE_EDIT_URL = "https://api.openai.com/v1/images/edits";
 const DEFAULT_DOUBAO_IMAGE_URL = "https://ark.cn-beijing.volces.com/api/v3/images/generations";
@@ -329,6 +331,14 @@ function getServerManagedProviders() {
       model: envText("DOUBAO_AUDIO_MODEL", "SEED_AUDIO_MODEL"),
       apiKey: envText("DOUBAO_AUDIO_API_KEY", "SEED_AUDIO_API_KEY", "DOUBAO_TTS_API_KEY")
     },
+    voiceGateway: {
+      gateway: envText("VOICE_GATEWAY_URL", "VOICE_GATEWAY_BASE_URL"),
+      sessionEndpoint: envText("VOICE_GATEWAY_SESSION_ENDPOINT"),
+      apiKey: envText("VOICE_GATEWAY_API_KEY"),
+      ttsVoice: envText("VOICE_GATEWAY_TTS_VOICE"),
+      cloneVoiceId: envText("VOICE_GATEWAY_CLONE_VOICE_ID"),
+      enabled: envText("VOICE_GATEWAY_ENABLED")
+    },
     asr: {
       endpoint: envText("DOUBAO_ASR_ENDPOINT", "SEED_ASR_ENDPOINT"),
       model: envText("DOUBAO_ASR_MODEL", "SEED_ASR_MODEL"),
@@ -371,6 +381,7 @@ function applyServerManagedConfig(clientConfig = {}) {
   config.qwenTts = withServerProvider(config.qwenTts, managed.qwenTts);
   config.kimi = withServerProvider(config.kimi, managed.kimi);
   config.audio = withServerProvider(config.audio, managed.audio);
+  config.voiceGateway = withServerProvider(config.voiceGateway, managed.voiceGateway);
   config.asr = withServerProvider(config.asr, managed.asr);
   config.grok = withServerProvider(config.grok, managed.grok);
   config.gptImage = withServerProvider(config.gptImage, managed.gptImage);
@@ -388,6 +399,9 @@ function applyServerManagedConfig(clientConfig = {}) {
   config.kimi.baseUrl ||= DEFAULT_KIMI_URL;
   config.audio.endpoint ||= DEFAULT_DOUBAO_AUDIO_URL;
   config.audio.model ||= "seed-audio-1.0";
+  config.voiceGateway.gateway ||= DEFAULT_VOICE_GATEWAY_URL;
+  config.voiceGateway.sessionEndpoint ||= DEFAULT_VOICE_GATEWAY_SESSION_ENDPOINT;
+  config.voiceGateway.ttsVoice ||= "起司妹妹";
   config.asr.endpoint ||= DEFAULT_DOUBAO_ASR_URL;
   config.asr.model ||= "bigmodel";
   config.asr.resourceId ||= "volc.bigasr.auc_turbo";
@@ -414,6 +428,7 @@ function serverCapabilities() {
       qwenTts: { hasApiKey: !!managed.qwenTts.apiKey, hasModel: !!managed.qwenTts.model },
       kimi: { hasApiKey: !!managed.kimi.apiKey, hasModel: !!managed.kimi.model },
       audio: { hasApiKey: !!managed.audio.apiKey, hasModel: !!managed.audio.model },
+      voiceGateway: { hasApiKey: !!managed.voiceGateway.apiKey, hasModel: !!(managed.voiceGateway.ttsVoice || managed.voiceGateway.cloneVoiceId) },
       asr: { hasApiKey: !!(managed.asr.apiKey || (managed.asr.appKey && managed.asr.accessKey)), hasModel: !!(managed.asr.model || managed.asr.resourceId) },
       grok: { hasApiKey: !!managed.grok.apiKey, hasModel: !!managed.grok.model },
       gptImage: { hasApiKey: !!managed.gptImage.apiKey, hasModel: !!managed.gptImage.model },
@@ -428,6 +443,7 @@ function serverCapabilities() {
       gemini: ["GEMINI_API_KEY", "GEMINI_MODEL"],
       qwen: ["QWEN_API_KEY", "QWEN_MODEL", "QWEN_BASE_URL"],
       qwenTts: ["QWEN_TTS_API_KEY", "QWEN_TTS_MODEL", "QWEN_TTS_ENDPOINT"],
+      voiceGateway: ["VOICE_GATEWAY_API_KEY", "VOICE_GATEWAY_URL", "VOICE_GATEWAY_SESSION_ENDPOINT", "VOICE_GATEWAY_TTS_VOICE"],
       kimi: ["KIMI_API_KEY", "KIMI_MODEL", "KIMI_BASE_URL"],
       grok: ["GROK_API_KEY", "GROK_MODEL"],
       gptImage: ["GPT_IMAGE_API_KEY", "GPT_IMAGE_MODEL", "GPT_IMAGE_ENDPOINT"],
@@ -466,6 +482,7 @@ async function fetchWithNetwork(url, options = {}, network = {}) {
 function getProbeUrl(label, config = {}) {
   if (String(label || "").includes("第三方 GPT")) return config.compatGpt?.baseUrl || config.gpt?.baseUrl || DEFAULT_GPT_CHAT_URL;
   if (String(label || "").includes("DeepSeek")) return config.deepseek?.baseUrl || DEFAULT_DEEPSEEK_URL;
+  if (String(label || "").includes("通用语音网关")) return config.voiceGateway?.gateway || DEFAULT_VOICE_GATEWAY_URL;
   if (String(label || "").includes("千问 TTS")) return config.qwenTts?.endpoint || DEFAULT_QWEN_TTS_URL;
   if (String(label || "").includes("GPT 图片")) return config.gptImage?.endpoint || DEFAULT_GPT_IMAGE_URL;
   if (String(label || "").includes("豆包图片")) return config.doubaoImage?.endpoint || DEFAULT_DOUBAO_IMAGE_URL;
@@ -506,7 +523,7 @@ async function runNetworkTest(input = {}) {
   const network = config.network || {};
   const labels = Array.isArray(input.labels) && input.labels.length
     ? input.labels
-    : ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "豆包语音识别", "Grok"];
+    : ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "通用语音网关", "豆包语音识别", "Grok"];
   const results = [];
   for (const label of labels) {
     results.push(await probeServerNetwork(label, getProbeUrl(label, config), network));

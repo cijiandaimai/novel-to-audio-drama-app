@@ -832,6 +832,23 @@
               <div class="tutorial compact">优先使用新版 X-Api-Key；旧版控制台才需要 App Key + Access Key。正式发布建议放在后端中转里。</div>
             </section>
 
+            <section class="panel provider essential-provider">
+              <h3>通用语音网关</h3>
+              <p>接入 epidemicsituation 语音 API，可记录 TTS、声音克隆和 ASR 的统一授权配置。</p>
+              <label>启用状态
+                <select data-config="voiceGateway.enabled">
+                  <option value="">暂不启用</option>
+                  <option value="yes">启用通用语音网关</option>
+                </select>
+              </label>
+              <label>网关地址<input data-config="voiceGateway.gateway" placeholder="https://epidemicsituation.pages.dev" /></label>
+              <label>会话接口<input data-config="voiceGateway.sessionEndpoint" placeholder="/api/v1/auth/session" /></label>
+              <label>API Key<input data-config="voiceGateway.apiKey" type="password" placeholder="voice-key-..." /></label>
+              <label>默认 TTS 声线<input data-config="voiceGateway.ttsVoice" placeholder="起司妹妹" /></label>
+              <label>克隆音色 ID<input data-config="voiceGateway.cloneVoiceId" placeholder="可留空" /></label>
+              <div class="tutorial compact">该网站文档写明 Base URL 为 https://epidemicsituation.pages.dev，鉴权支持 Authorization: Bearer 或 x-api-key，会话接口为 POST /api/v1/auth/session。</div>
+            </section>
+
             <section class="panel provider">
               <h3>GPT：总控与剧本</h3>
               <p>用于故事骨架、剧本 1、剧本 2 和音频提示词拆分。</p>

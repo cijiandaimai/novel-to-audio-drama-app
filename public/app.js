@@ -53,6 +53,14 @@ const defaultConfig = {
     model: "seed-audio-1.0",
     apiKey: ""
   },
+  voiceGateway: {
+    gateway: "https://epidemicsituation.pages.dev",
+    sessionEndpoint: "/api/v1/auth/session",
+    apiKey: "",
+    ttsVoice: "起司妹妹",
+    cloneVoiceId: "",
+    enabled: ""
+  },
   asr: {
     endpoint: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash",
     model: "bigmodel",
@@ -643,6 +651,36 @@ const apiHelp = {
     title: "豆包音频 API Key",
     url: "https://console.volcengine.com/",
     text: "在火山引擎语音服务或相关控制台创建 Key。真实生成音频前请先确认额度和计费。"
+  },
+  "voiceGateway.gateway": {
+    title: "通用语音网关",
+    url: "https://epidemicsituation.pages.dev/",
+    text: "用于接入 epidemicsituation 语音 API。默认网关为 https://epidemicsituation.pages.dev，支持 TTS、声音克隆和 ASR 的统一鉴权。"
+  },
+  "voiceGateway.sessionEndpoint": {
+    title: "会话接口",
+    url: "https://epidemicsituation.pages.dev/",
+    text: "官网开发者接入区写的是 POST /api/v1/auth/session。App 会保留这个地址，后续语音网关模式会通过它换取会话授权。"
+  },
+  "voiceGateway.apiKey": {
+    title: "语音网关 API Key",
+    url: "https://epidemicsituation.pages.dev/",
+    text: "填 voice-key 开头的 Key。鉴权方式支持 Authorization: Bearer 或 x-api-key。不要把 Key 提交到代码仓库。"
+  },
+  "voiceGateway.ttsVoice": {
+    title: "默认 TTS 声线",
+    url: "https://epidemicsituation.pages.dev/",
+    text: "网页上提供多种系统声线，也可以使用克隆音色。这里先保存默认声线名称，后续生成时可作为默认音色。"
+  },
+  "voiceGateway.cloneVoiceId": {
+    title: "克隆音色 ID",
+    url: "https://epidemicsituation.pages.dev/",
+    text: "如果你已经在网站上创建了克隆音色，可在这里记录它的 ID 或名称。没有克隆音色可以留空。"
+  },
+  "voiceGateway.enabled": {
+    title: "启用语音网关",
+    url: "https://epidemicsituation.pages.dev/",
+    text: "开启后，后续可以把 TTS、ASR 或克隆相关功能接到这个通用网关。目前先保存配置并支持连通测试。"
   },
   "asr.endpoint": {
     title: "豆包语音识别接口",
@@ -6844,6 +6882,7 @@ function getConfigTestLabel(path = "") {
   if (path.startsWith("qwen.")) return "千问";
   if (path.startsWith("kimi.")) return "Kimi";
   if (path.startsWith("audio.")) return "豆包音频";
+  if (path.startsWith("voiceGateway.")) return "通用语音网关";
   if (path.startsWith("asr.")) return "豆包语音识别";
   if (path.startsWith("grok.")) return "Grok";
   if (path === "network.relayBaseUrl") return "中转服务";
@@ -6948,6 +6987,7 @@ function getProbeUrl(label, config) {
   if (label === "Kimi") return config.kimi?.baseUrl || defaultConfig.kimi.baseUrl;
   if (label === "千问 TTS") return config.qwenTts?.endpoint || defaultConfig.qwenTts.endpoint;
   if (label === "豆包音频") return config.audio?.endpoint || defaultConfig.audio.endpoint;
+  if (label === "通用语音网关") return config.voiceGateway?.gateway || defaultConfig.voiceGateway.gateway;
   if (label === "豆包语音识别") return config.asr?.endpoint || defaultConfig.asr.endpoint;
   if (label === "Grok") return config.grok?.baseUrl || defaultConfig.grok.baseUrl;
   if (label === "GPT 图片") return config.gptImage?.endpoint || defaultConfig.gptImage.endpoint;
@@ -6991,12 +7031,12 @@ async function testNetworkRoutes() {
   try {
     $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
     const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
-    const labels = ["GPT", "第三方 GPT", "DeepSeek", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"];
+    const labels = ["GPT", "第三方 GPT", "DeepSeek", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "通用语音网关", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"];
     if (config.network?.relayBaseUrl) labels.push("中转服务");
     let results = [];
     let serverManaged = null;
     if (getRelayBaseUrl(config)) {
-      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"] }, config);
+      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "通用语音网关", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"] }, config);
       results = serverResult.results || [];
       serverManaged = serverResult.serverManaged;
     } else {
@@ -7005,7 +7045,7 @@ async function testNetworkRoutes() {
       }
     }
     const serverSummary = serverManaged ? `
-      <p class="ok"><strong>后端中转</strong>：已连接。服务端 Key 状态：豆包文本 ${serverManaged.doubao?.hasApiKey ? "已配置" : "未配置"}，千问 ${serverManaged.qwen?.hasApiKey ? "已配置" : "未配置"}，Kimi ${serverManaged.kimi?.hasApiKey ? "已配置" : "未配置"}，豆包音频 ${serverManaged.audio?.hasApiKey ? "已配置" : "未配置"}，豆包语音识别 ${serverManaged.asr?.hasApiKey ? "已配置" : "未配置"}。</p>
+      <p class="ok"><strong>后端中转</strong>：已连接。服务端 Key 状态：豆包文本 ${serverManaged.doubao?.hasApiKey ? "已配置" : "未配置"}，千问 ${serverManaged.qwen?.hasApiKey ? "已配置" : "未配置"}，Kimi ${serverManaged.kimi?.hasApiKey ? "已配置" : "未配置"}，豆包音频 ${serverManaged.audio?.hasApiKey ? "已配置" : "未配置"}，通用语音网关 ${serverManaged.voiceGateway?.hasApiKey ? "已配置" : "未配置"}，豆包语音识别 ${serverManaged.asr?.hasApiKey ? "已配置" : "未配置"}。</p>
     ` : "";
     $("#networkStatus").innerHTML = results.map((item) => `
       <p class="${item.ok ? "ok" : "fail"}"><strong>${item.label}</strong>：${item.message}</p>
