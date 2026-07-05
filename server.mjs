@@ -538,19 +538,31 @@ async function runNetworkTest(input = {}) {
 async function callOpenAICompatible(provider, messages, temperature = 0.4, network = {}) {
   const url = normalizeChatUrl(provider.baseUrl);
   if (!url) throw new Error("缺少接口地址");
-  const response = await fetchWithNetwork(url, {
+  const callChat = (model = provider.model) => fetchWithNetwork(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${provider.apiKey}`
     },
     body: JSON.stringify({
-      model: provider.model,
+      model,
       messages,
       temperature
     })
   }, network);
+  let response = await callChat();
   const text = await response.text();
+  if (!response.ok && /api\.deepseek\.com/i.test(url) && provider.model !== "deepseek-chat") {
+    response = await callChat("deepseek-chat");
+    const retryText = await response.text();
+    if (!response.ok) {
+      throw new Error(`DeepSeek 调用失败：${response.status} ${retryText.slice(0, 800)} | first: ${text.slice(0, 300)}`);
+    }
+    const retryData = JSON.parse(retryText);
+    return retryData.choices?.[0]?.message?.content?.trim()
+      || retryData.output_text?.trim()
+      || JSON.stringify(retryData, null, 2);
+  }
   if (!response.ok) {
     throw new Error(`模型接口调用失败：${response.status} ${text.slice(0, 800)}`);
   }

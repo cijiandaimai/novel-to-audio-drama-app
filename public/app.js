@@ -406,6 +406,27 @@ const tavernModes = {
     ending: "最后列出下一轮最值得追问的一条线索。"
   }
 };
+
+const voiceGatewayCatalog = {
+  cloned: { voiceId: "zh_female_quark_xinshen", model: "QUARK_VOICE", useClone: true },
+  qisi: { voiceId: "zh_female_quark_xinshen", model: "QUARK_VOICE" },
+  "起司妹妹": { voiceId: "zh_female_quark_xinshen", model: "QUARK_VOICE" },
+  muyang: { voiceId: "zh_female_quarkF531S0_ptts", model: "QUARK_VOICE" },
+  "沐阳": { voiceId: "zh_female_quarkF531S0_ptts", model: "QUARK_VOICE" },
+  wuyetiancha: { voiceId: "longyan", model: "QWEN_NLS" },
+  "午夜甜茶": { voiceId: "longyan", model: "QWEN_NLS" },
+  wuli: { voiceId: "longqiang", model: "QWEN_NLS" },
+  "雾梨女声": { voiceId: "longqiang", model: "QWEN_NLS" },
+  fangqing: { voiceId: "zh_female_quark_zheque", model: "QUARK_VOICE" },
+  "方晴师姐": { voiceId: "zh_female_quark_zheque", model: "QUARK_VOICE" },
+  huajie: { voiceId: "zh_female_quark_xiaoning", model: "QUARK_VOICE" },
+  "电台华姐": { voiceId: "zh_female_quark_xiaoning", model: "QUARK_VOICE" },
+  daozhang: { voiceId: "zh_male_quark_taiyizhenren", model: "QUARK_VOICE" },
+  "四川道长": { voiceId: "zh_male_quark_taiyizhenren", model: "QUARK_VOICE" },
+  wenyu: { voiceId: "zh_male_quark_m24", model: "QUARK_VOICE" },
+  "温屿哥哥": { voiceId: "zh_male_quark_m24", model: "QUARK_VOICE" }
+};
+
 const tavernState = {
   characters: [],
   sessions: {},
@@ -493,7 +514,7 @@ const assistantState = {
 };
 
 let lastHomeBackAt = 0;
-let configSaveReminderTimer = null;
+let configAutoSaveTimer = null;
 
 const apiHelp = {
   "workflow.plan": {
@@ -684,7 +705,7 @@ const apiHelp = {
   "voiceGateway.enabled": {
     title: "启用语音网关",
     url: "https://epidemicsituation.pages.dev/",
-    text: "开启后，后续可以把 TTS、ASR 或克隆相关功能接到这个通用网关。目前先保存配置并支持连通测试。"
+    text: "开启后，后续可以把 TTS、ASR 或克隆相关功能接到这个通用网关。填写后会自动保存，并支持连通测试。"
   },
   "asr.endpoint": {
     title: "豆包语音识别接口",
@@ -914,7 +935,7 @@ function applyAppLanguage(language = getAppLanguage()) {
 
 function readStoredConfig() {
   try {
-    return applyLocalPresetConfig(deepMerge(defaultConfig, JSON.parse(localStorage.getItem("apiConfig") || "{}")));
+    return applyLocalPresetConfig(fillMissingConfig(deepMerge(defaultConfig, JSON.parse(localStorage.getItem("apiConfig") || "{}")), defaultConfig));
   } catch {
     return applyLocalPresetConfig(defaultConfig);
   }
@@ -1730,14 +1751,14 @@ async function callTavernProviderDirect(providerName, config, prompt) {
     return data.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("\n").trim()
       || JSON.stringify(data, null, 2);
   }
-  const response = await tavernFetchWithNetwork(normalizeTavernChatUrl(provider.baseUrl), {
+  const callChat = async (model = provider.model) => tavernFetchWithNetwork(normalizeTavernChatUrl(provider.baseUrl), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${provider.apiKey}`
     },
     body: JSON.stringify({
-      model: provider.model,
+      model,
       messages: [
         { role: "system", content: prompt.system },
         { role: "user", content: prompt.user }
@@ -1745,7 +1766,17 @@ async function callTavernProviderDirect(providerName, config, prompt) {
       temperature: 0.72
     })
   }, config.network);
+  let response = await callChat();
   const text = await response.text();
+  if (!response.ok && providerName === "deepseek" && provider.model !== "deepseek-chat") {
+    response = await callChat("deepseek-chat");
+    const retryText = await response.text();
+    if (!response.ok) throw new Error(`模型接口调用失败：${response.status} ${retryText.slice(0, 400)}；首次错误：${text.slice(0, 240)}`);
+    const retryData = JSON.parse(retryText);
+    return retryData.choices?.[0]?.message?.content?.trim()
+      || retryData.output_text?.trim()
+      || JSON.stringify(retryData, null, 2);
+  }
   if (!response.ok) throw new Error(`模型接口调用失败：${response.status} ${text.slice(0, 400)}`);
   const data = JSON.parse(text);
   return data.choices?.[0]?.message?.content?.trim()
@@ -1801,6 +1832,96 @@ function extractQwenTtsAudio(data = {}) {
   };
 }
 
+let voiceGatewaySdkPromise = null;
+
+function hasVoiceGatewayTts(config = getConfig()) {
+  const gateway = config.voiceGateway || {};
+  return String(gateway.enabled || "yes").toLowerCase() !== "no"
+    && Boolean(gateway.apiKey && gateway.gateway);
+}
+
+function resolveVoiceGatewayVoice(value = "") {
+  const raw = String(value || "").trim();
+  return voiceGatewayCatalog[raw] || { voiceId: raw || voiceGatewayCatalog.qisi.voiceId, model: "QUARK_VOICE" };
+}
+
+function ensureVoiceGatewaySdk(config = getConfig()) {
+  if (window.VoiceTtsPlayer) return Promise.resolve();
+  if (voiceGatewaySdkPromise) return voiceGatewaySdkPromise;
+  const gateway = String(config.voiceGateway?.gateway || defaultConfig.voiceGateway.gateway).replace(/\/+$/, "");
+  voiceGatewaySdkPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `${gateway}/voice-gateway-sdk.js`;
+    script.async = true;
+    script.onload = () => window.VoiceTtsPlayer ? resolve() : reject(new Error("语音网关 SDK 加载失败。"));
+    script.onerror = () => reject(new Error("无法加载通用语音网关 SDK。"));
+    document.head.appendChild(script);
+  });
+  return voiceGatewaySdkPromise;
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("音频读取失败。"));
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function callVoiceGatewayTtsDirect(text, config = getConfig()) {
+  const gatewayConfig = { ...defaultConfig.voiceGateway, ...(config.voiceGateway || {}) };
+  if (!hasVoiceGatewayTts(config)) throw new Error("请先配置通用语音网关 API Key 和网关地址。");
+  await ensureVoiceGatewaySdk(config);
+  const voice = resolveVoiceGatewayVoice(gatewayConfig.ttsVoice || "起司妹妹");
+  const useClone = Boolean(gatewayConfig.cloneVoiceId) || voice.useClone;
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const player = new window.VoiceTtsPlayer({
+      apiKey: gatewayConfig.apiKey,
+      gateway: String(gatewayConfig.gateway || defaultConfig.voiceGateway.gateway).replace(/\/+$/, ""),
+      voiceId: gatewayConfig.cloneVoiceId || voice.voiceId,
+      model: voice.model || "QUARK_VOICE",
+      useClone,
+      recordAudio: true,
+      onError: (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error instanceof Error ? error : new Error(String(error || "通用语音网关 TTS 失败。")));
+      },
+      onStreamComplete: async () => {
+        if (settled) return;
+        settled = true;
+        try {
+          const blob = player.exportWavBlob?.();
+          resolve({
+            provider: "voice-gateway-tts",
+            audioDataUrl: blob ? await blobToDataUrl(blob) : "",
+            livePlayed: true
+          });
+        } catch (error) {
+          reject(error);
+        }
+      }
+    });
+    player.feedText(String(text || "").slice(0, 1200), 1);
+    player.feedText("", 2);
+    window.setTimeout(() => {
+      if (settled) return;
+      const blob = player.exportWavBlob?.();
+      if (blob) {
+        settled = true;
+        blobToDataUrl(blob).then((audioDataUrl) => resolve({ provider: "voice-gateway-tts", audioDataUrl, livePlayed: true }), reject);
+      }
+    }, 18000);
+    window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("通用语音网关 TTS 超时。"));
+    }, 26000);
+  });
+}
+
 async function callQwenTtsDirect(text, config = getConfig()) {
   const qwenTts = { ...defaultConfig.qwenTts, ...(config.qwenTts || {}) };
   const apiKey = qwenTts.apiKey || config.qwen?.apiKey || "";
@@ -1840,15 +1961,22 @@ async function synthesizeTavernMessage(index, button = null) {
     let result;
     try {
       result = await apiJson("/api/qwen-tts", { text: message.text, config }, config);
-    } catch {
-      result = await callQwenTtsDirect(message.text, config);
+    } catch (qwenServerError) {
+      try {
+        result = await callQwenTtsDirect(message.text, config);
+      } catch (qwenDirectError) {
+        if (!hasVoiceGatewayTts(config)) throw qwenDirectError;
+        result = await callVoiceGatewayTtsDirect(message.text, config);
+      }
     }
     const src = result.audioUrl || result.audioDataUrl;
-    if (!src) throw new Error("没有可播放的音频地址。");
-    playInApp(src, `${character.name} · 配音`, { autoplay: true });
-    showToast("已生成角色配音。", "ok");
+    if (src) {
+      playInApp(src, `${character.name} · 配音`, { autoplay: !result.livePlayed });
+    }
+    if (!src && !result.livePlayed) throw new Error("没有可播放的音频地址。");
+    showToast(result.provider === "voice-gateway-tts" ? "已用通用语音网关生成角色配音。" : "已生成角色配音。", "ok");
   } catch (error) {
-    showToast(`千问 TTS 失败：${error.message}`, "fail");
+    showToast(`角色配音失败：${error.message}`, "fail");
   } finally {
     setButtonBusy(button, false);
   }
@@ -2004,6 +2132,7 @@ function renderAssistant() {
   if (!dock || !panel || !bubble) return;
   dock.classList.toggle("hidden", assistantState.hidden);
   dock.classList.toggle("dragging", assistantState.dragging);
+  dock.classList.toggle("panel-open", assistantState.open && !assistantState.hidden);
   if (assistantState.position) {
     const position = clampAssistantPosition(assistantState.position);
     assistantState.position = position;
@@ -6905,7 +7034,8 @@ function loadConfigIntoForm() {
   markConfigDirty(localStorage.getItem(configDirtyKey) === "yes");
 }
 
-function saveConfigFromForm() {
+function persistConfigFromForm({ notify = false } = {}) {
+  clearTimeout(configAutoSaveTimer);
   const config = getConfig({ effective: false });
   $$("[data-config]").forEach((field) => {
     setByPath(config, field.dataset.config, field.value.trim());
@@ -6913,10 +7043,20 @@ function saveConfigFromForm() {
   localStorage.setItem("apiConfig", JSON.stringify(config));
   markConfigDirty(false);
   sessionStorage.removeItem(apiSaveReminderKey);
-  if ($("#assistantDock")) {
-    appendAssistantMessage("assistant", "配置已经保存。现在可以回到创作、酒馆或悬浮小助手里测试调用；如果安卓真机要访问电脑上的本地兼容服务，记得把 localhost 换成电脑局域网 IP。");
-  }
-  showToast("配置已保存在本机。正式产品建议改为服务端加密保存。", "ok");
+  if (notify) showToast("配置已自动保存在本机。", "ok");
+  return config;
+}
+
+function saveConfigFromForm() {
+  persistConfigFromForm({ notify: true });
+}
+
+function scheduleConfigAutoSave() {
+  markConfigDirty(true);
+  clearTimeout(configAutoSaveTimer);
+  configAutoSaveTimer = setTimeout(() => {
+    persistConfigFromForm({ notify: false });
+  }, 450);
 }
 
 function saveConfigObject(config) {
@@ -6984,19 +7124,6 @@ function isApiValueField(path = "") {
   return Boolean(getConfigTestLabel(path)) && !path.includes("timeoutSeconds") && !path.includes("retryCount") && !path.includes("profile");
 }
 
-function showApiSaveReminder(field) {
-  if (!field || !isApiValueField(field.dataset.config) || !String(field.value || "").trim()) return;
-  if (sessionStorage.getItem(apiSaveReminderKey) === "yes") return;
-  clearTimeout(configSaveReminderTimer);
-  configSaveReminderTimer = setTimeout(() => {
-    sessionStorage.setItem(apiSaveReminderKey, "yes");
-    assistantState.open = true;
-    assistantState.tab = "chat";
-    appendAssistantMessage("assistant", "我看到你正在填写 API。填完 Key、模型 ID 和接口地址以后，记得点“保存配置”，否则创作、酒馆和图片功能仍会使用旧配置。保存后可以点输入框旁边的“测”先做连通检查。");
-    showToast("API 填完后记得点保存配置。", "ok");
-  }, 550);
-}
-
 async function testConfigField(path, button = null) {
   const label = getConfigTestLabel(path);
   if (!label) return;
@@ -7014,7 +7141,7 @@ async function testConfigField(path, button = null) {
     }
     const status = $("#networkStatus");
     if (status) {
-      status.innerHTML = `<p class="${result.ok ? "ok" : "fail"}"><strong>${escapeHtml(label)}</strong>：${escapeHtml(result.message || "")}<br /><span class="hint">这是连通性测试；Key、余额和模型权限仍以实际生成时的返回为准。测试前也建议先点“保存配置”。</span></p>`;
+      status.innerHTML = `<p class="${result.ok ? "ok" : "fail"}"><strong>${escapeHtml(label)}</strong>：${escapeHtml(result.message || "")}<br /><span class="hint">这是连通性测试；Key、余额和模型权限仍以实际生成时的返回为准。当前填写会自动保存。</span></p>`;
     }
     showToast(`${label}测试${result.ok ? "完成" : "失败"}`, result.ok ? "ok" : "fail");
   } catch (error) {
@@ -7687,9 +7814,12 @@ function updateViewportMetrics() {
   const viewport = window.visualViewport;
   const width = Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || 360);
   const height = Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 640);
+  const keyboardOffset = Math.max(0, (window.innerHeight || height) - height - Math.max(0, viewport?.offsetTop || 0));
   document.documentElement.style.setProperty("--app-width", `${width}px`);
   document.documentElement.style.setProperty("--app-height", `${height}px`);
-  document.documentElement.style.setProperty("--keyboard-offset", `${Math.max(0, (window.innerHeight || height) - height)}px`);
+  document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
+  document.documentElement.style.setProperty("--keyboard-lift", `${Math.round(keyboardOffset / 2)}px`);
+  document.body?.classList.toggle("keyboard-open", keyboardOffset > 80);
 }
 
 function initViewportCompatibility() {
@@ -7701,14 +7831,24 @@ function initViewportCompatibility() {
 }
 
 function initFocusScrollAssist() {
+  let focusTimer = 0;
+  const keepFocusedFieldVisible = (delay = 80) => {
+    window.clearTimeout(focusTimer);
+    focusTimer = window.setTimeout(() => {
+      const target = document.activeElement;
+      if (!target?.matches?.("input:not([type='range']):not([type='checkbox']):not([type='radio']), textarea, select")) return;
+      if (target.closest(".modal-panel")) return;
+      target.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "smooth" });
+    }, delay);
+  };
   document.addEventListener("focusin", (event) => {
     const target = event.target;
     if (!target?.matches?.("input:not([type='range']):not([type='checkbox']):not([type='radio']), textarea, select")) return;
     if (target.closest(".modal-panel")) return;
-    window.setTimeout(() => {
-      target.scrollIntoView?.({ block: "center", inline: "nearest", behavior: "smooth" });
-    }, 160);
+    keepFocusedFieldVisible(180);
   });
+  window.visualViewport?.addEventListener?.("resize", () => keepFocusedFieldVisible(120), { passive: true });
+  window.visualViewport?.addEventListener?.("scroll", () => keepFocusedFieldVisible(80), { passive: true });
 }
 
 function initInteractionSelectionGuards() {
@@ -7745,12 +7885,10 @@ function bindEvents() {
   });
   $$("[data-config]").forEach((field) => {
     field.addEventListener("input", () => {
-      markConfigDirty(true);
-      showApiSaveReminder(field);
+      persistConfigFromForm({ notify: false });
     });
     field.addEventListener("change", () => {
-      markConfigDirty(true);
-      showApiSaveReminder(field);
+      persistConfigFromForm({ notify: false });
     });
   });
   $$("[data-config-test]").forEach((button) => {

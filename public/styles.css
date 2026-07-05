@@ -152,6 +152,7 @@ textarea,
 select {
   font: inherit;
   max-width: 100%;
+  scroll-margin-bottom: calc(var(--keyboard-offset, 0px) + var(--bottom-nav-height, 88px) + 24px);
 }
 
 button {
@@ -3380,8 +3381,12 @@ button:not(:disabled):active,
 }
 
 .assistant-panel {
+  position: fixed;
+  left: 50%;
+  top: calc(50% - var(--keyboard-lift, 0px));
+  transform: translate(-50%, -50%);
   width: min(420px, calc(100vw - 24px));
-  max-height: min(680px, calc(100dvh - 108px));
+  max-height: min(680px, calc(var(--app-height, 100dvh) - 28px));
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   overflow: hidden;
@@ -3391,6 +3396,10 @@ button:not(:disabled):active,
     linear-gradient(180deg, rgba(255, 253, 247, 0.98), rgba(245, 238, 221, 0.95)),
     var(--panel-solid);
   box-shadow: 0 24px 60px rgba(39, 34, 26, 0.2);
+}
+
+.assistant-dock.panel-open {
+  z-index: 120;
 }
 
 .assistant-panel.hidden,
@@ -4044,6 +4053,23 @@ body[data-route-motion="none"] .view.active {
 
 .assistant-panel {
   max-height: min(680px, calc(var(--app-height) - var(--bottom-nav-height) - 32px));
+}
+
+.assistant-dock.panel-open .assistant-panel {
+  max-height: min(680px, calc(var(--app-height) - 24px));
+}
+
+body.keyboard-open .main {
+  padding-bottom: calc(var(--keyboard-offset, 0px) + var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 24px);
+}
+
+body.keyboard-open .assistant-dock {
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
+body.keyboard-open .tavern-compose,
+body.keyboard-open .assistant-compose {
+  scroll-margin-bottom: calc(var(--keyboard-offset, 0px) + 28px);
 }
 
 .panel,
