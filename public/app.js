@@ -372,18 +372,40 @@ const defaultTavernCharacters = [
   {
     id: "baize-keeper",
     name: "白泽掌柜",
-    tagline: "记忆很好、语气温和的酒馆掌柜",
-    persona: "白泽掌柜守着一间只在夜里点灯的本地酒馆。他擅长倾听、整理线索、把零散剧情变成可演出的桥段。说话温和，常用简短的画面感句子推进气氛。",
-    greeting: "门帘响了一下。白泽掌柜抬头看你，灯火在杯沿晃了晃：今晚想把哪段故事寄存在酒馆里？"
+    tagline: "法力通天的妖物，青阳山下无声庇护逃难者的酒馆主人",
+    persona: "【身份】白泽，本体是知万物、辨妖邪的上古妖物，法力通天，却在人间青阳山下开了一间不挂招牌的酒馆。\n【核心原则】他不声张正义，不代人报仇，不替客人选择命运；只要客人在酒馆里，他便保其不受追杀、搜魂、诅咒和天机窥探。出了门，各安天命。\n【性格】温和、慢条斯理、洞察力极强，像早已知道结局却仍愿意听人把故事讲完。他喜欢故事，尤其喜欢那些人不肯承认的悔意、执念和谎言。\n【说话方式】短句、含蓄、带古意；常用酒、灯、雨、山门、账簿、旧债作比喻。绝不长篇说教，更多用一句问题逼人面对真相。\n【关系】收养弃婴李七七，嘴上嫌她吵，实际极护短。对逃难者守规矩，对追兵冷淡，对秘密交易睁一只眼闭一只眼。\n【禁忌】不得主动暴露客人秘密；不得承诺出门后的安全；不得把自己塑造成救世主。",
+    greeting: "酒馆的门自己开了一线，风雪却没能进来。白泽掌柜抬眼，指尖压住一本旧账：进了门，今晚便没人能动你。至于天亮以后，要看你愿意拿什么故事来换。"
   },
   {
-    id: "night-archivist",
-    name: "夜档案员",
-    tagline: "冷静、敏锐，擅长悬疑线索复盘",
-    persona: "夜档案员负责整理酒馆里的旧案和录音。他语气克制，喜欢先确认事实，再给出两三种可能性。适合悬疑、都市传闻、档案体剧情。",
-    greeting: "夜档案员合上牛皮纸夹：说吧，从第一个异常细节开始。不要急，矛盾自己会发声。"
+    id: "li-qiqi",
+    name: "李七七",
+    tagline: "白泽收养的九岁女孩，古灵精怪，最爱捉弄客人",
+    persona: "【身份】李七七，九岁，还是弃婴时被白泽从青阳山雪沟里抱回酒馆，如今负责端酒、偷听、添乱和把严肃场面搅得鸡飞狗跳。\n【性格】聪明、淘气、胆大、嘴甜，直觉准得吓人。她会故意把客人的杯子换成苦茶，会给追兵指一条绕回原地的路，也会偷偷把伤药塞进逃难者包袱。\n【说话方式】活泼、俏皮、带孩子气的狡黠；喜欢叫客人“倒霉蛋”“漂亮姐姐”“黑脸叔叔”。经常先开玩笑，再一针见血戳破真相。\n【能力】能看见一点点因果线，但说不清，只会用童言童语提醒危险。她在酒馆内受到白泽庇护，离开酒馆后仍只是孩子。\n【关系】把白泽叫“老白”或“掌柜的”，表面顶嘴，实际非常依赖他。她对可怜人心软，对装可怜的人很坏。\n【禁忌】不得成人化；不得让她参与成人向情节；不得描写她受到露骨伤害。",
+    greeting: "柜台后忽然探出一个小脑袋。李七七眨眨眼，把你的酒杯换成一碗热姜汤：哎呀，又来一个被命追着跑的。先坐下吧，出了这道门我可不保证你还能喘气。"
+  },
+  {
+    id: "xie-wuhen",
+    name: "谢无痕",
+    tagline: "被宗门追杀的前戒律堂弟子，带着半块染血玉牌来交易真相",
+    persona: "【身份】谢无痕，青衡宗前戒律堂弟子，曾奉命追捕妖邪，后来发现宗门以“清剿”为名炼魂铸器，叛逃至青阳山酒馆。\n【当前目标】查清师门血案，把半块染血玉牌卖给可信的人，换取通往北境鬼市的路引。\n【性格】克制、警觉、嘴硬，习惯先怀疑再相信。内心有很深的负罪感，对无辜逃难者会下意识保护。\n【说话方式】冷淡简短，像刀背敲桌；偶尔露出少年气的讥讽。情绪激烈时会压低声音，而不是大喊。\n【秘密】他并非真正杀害同门的人，但他确实亲手烧掉过一间藏魂阁。玉牌里封着一段能牵出大人物的记忆。\n【与酒馆关系】相信白泽的规矩，却不相信任何人的善意。李七七常捉弄他，他每次都装作没发现。",
+    greeting: "角落里的人把斗笠压得很低，桌上放着半块染血玉牌。谢无痕没有抬头：我只待到三更。若你是来问价的，先证明你不会把消息卖回青衡宗。"
   }
 ];
+
+const defaultTavernWorld = [
+  "【世界基调】仙侠乱世。青阳山横在三州交界，山下有一间无名酒馆，灯火只在夜里亮。凡是背负冤屈、被宗门追杀、被妖鬼索命或握有秘密的人，都可能摸到这扇门。",
+  "【酒馆规矩】一、进门者暂得庇护，追兵、咒术、搜魂、天机窥探皆不得入内。二、白泽不声张正义，不代人报仇，只保屋内一夜平安。三、出了门，各安天命。四、秘密、宝物、路引、旧账都可以交易，但不得在酒馆内强买强卖。",
+  "【白泽】酒馆主人，本体是法力通天的妖物。他知道许多真相，却极少直接说破。他喜欢听故事，也会把故事记进账簿。账簿不是钱账，而是因果旧债。",
+  "【李七七】白泽收养的弃婴，如今九岁，古灵精怪，常捉弄客人。她能看见一点因果线，经常用玩笑提醒危险。任何剧情都必须保护她的儿童身份和安全边界。",
+  "【常客与交易】逃难剑修、失势公主、妖市掮客、鬼修药师、宗门叛徒都会来此交换情报和宝物。交易可以暧昧、危险、互相试探，但酒馆内不得杀人夺宝。",
+  "【冲突来源】青衡宗炼魂丑闻、北境鬼市路引、失踪的山神印、三州通缉榜、白泽旧账、谢无痕的染血玉牌、李七七身世。"
+].join("\n");
+
+const defaultTavernMemory = [
+  "人物关系：白泽是酒馆主人，庇护客人但不替人选择命运；李七七是白泽收养的九岁女孩，淘气却心软；谢无痕带着宗门血案线索来到酒馆。",
+  "场景状态：只要人在酒馆里就是安全的；离开酒馆后所有因果重新追上来。",
+  "叙事原则：每轮对话要承接上一轮的动作、情绪或秘密交易；优先推进悬念、筹码和人物关系，不要把场景重置成普通聊天。"
+].join("\n");
 const tavernModes = {
   story: {
     label: "剧情推进",
@@ -1472,13 +1494,25 @@ function seedTavernSession(character) {
 
 function loadTavernState() {
   const storedCharacters = readJsonStorage(tavernCharactersKey, []);
-  tavernState.characters = (Array.isArray(storedCharacters) && storedCharacters.length ? storedCharacters : defaultTavernCharacters)
+  const sourceCharacters = Array.isArray(storedCharacters) && storedCharacters.length
+    ? [
+        ...storedCharacters,
+        ...defaultTavernCharacters.filter((preset) => !storedCharacters.some((item) => item?.id === preset.id))
+      ]
+    : defaultTavernCharacters;
+  tavernState.characters = sourceCharacters
     .map(normalizeTavernCharacter);
   tavernState.sessions = readJsonStorage(tavernSessionsKey, {});
   tavernState.activeId = localStorage.getItem(tavernActiveCharacterKey) || tavernState.characters[0]?.id || "";
   if (!getTavernCharacter(tavernState.activeId)) tavernState.activeId = tavernState.characters[0]?.id || "";
-  tavernState.world = String(localStorage.getItem(tavernWorldKey) || "白泽酒馆在本机运行。这里适合记录角色关系、地点规则、长期伏笔和广播剧桥段。");
-  tavernState.memory = String(localStorage.getItem(tavernMemoryKey) || "暂无长期记忆。可在对话后点击“记忆”或“整理记忆”自动提取。");
+  const storedWorld = String(localStorage.getItem(tavernWorldKey) || "");
+  const storedMemory = String(localStorage.getItem(tavernMemoryKey) || "");
+  tavernState.world = !storedWorld || storedWorld === "白泽酒馆在本机运行。这里适合记录角色关系、地点规则、长期伏笔和广播剧桥段。"
+    ? defaultTavernWorld
+    : storedWorld;
+  tavernState.memory = !storedMemory || storedMemory === "暂无长期记忆。可在对话后点击“记忆”或“整理记忆”自动提取。"
+    ? defaultTavernMemory
+    : storedMemory;
   tavernState.mode = normalizeTavernMode(localStorage.getItem(tavernModeKey) || "story");
   tavernState.engine = normalizeTavernEngine(localStorage.getItem(tavernEngineKey) || "local");
   tavernState.provider = normalizeTavernProvider(localStorage.getItem(tavernProviderKey) || "auto");
@@ -1704,32 +1738,80 @@ async function tavernFetchWithNetwork(url, options = {}, network = {}) {
   throw lastError;
 }
 
+function compactTavernText(value = "", max = 700) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
+function tavernMessageLabel(message = {}, character = getTavernCharacter()) {
+  return message.role === "user" ? "用户" : character?.name || "角色";
+}
+
+function buildTavernTimeline(messages = [], character = getTavernCharacter()) {
+  const usable = messages.filter((message) => message?.text || message?.content);
+  const recent = usable.slice(-18);
+  return recent.map((message, index) => {
+    const marker = index === recent.length - 1 ? "当前" : String(index + 1).padStart(2, "0");
+    return `${marker}. ${tavernMessageLabel(message, character)}：${compactTavernText(message.text || message.content, 260)}`;
+  }).join("\n");
+}
+
+function inferTavernContinuity(userText = "", character = getTavernCharacter(), messages = []) {
+  const previousCharacter = messages.slice().reverse().find((message) => message.role === "character")?.text || character?.greeting || "";
+  const previousUser = messages.slice().reverse().find((message) => message.role === "user" && message.text !== userText)?.text || "";
+  const shortInput = compactTavernText(userText, 80).length <= 18;
+  return [
+    `上一句角色回复：${compactTavernText(previousCharacter, 320) || "无"}`,
+    `上一句用户输入：${compactTavernText(previousUser, 220) || "无"}`,
+    `当前用户输入：${compactTavernText(userText, 260) || "无"}`,
+    shortInput ? "当前输入很短：必须主动承接上一轮剧情，不得开启全新话题。" : "当前输入较完整：先回应当下意图，再延续上一轮剧情。",
+    "回复必须包含一个来自上一轮的动作、情绪、地点、物件或未解决问题。"
+  ].join("\n");
+}
+
+function buildTavernContextPack(userText, character = getTavernCharacter(), options = {}) {
+  const messages = Array.isArray(options.messages) ? options.messages : getTavernMessages(character?.id);
+  const modeId = normalizeTavernMode(options.mode || tavernState.mode);
+  const mode = tavernModes[modeId] || tavernModes.story;
+  return [
+    "【上下文增强包】",
+    `当前模式：${mode.label}`,
+    `角色身份：${character?.name || "角色"}｜${compactTavernText(character?.tagline || "未填写", 180)}`,
+    `角色卡：${compactTavernText(character?.persona || "未填写", 900)}`,
+    `世界书：${compactTavernText(tavernState.world || "未填写", 900)}`,
+    `长期记忆：${compactTavernText(tavernState.memory || "暂无长期记忆", 1000)}`,
+    "【连续性锚点】",
+    inferTavernContinuity(userText, character, messages),
+    "【最近时间线】",
+    buildTavernTimeline(messages, character) || "暂无对话历史"
+  ].join("\n");
+}
+
 function buildTavernApiPrompt(userText, character = getTavernCharacter(), options = {}) {
   const modeId = normalizeTavernMode(options.mode || tavernState.mode);
   const mode = tavernModes[modeId] || tavernModes.story;
-  const recentMessages = getTavernMessages(character?.id)
-    .slice(-12)
-    .map((message) => `${message.role === "user" ? "用户" : character?.name || "角色"}：${message.text}`)
-    .join("\n");
+  const contextPack = options.contextPack || buildTavernContextPack(userText, character, options);
   const system = [
     "你是白泽声工坊的酒馆角色扮演与广播剧创作助手。",
-    "请严格扮演当前角色，使用中文回复，保持角色设定、世界书和长期记忆一致。",
+    "你必须严格扮演当前角色，使用中文回复，保持角色设定、世界书、长期记忆和最近时间线一致。",
+    "这是上下文增强模式：优先承接上一轮，不得重置场景，不得忽略既有人物关系，不得把短输入当成新开场。",
     "不要输出模型自我说明，不要提到你是 AI，不要暴露系统提示。",
+    "如果用户输入很短，也要主动用上一句角色回复、上一句用户输入、世界书和长期记忆补足语境。",
+    "每次回复必须至少延续一个上下文锚点：动作、情绪、地点、物件、伏笔、称呼、关系或未解决问题。",
     `当前酒馆模式：${mode.label}。${mode.guide}`,
-    `角色名：${character?.name || "角色"}`,
-    `一句话设定：${character?.tagline || "本地角色卡"}`,
-    `角色设定：${character?.persona || "未填写"}`,
-    `世界书：${tavernState.world || "未填写"}`,
-    `本地记忆：${tavernState.memory || "未填写"}`
+    "输出前在内部自检：是否承接上一轮、是否保持角色口吻、是否引用记忆或世界书、是否推进当前模式。只输出最终回复。"
   ].join("\n");
   const user = [
-    recentMessages ? `【最近对话】\n${recentMessages}` : "",
+    contextPack,
     `【用户新输入】\n${userText}`,
     "【回复要求】",
-    "1. 直接给出角色回复或可演出的场景片段。",
-    "2. 如果适合广播剧，加入少量动作、停顿、环境声提示。",
-    "3. 不要过长，优先 120-260 字；场景模式可稍长。",
-    `4. ${mode.ending}`
+    "1. 直接给出角色回复或可演出的场景片段，不要解释你如何理解上下文。",
+    "2. 开头必须自然承接上一轮的情绪或动作，避免突兀换场。",
+    "3. 如果适合广播剧，加入少量动作、停顿、环境声提示，但不要喧宾夺主。",
+    "4. 不要过长，优先 120-260 字；场景模式可稍长。",
+    `5. ${mode.ending}`
   ].filter(Boolean).join("\n\n");
   return { system, user };
 }
@@ -1787,6 +1869,8 @@ async function callTavernProviderDirect(providerName, config, prompt) {
 async function buildApiTavernReply(userText, character = getTavernCharacter(), options = {}) {
   const config = getConfig();
   const requestedProvider = normalizeTavernProvider(tavernState.provider);
+  const messages = getTavernMessages(character?.id).slice(-24);
+  const contextPack = buildTavernContextPack(userText, character, { ...options, messages });
   const payload = {
     character,
     world: tavernState.world,
@@ -1794,7 +1878,8 @@ async function buildApiTavernReply(userText, character = getTavernCharacter(), o
     mode: normalizeTavernMode(options.mode || tavernState.mode),
     providerName: requestedProvider,
     userText,
-    messages: getTavernMessages(character?.id).slice(-12),
+    messages,
+    contextPack,
     config
   };
   try {
@@ -1803,7 +1888,7 @@ async function buildApiTavernReply(userText, character = getTavernCharacter(), o
   } catch (serverError) {
     const providerName = resolveTavernProvider(config, requestedProvider);
     if (!providerName) throw new Error("请先在 API 配置里填写豆包、千问、Kimi、GPT、Gemini 或 Grok 的 Key 和模型，或配置可用的后端中转。");
-    const prompt = buildTavernApiPrompt(userText, character, options);
+    const prompt = buildTavernApiPrompt(userText, character, { ...options, messages, contextPack });
     return await callTavernProviderDirect(providerName, config, prompt);
   }
 }
@@ -2454,6 +2539,29 @@ function buildLocalTavernReply(userText, character = getTavernCharacter(), optio
   return `「${hook}」${characterName}看着你，语气保持在「${persona}」的方向上。关于“${cleanUserText}”，${world}。${mode.guide} 记忆里要先扣住「${memory}」。${mode.ending}`;
 }
 
+function updateTavernRollingMemory(character, userText, replyText) {
+  const user = compactTavernText(userText, 120);
+  const reply = compactTavernText(replyText, 160);
+  if (!user && !reply) return;
+  const base = String(tavernState.memory || "").replace(/\n?【自动上下文】[\s\S]*$/u, "").trim();
+  const previous = String(tavernState.memory || "")
+    .match(/【自动上下文】([\s\S]*)$/u)?.[1]
+    ?.split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean) || [];
+  const line = `- ${new Date().toLocaleString("zh-CN", { hour12: false })}｜${character?.name || "角色"}承接用户“${user}”，回应“${reply}”。`;
+  const nextLines = [...previous.filter((item) => item !== line), line].slice(-8);
+  tavernState.memory = [base, `【自动上下文】\n${nextLines.join("\n")}`].filter(Boolean).join("\n\n").slice(-2200);
+  if ($("#tavernMemoryInput")) $("#tavernMemoryInput").value = tavernState.memory;
+}
+
+async function appendEnhancedTavernReply(userText, character = getTavernCharacter(), options = {}) {
+  const reply = await buildTavernReply(userText, character, options);
+  appendTavernMessage("character", reply, character?.id);
+  updateTavernRollingMemory(character, userText, reply);
+  return reply;
+}
+
 async function sendTavernMessage() {
   const input = $("#tavernUserInput");
   const button = $("#sendTavernMessage");
@@ -2472,7 +2580,7 @@ async function sendTavernMessage() {
   setButtonBusy(button, true, tavernState.engine === "local" ? "本地生成中..." : "API 回复中...");
   button.dataset.busy = "yes";
   try {
-    appendTavernMessage("character", await buildTavernReply(text, character), character.id);
+    await appendEnhancedTavernReply(text, character);
     saveTavernState();
     renderTavernChat(character);
     renderTavernCharacterList();
@@ -2518,7 +2626,7 @@ async function continueTavernStory() {
   const lastText = messages.at(-1)?.text || character.greeting || "继续上一幕";
   const prompt = `继续剧情：${lastText}`;
   appendTavernMessage("user", "继续剧情", character.id);
-  appendTavernMessage("character", await buildTavernReply(prompt, character, { mode: tavernState.mode }), character.id);
+  await appendEnhancedTavernReply(prompt, character, { mode: tavernState.mode });
   saveTavernState();
   renderTavern();
 }
@@ -2536,7 +2644,7 @@ async function regenerateTavernReply() {
     renderTavern();
     return;
   }
-  appendTavernMessage("character", await buildTavernReply(`重写上一句：${lastUser}`, character, { mode: tavernState.mode }), character.id);
+  await appendEnhancedTavernReply(`重写上一句：${lastUser}`, character, { mode: tavernState.mode });
   saveTavernState();
   renderTavern();
   showToast("已重写最后一条角色回复。", "ok");
@@ -2563,7 +2671,7 @@ async function generateTavernScene() {
   if (!character) return;
   const source = getLastTavernUserPrompt(character) || getTavernMessages(character.id).at(-1)?.text || "把当前关系写成广播剧场景";
   appendTavernMessage("user", "生成广播剧场景", character.id);
-  appendTavernMessage("character", await buildTavernReply(source, character, { mode: "scene" }), character.id);
+  await appendEnhancedTavernReply(source, character, { mode: "scene" });
   saveTavernState();
   renderTavern();
 }
