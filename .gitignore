@@ -6,6 +6,8 @@ server.log
 .env
 .env.*
 !.env.example
+public/local-presets.js
+android/app/src/main/assets/public/local-presets.js
 Thumbs.db
 .DS_Store
 android/.gradle/

@@ -791,6 +791,26 @@ function deepMerge(base, extra) {
   return out;
 }
 
+function fillMissingConfig(target, source) {
+  for (const [key, value] of Object.entries(source || {})) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      target[key] ||= {};
+      fillMissingConfig(target[key], value);
+    } else if (target[key] === undefined || target[key] === null || target[key] === "") {
+      target[key] = value;
+    }
+  }
+  return target;
+}
+
+function getLocalPresetConfig() {
+  return structuredClone(globalThis.BAIZE_LOCAL_PRESETS?.config || {});
+}
+
+function applyLocalPresetConfig(config) {
+  return fillMissingConfig(structuredClone(config || defaultConfig), getLocalPresetConfig());
+}
+
 function getAppLanguage() {
   const value = localStorage.getItem(appLanguageKey) || "zh";
   return i18n[value] ? value : "zh";
@@ -890,9 +910,9 @@ function applyAppLanguage(language = getAppLanguage()) {
 
 function readStoredConfig() {
   try {
-    return deepMerge(defaultConfig, JSON.parse(localStorage.getItem("apiConfig") || "{}"));
+    return applyLocalPresetConfig(deepMerge(defaultConfig, JSON.parse(localStorage.getItem("apiConfig") || "{}")));
   } catch {
-    return structuredClone(defaultConfig);
+    return applyLocalPresetConfig(defaultConfig);
   }
 }
 
