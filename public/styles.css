@@ -3134,6 +3134,100 @@ button:not(:disabled):active,
   padding: 6px 9px;
 }
 
+.tavern-editor-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.tavern-editor-basics {
+  display: grid;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid rgba(55, 50, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.62);
+}
+
+.tavern-fold {
+  overflow: hidden;
+  border: 1px solid rgba(55, 50, 42, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.7);
+}
+
+.tavern-fold summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 46px;
+  padding: 10px 12px;
+  color: var(--ink);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tavern-fold summary::-webkit-details-marker {
+  display: none;
+}
+
+.tavern-fold summary span {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tavern-fold summary small {
+  overflow: hidden;
+  max-width: 128px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tavern-fold summary::after {
+  content: "⌄";
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(49, 95, 76, 0.1);
+  color: var(--moss);
+  font-weight: 900;
+  transition: transform 0.16s ease;
+}
+
+.tavern-fold[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.tavern-fold-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.tavern-editor-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tavern-editor-actions button {
+  width: 100%;
+  min-height: 42px;
+  padding-inline: 8px;
+}
+
 .tavern-local-note {
   display: grid;
   gap: 4px;
@@ -3147,8 +3241,32 @@ button:not(:disabled):active,
   line-height: 1.55;
 }
 
-.tavern-local-note strong {
+.tavern-local-note summary {
   color: var(--moss);
+  cursor: pointer;
+  font-weight: 900;
+  list-style: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tavern-local-note summary::-webkit-details-marker {
+  display: none;
+}
+
+.tavern-local-note summary::after {
+  content: " · 点击展开";
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tavern-local-note[open] summary::after {
+  content: " · 点击收起";
+}
+
+.tavern-local-note span {
+  padding-top: 4px;
 }
 
 .tavern-chat-panel {

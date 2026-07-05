@@ -216,10 +216,10 @@
                 </div>
               </div>
               <div id="tavernCharacterList" class="tavern-character-list"></div>
-              <div class="tavern-local-note">
-                <strong>本地运行</strong>
+              <details class="tavern-local-note">
+                <summary>本地运行说明</summary>
                 <span>当前为本地规则引擎，不上传角色卡、世界书、记忆和聊天记录。</span>
-              </div>
+              </details>
             </section>
 
             <section class="panel tavern-chat-panel">
@@ -288,31 +288,49 @@
                   <p>这里保存的是本地角色设定，不依赖云端。</p>
                 </div>
               </div>
-              <label class="field">
-                <span>角色名</span>
-                <input id="tavernNameInput" type="text" placeholder="例如：白泽掌柜" />
-              </label>
-              <label class="field">
-                <span>一句话设定</span>
-                <input id="tavernTaglineInput" type="text" placeholder="例如：记忆很好、语气温和的酒馆掌柜" />
-              </label>
-              <label class="field">
-                <span>角色设定</span>
-                <textarea id="tavernPersonaInput" class="short-textarea" placeholder="写角色性格、说话方式、背景、禁忌。"></textarea>
-              </label>
-              <label class="field">
-                <span>开场白</span>
-                <textarea id="tavernGreetingInput" class="short-textarea" placeholder="角色第一次出场时说的话。"></textarea>
-              </label>
-              <label class="field">
-                <span>世界书</span>
-                <textarea id="tavernWorldInput" class="short-textarea" placeholder="地点、阵营、规则、重要道具、人物关系。"></textarea>
-              </label>
-              <label class="field">
-                <span>本地记忆</span>
-                <textarea id="tavernMemoryInput" class="short-textarea" placeholder="记录长期关系、伏笔、用户偏好和上一幕结论。可以点“整理记忆”从当前聊天自动提取。"></textarea>
-              </label>
-              <div class="actions">
+              <div class="tavern-editor-basics">
+                <label class="field">
+                  <span>角色名</span>
+                  <input id="tavernNameInput" type="text" placeholder="例如：白泽掌柜" />
+                </label>
+                <label class="field">
+                  <span>一句话设定</span>
+                  <input id="tavernTaglineInput" type="text" placeholder="例如：记忆很好、语气温和的酒馆掌柜" />
+                </label>
+              </div>
+              <details class="tavern-fold" open>
+                <summary>
+                  <span>角色详细设定</span>
+                  <small>人设 / 开场白</small>
+                </summary>
+                <div class="tavern-fold-body">
+                  <label class="field">
+                    <span>角色设定</span>
+                    <textarea id="tavernPersonaInput" class="short-textarea" placeholder="写角色性格、说话方式、背景、禁忌。"></textarea>
+                  </label>
+                  <label class="field">
+                    <span>开场白</span>
+                    <textarea id="tavernGreetingInput" class="short-textarea" placeholder="角色第一次出场时说的话。"></textarea>
+                  </label>
+                </div>
+              </details>
+              <details class="tavern-fold">
+                <summary>
+                  <span>世界书与记忆</span>
+                  <small>世界规则 / 长期记忆</small>
+                </summary>
+                <div class="tavern-fold-body">
+                  <label class="field">
+                    <span>世界书</span>
+                    <textarea id="tavernWorldInput" class="short-textarea" placeholder="地点、阵营、规则、重要道具、人物关系。"></textarea>
+                  </label>
+                  <label class="field">
+                    <span>本地记忆</span>
+                    <textarea id="tavernMemoryInput" class="short-textarea" placeholder="记录长期关系、伏笔、用户偏好和上一幕结论。可以点“整理记忆”从当前聊天自动提取。"></textarea>
+                  </label>
+                </div>
+              </details>
+              <div class="actions tavern-editor-actions">
                 <button id="saveTavernCharacter" class="primary">保存角色</button>
                 <button id="summarizeTavernMemory" class="secondary">整理记忆</button>
                 <button id="deleteTavernCharacter" class="secondary danger">删除角色</button>
@@ -884,7 +902,7 @@
               <h3>DeepSeek：酒馆与客服闲聊</h3>
               <p>官方 DeepSeek Key，主要用于酒馆 API 模式、白泽小助手闲聊和低成本中文对话。</p>
               <label>接口地址<input data-config="deepseek.baseUrl" placeholder="https://api.deepseek.com/chat/completions" /></label>
-              <label>模型 ID<input data-config="deepseek.model" placeholder="deepseek-v4-flash" /></label>
+              <label>模型 ID<input data-config="deepseek.model" placeholder="deepseek-v4-pro" /></label>
               <label>API Key<input data-config="deepseek.apiKey" type="password" placeholder="DeepSeek API Key" /></label>
               <div class="tutorial">DeepSeek 使用 OpenAI 兼容格式。也可填 https://api.deepseek.com，App 会自动补 /chat/completions。</div>
             </section>

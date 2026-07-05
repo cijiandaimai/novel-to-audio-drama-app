@@ -17,7 +17,7 @@ const defaultConfig = {
   },
   deepseek: {
     baseUrl: "https://api.deepseek.com/chat/completions",
-    model: "deepseek-v4-flash",
+    model: "deepseek-v4-pro",
     apiKey: ""
   },
   gemini: {
@@ -307,6 +307,7 @@ const playerRateKey = "playerPlaybackRate";
 const appIntroSeenKey = "appIntroSeen";
 const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
+const deepseekModelUpgradeKey = "deepseekModelUpgrade20260705";
 const assistantMessagesKey = "assistantMessages";
 const assistantOpenKey = "assistantOpen";
 const assistantHiddenKey = "assistantHidden";
@@ -587,7 +588,7 @@ const apiHelp = {
   "deepseek.model": {
     title: "DeepSeek 模型 ID",
     url: "https://api-docs.deepseek.com/quick_start/pricing",
-    text: "官方当前模型可填 deepseek-v4-flash 或 deepseek-v4-pro。主要用于酒馆 API 模式和白泽小助手闲聊。"
+    text: "酒馆默认推荐 deepseek-v4-pro，适合复杂角色扮演、长上下文和剧情推进；需要省额度时可改为 deepseek-v4-flash。"
   },
   "deepseek.apiKey": {
     title: "DeepSeek API Key",
@@ -858,6 +859,17 @@ function applyLocalPresetConfig(config) {
   return fillMissingConfig(structuredClone(config || defaultConfig), getLocalPresetConfig());
 }
 
+function upgradeDeepSeekDefaultModel(config) {
+  const legacy = ["", "deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"];
+  config.deepseek ||= {};
+  if (!localStorage.getItem(deepseekModelUpgradeKey) && legacy.includes(String(config.deepseek.model || ""))) {
+    config.deepseek.model = "deepseek-v4-pro";
+    localStorage.setItem(deepseekModelUpgradeKey, "yes");
+    localStorage.setItem("apiConfig", JSON.stringify(config));
+  }
+  return config;
+}
+
 function getAppLanguage() {
   const value = localStorage.getItem(appLanguageKey) || "zh";
   return i18n[value] ? value : "zh";
@@ -957,7 +969,7 @@ function applyAppLanguage(language = getAppLanguage()) {
 
 function readStoredConfig() {
   try {
-    return applyLocalPresetConfig(fillMissingConfig(deepMerge(defaultConfig, JSON.parse(localStorage.getItem("apiConfig") || "{}")), defaultConfig));
+    return upgradeDeepSeekDefaultModel(applyLocalPresetConfig(fillMissingConfig(deepMerge(defaultConfig, JSON.parse(localStorage.getItem("apiConfig") || "{}")), defaultConfig)));
   } catch {
     return applyLocalPresetConfig(defaultConfig);
   }
@@ -1775,6 +1787,19 @@ function buildTavernContextPack(userText, character = getTavernCharacter(), opti
   const messages = Array.isArray(options.messages) ? options.messages : getTavernMessages(character?.id);
   const modeId = normalizeTavernMode(options.mode || tavernState.mode);
   const mode = tavernModes[modeId] || tavernModes.story;
+  const previousCharacter = messages.slice().reverse().find((message) => message.role === "character")?.text || character?.greeting || "";
+  const previousUser = messages.slice().reverse().find((message) => message.role === "user" && message.text !== userText)?.text || "";
+  const cleanInput = compactTavernText(userText, 260);
+  const shortInput = cleanInput.length <= 18;
+  const isQuestion = /[?？吗呢么如何怎么为什么]/.test(cleanInput);
+  const promptOptimization = [
+    "【用户输入优化】",
+    `原始输入：${cleanInput || "无"}`,
+    `隐含指向：${shortInput ? "短输入，默认承接上一轮角色动作、情绪和未解决问题。" : "完整输入，先回应当下意图，再接回酒馆时间线。"}`,
+    `回复目标：${isQuestion ? "先回答问题，再用角色视角推进一个可继续的选择。" : "保持角色口吻，推动关系、交易、逃难或秘密线索继续前进。"}`,
+    `承接依据：上一句角色“${compactTavernText(previousCharacter, 160) || "无"}”；上一句用户“${compactTavernText(previousUser, 120) || "无"}”。`,
+    "禁止事项：不要重启新场景；不要泛泛安慰；不要忽略酒馆规矩；不要让角色突然知道上下文外的信息。"
+  ].join("\n");
   return [
     "【上下文增强包】",
     `当前模式：${mode.label}`,
@@ -1784,6 +1809,7 @@ function buildTavernContextPack(userText, character = getTavernCharacter(), opti
     `长期记忆：${compactTavernText(tavernState.memory || "暂无长期记忆", 1000)}`,
     "【连续性锚点】",
     inferTavernContinuity(userText, character, messages),
+    promptOptimization,
     "【最近时间线】",
     buildTavernTimeline(messages, character) || "暂无对话历史"
   ].join("\n");
@@ -1850,8 +1876,8 @@ async function callTavernProviderDirect(providerName, config, prompt) {
   }, config.network);
   let response = await callChat();
   const text = await response.text();
-  if (!response.ok && providerName === "deepseek" && provider.model !== "deepseek-chat") {
-    response = await callChat("deepseek-chat");
+  if (!response.ok && providerName === "deepseek" && provider.model !== "deepseek-v4-flash") {
+    response = await callChat("deepseek-v4-flash");
     const retryText = await response.text();
     if (!response.ok) throw new Error(`模型接口调用失败：${response.status} ${retryText.slice(0, 400)}；首次错误：${text.slice(0, 240)}`);
     const retryData = JSON.parse(retryText);
@@ -7272,7 +7298,9 @@ function applyNetworkPreset(profile) {
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
     config.deepseek ||= {};
     config.deepseek.baseUrl = "https://api.deepseek.com/chat/completions";
-    config.deepseek.model ||= "deepseek-v4-flash";
+    config.deepseek.model = config.deepseek.model && !["deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"].includes(config.deepseek.model)
+      ? config.deepseek.model
+      : "deepseek-v4-pro";
     config.qwen.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     config.kimi.baseUrl = "https://api.moonshot.cn/v1/chat/completions";
     config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
@@ -7287,7 +7315,9 @@ function applyNetworkPreset(profile) {
     config.gemini.endpoint = "";
     config.deepseek ||= {};
     config.deepseek.baseUrl = "https://api.deepseek.com/chat/completions";
-    config.deepseek.model ||= "deepseek-v4-flash";
+    config.deepseek.model = config.deepseek.model && !["deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash"].includes(config.deepseek.model)
+      ? config.deepseek.model
+      : "deepseek-v4-pro";
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
     config.qwen.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     config.kimi.baseUrl = "https://api.moonshot.cn/v1/chat/completions";

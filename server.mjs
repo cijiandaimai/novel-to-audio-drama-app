@@ -389,7 +389,7 @@ function applyServerManagedConfig(clientConfig = {}) {
   config.network = withServerProvider(config.network, managed.network);
   config.gpt.baseUrl ||= DEFAULT_GPT_CHAT_URL;
   config.deepseek.baseUrl ||= DEFAULT_DEEPSEEK_URL;
-  config.deepseek.model ||= "deepseek-v4-flash";
+  config.deepseek.model ||= "deepseek-v4-pro";
   config.doubao.baseUrl ||= DEFAULT_DOUBAO_CHAT_URL;
   config.qwen.baseUrl ||= DEFAULT_QWEN_URL;
   config.qwenTts.endpoint ||= DEFAULT_QWEN_TTS_URL;
@@ -552,8 +552,8 @@ async function callOpenAICompatible(provider, messages, temperature = 0.4, netwo
   }, network);
   let response = await callChat();
   const text = await response.text();
-  if (!response.ok && /api\.deepseek\.com/i.test(url) && provider.model !== "deepseek-chat") {
-    response = await callChat("deepseek-chat");
+  if (!response.ok && /api\.deepseek\.com/i.test(url) && provider.model !== "deepseek-v4-flash") {
+    response = await callChat("deepseek-v4-flash");
     const retryText = await response.text();
     if (!response.ok) {
       throw new Error(`DeepSeek 调用失败：${response.status} ${retryText.slice(0, 800)} | first: ${text.slice(0, 300)}`);
@@ -961,7 +961,17 @@ function buildTavernContextPack(input = {}) {
   const mode = tavernModePrompts[modeId] || tavernModePrompts.story;
   const previousCharacter = messages.slice().reverse().find((message) => message.role !== "user")?.text || character.greeting || "";
   const previousUser = messages.slice().reverse().find((message) => message.role === "user" && message.text !== input.userText)?.text || "";
-  const shortInput = compactTavernText(input.userText, 80).length <= 18;
+  const cleanInput = compactTavernText(input.userText, 260);
+  const shortInput = cleanInput.length <= 18;
+  const isQuestion = /[?？吗呢么如何怎么为什么]/.test(cleanInput);
+  const promptOptimization = [
+    "【用户输入优化】",
+    `原始输入：${cleanInput || "无"}`,
+    `隐含指向：${shortInput ? "短输入，默认承接上一轮角色动作、情绪和未解决问题。" : "完整输入，先回应当下意图，再接回酒馆时间线。"}`,
+    `回复目标：${isQuestion ? "先回答问题，再用角色视角推进一个可继续的选择。" : "保持角色口吻，推动关系、交易、逃难或秘密线索继续前进。"}`,
+    `承接依据：上一句角色“${compactTavernText(previousCharacter, 160) || "无"}”；上一句用户“${compactTavernText(previousUser, 120) || "无"}”。`,
+    "禁止事项：不要重启新场景；不要泛泛安慰；不要忽略酒馆规矩；不要让角色突然知道上下文外的信息。"
+  ].join("\n");
   return [
     "【上下文增强包】",
     `当前模式：${mode.label}`,
@@ -975,6 +985,7 @@ function buildTavernContextPack(input = {}) {
     `当前用户输入：${compactTavernText(input.userText, 260) || "无"}`,
     shortInput ? "当前输入很短：必须主动承接上一轮剧情，不得开启全新话题。" : "当前输入较完整：先回应当下意图，再延续上一轮剧情。",
     "回复必须包含一个来自上一轮的动作、情绪、地点、物件或未解决问题。",
+    promptOptimization,
     "【最近时间线】",
     buildTavernTimeline(messages, character) || "暂无对话历史"
   ].join("\n");
