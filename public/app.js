@@ -7683,6 +7683,23 @@ function initWaterRippleTouch() {
   }, { capture: true, passive: true });
 }
 
+function updateViewportMetrics() {
+  const viewport = window.visualViewport;
+  const width = Math.round(viewport?.width || window.innerWidth || document.documentElement.clientWidth || 360);
+  const height = Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight || 640);
+  document.documentElement.style.setProperty("--app-width", `${width}px`);
+  document.documentElement.style.setProperty("--app-height", `${height}px`);
+  document.documentElement.style.setProperty("--keyboard-offset", `${Math.max(0, (window.innerHeight || height) - height)}px`);
+}
+
+function initViewportCompatibility() {
+  updateViewportMetrics();
+  window.addEventListener("resize", updateViewportMetrics, { passive: true });
+  window.addEventListener("orientationchange", () => window.setTimeout(updateViewportMetrics, 180), { passive: true });
+  window.visualViewport?.addEventListener?.("resize", updateViewportMetrics, { passive: true });
+  window.visualViewport?.addEventListener?.("scroll", updateViewportMetrics, { passive: true });
+}
+
 function initFocusScrollAssist() {
   document.addEventListener("focusin", (event) => {
     const target = event.target;
@@ -8234,6 +8251,7 @@ function bindEvents() {
 }
 
 decorateApiHelpFields();
+initViewportCompatibility();
 document.body.dataset.view = "discover";
 setEditorContext("studio");
 loadConfigIntoForm();

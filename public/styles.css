@@ -1,4 +1,7 @@
 :root {
+  --app-width: 100vw;
+  --app-height: 100vh;
+  --bottom-nav-height: 88px;
   --paper: #f7f2e7;
   --paper-deep: #ece2cf;
   --panel: rgba(255, 252, 244, 0.9);
@@ -22,9 +25,21 @@
   box-sizing: border-box;
 }
 
+html {
+  min-width: 320px;
+  min-height: 100%;
+  overflow-x: hidden;
+  background: var(--paper);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   min-width: 320px;
+  min-height: var(--app-height);
+  overflow-x: hidden;
+  overscroll-behavior-y: none;
   background:
     linear-gradient(115deg, rgba(255, 255, 255, 0.28), transparent 34%),
     repeating-linear-gradient(90deg, rgba(84, 72, 52, 0.035) 0 1px, transparent 1px 18px),
@@ -136,6 +151,7 @@ input,
 textarea,
 select {
   font: inherit;
+  max-width: 100%;
 }
 
 button {
@@ -3976,6 +3992,325 @@ body[data-route-motion="none"] .view.active {
   button:not(:disabled):active,
   .tool-card:active {
     transform: none;
+  }
+}
+
+/* Android and mixed-screen compatibility layer */
+.app-shell {
+  min-height: var(--app-height);
+}
+
+.main {
+  min-width: 0;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 24px);
+}
+
+.sidebar {
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+}
+
+.player-art {
+  height: min(760px, calc(var(--app-height) - 124px));
+}
+
+.player-art:fullscreen,
+.player-art.is-player-fullscreen {
+  width: var(--app-width);
+  height: var(--app-height);
+  min-height: var(--app-height);
+}
+
+.editor-main-panel {
+  height: calc(var(--app-height) - 128px);
+}
+
+.modal {
+  padding:
+    max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+}
+
+.modal-panel {
+  max-height: calc(var(--app-height) - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+.assistant-dock {
+  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 8px);
+}
+
+.assistant-panel {
+  max-height: min(680px, calc(var(--app-height) - var(--bottom-nav-height) - 32px));
+}
+
+.panel,
+.sample-card,
+.history-item,
+.config-grid .panel,
+.tavern-chat-panel,
+.tavern-editor-panel {
+  min-width: 0;
+}
+
+.primary,
+.secondary,
+.image-picker,
+.nav-item,
+.editor-menu-button,
+.player-skip-button,
+.player-play-toggle,
+.api-help-button,
+.api-test-button {
+  min-height: 44px;
+}
+
+.primary,
+.secondary,
+.image-picker,
+.editor-fast-actions button,
+.selected-clip-actions button,
+.clip-actions button,
+.tavern-chat-actions button,
+.tavern-role-actions button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.page-head,
+.panel-title-row,
+.status-head,
+.tavern-chat-head,
+.speaker-now,
+.player-meta-row,
+.history-item {
+  min-width: 0;
+}
+
+.page-head > *,
+.panel-title-row > *,
+.status-head > *,
+.tavern-chat-head > *,
+.speaker-now > *,
+.history-item > * {
+  min-width: 0;
+}
+
+.page-note,
+.panel p,
+.result-box,
+.tutorial,
+.api-help,
+.assistant-message p,
+.tavern-message p,
+.playlist-play strong,
+.playlist-play span,
+.clip-head strong,
+.clip-head span {
+  overflow-wrap: anywhere;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  textarea {
+    min-height: 220px;
+  }
+
+  .page-head h2 {
+    font-size: clamp(22px, 7vw, 30px);
+  }
+
+  .primary:hover,
+  .secondary:hover {
+    transform: none;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --bottom-nav-height: 78px;
+  }
+
+  .main {
+    padding-top: 16px;
+  }
+
+  .sidebar {
+    width: calc(100vw - 14px);
+    max-width: 520px;
+  }
+
+  .nav {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .nav-item {
+    min-height: 50px;
+    padding: 5px 2px;
+  }
+
+  .nav-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .speaker-stage .player-art {
+    min-height: min(640px, calc(var(--app-height) - 150px));
+  }
+
+  .player-art {
+    height: auto;
+    min-height: min(620px, calc(var(--app-height) - 150px));
+  }
+
+  .player-control-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .player-rate,
+  .player-volume,
+  #playerLoopMode {
+    grid-column: 1 / -1;
+  }
+
+  .config-grid,
+  .essential-provider,
+  .creator-layout,
+  .sample-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assistant-panel {
+    width: calc(100vw - 18px);
+    right: calc(-1 * min(76px, 20vw));
+  }
+}
+
+@media (max-width: 380px) {
+  :root {
+    --bottom-nav-height: 74px;
+  }
+
+  .main {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .sidebar {
+    width: calc(100vw - 8px);
+    padding: 5px;
+    border-radius: 16px;
+  }
+
+  .nav-item {
+    min-height: 48px;
+    font-size: 10px;
+    gap: 2px;
+  }
+
+  .panel,
+  .sample-card {
+    padding: 12px;
+  }
+
+  .player-shade {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .player-controls {
+    padding: 10px;
+  }
+
+  .editor-fast-actions,
+  .selected-clip-actions,
+  .editor-clip-tool-strip {
+    gap: 4px;
+  }
+
+  .editor-fast-actions button,
+  .selected-clip-actions button,
+  .editor-clip-tool-strip button {
+    min-height: 34px;
+    padding: 4px 3px;
+    font-size: 11px;
+  }
+}
+
+@media (max-height: 620px) and (orientation: landscape) {
+  :root {
+    --bottom-nav-height: 66px;
+  }
+
+  .sidebar {
+    width: min(720px, calc(100vw - 16px));
+    padding: 5px 8px;
+    grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .nav-item {
+    min-height: 42px;
+    flex-direction: row;
+    font-size: 11px;
+  }
+
+  .nav-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  .main {
+    padding-top: 10px;
+    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 12px);
+  }
+
+  .page-head {
+    margin-bottom: 12px;
+  }
+
+  .speaker-stage .player-art,
+  .player-art {
+    min-height: calc(var(--app-height) - 92px);
+  }
+
+  body[data-view="editor"] .main {
+    padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+
+  .editor-main-panel {
+    height: calc(var(--app-height) - 76px);
+  }
+
+  .studio-transport {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .studio-timecode {
+    order: 0;
+    grid-column: auto;
+  }
+
+  .editor-fast-workflow {
+    max-height: 30vh;
+  }
+
+  .editor-drawer {
+    top: 108px;
+    bottom: 118px;
   }
 }
 
