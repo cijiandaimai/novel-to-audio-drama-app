@@ -296,6 +296,7 @@ const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
 const assistantMessagesKey = "assistantMessages";
 const assistantOpenKey = "assistantOpen";
+const apiSaveReminderKey = "apiSaveReminderShown";
 const tavernCharactersKey = "tavernCharacters";
 const tavernSessionsKey = "tavernSessions";
 const tavernActiveCharacterKey = "tavernActiveCharacter";
@@ -466,6 +467,7 @@ const assistantState = {
 };
 
 let lastHomeBackAt = 0;
+let configSaveReminderTimer = null;
 
 const apiHelp = {
   "workflow.plan": {
@@ -4306,6 +4308,16 @@ function decorateApiHelpFields() {
     button.setAttribute("aria-expanded", "false");
     button.textContent = "?";
     row.appendChild(button);
+    if (isApiValueField(field.dataset.config)) {
+      row.classList.add("with-test");
+      const testButton = document.createElement("button");
+      testButton.type = "button";
+      testButton.className = "api-test-button";
+      testButton.dataset.configTest = field.dataset.config;
+      testButton.textContent = "测";
+      testButton.title = "测试这个 API 的网络连通性";
+      row.appendChild(testButton);
+    }
     const panel = document.createElement("div");
     panel.className = "api-help hidden";
     panel.dataset.apiHelpPanel = field.dataset.config;
@@ -6627,6 +6639,10 @@ function saveConfigFromForm() {
   });
   localStorage.setItem("apiConfig", JSON.stringify(config));
   markConfigDirty(false);
+  sessionStorage.removeItem(apiSaveReminderKey);
+  if ($("#assistantDock")) {
+    appendAssistantMessage("assistant", "配置已经保存。现在可以回到创作、酒馆或悬浮小助手里测试调用；如果安卓真机要访问电脑上的本地兼容服务，记得把 localhost 换成电脑局域网 IP。");
+  }
   showToast("配置已保存在本机。正式产品建议改为服务端加密保存。", "ok");
 }
 
@@ -6662,6 +6678,77 @@ function copyCompatToGptFields() {
   config.compatGpt.enabled = "yes";
   saveConfigObject(config);
   showToast("已把第三方兼容服务接入 GPT 工作流。", "ok");
+}
+
+function collectConfigFromForm() {
+  const config = getConfig({ effective: false });
+  $$("[data-config]").forEach((field) => {
+    setByPath(config, field.dataset.config, field.value.trim());
+  });
+  return applyCompatGptFallback(config);
+}
+
+function getConfigTestLabel(path = "") {
+  if (path.startsWith("compatGpt.")) return "第三方 GPT";
+  if (path.startsWith("gptImage.")) return "GPT 图片";
+  if (path.startsWith("doubaoImage.")) return "豆包图片";
+  if (path.startsWith("qwenTts.")) return "千问 TTS";
+  if (path.startsWith("gpt.")) return "GPT";
+  if (path.startsWith("gemini.")) return "Gemini";
+  if (path.startsWith("doubao.")) return "豆包文本";
+  if (path.startsWith("qwen.")) return "千问";
+  if (path.startsWith("kimi.")) return "Kimi";
+  if (path.startsWith("audio.")) return "豆包音频";
+  if (path.startsWith("asr.")) return "豆包语音识别";
+  if (path.startsWith("grok.")) return "Grok";
+  if (path === "network.relayBaseUrl") return "中转服务";
+  return "";
+}
+
+function isApiValueField(path = "") {
+  return Boolean(getConfigTestLabel(path)) && !path.includes("timeoutSeconds") && !path.includes("retryCount") && !path.includes("profile");
+}
+
+function showApiSaveReminder(field) {
+  if (!field || !isApiValueField(field.dataset.config) || !String(field.value || "").trim()) return;
+  if (sessionStorage.getItem(apiSaveReminderKey) === "yes") return;
+  clearTimeout(configSaveReminderTimer);
+  configSaveReminderTimer = setTimeout(() => {
+    sessionStorage.setItem(apiSaveReminderKey, "yes");
+    assistantState.open = true;
+    assistantState.tab = "chat";
+    appendAssistantMessage("assistant", "我看到你正在填写 API。填完 Key、模型 ID 和接口地址以后，记得点“保存配置”，否则创作、酒馆和图片功能仍会使用旧配置。保存后可以点输入框旁边的“测”先做连通检查。");
+    showToast("API 填完后记得点保存配置。", "ok");
+  }, 550);
+}
+
+async function testConfigField(path, button = null) {
+  const label = getConfigTestLabel(path);
+  if (!label) return;
+  const config = collectConfigFromForm();
+  let url = getProbeUrl(label, config);
+  if (label === "第三方 GPT") url = config.compatGpt?.baseUrl || "";
+  setButtonBusy(button, true, "测...");
+  try {
+    let result;
+    if (getRelayBaseUrl(config)) {
+      const server = await apiJson("/api/network-test", { config, labels: [label === "第三方 GPT" ? "GPT" : label] }, config);
+      result = server.results?.[0] || { ok: false, message: "后端没有返回测试结果。" };
+    } else {
+      result = await probeNetwork(label, url, Math.max(5000, Math.min(30000, Number(config.network?.timeoutSeconds || 15) * 1000)));
+    }
+    const status = $("#networkStatus");
+    if (status) {
+      status.innerHTML = `<p class="${result.ok ? "ok" : "fail"}"><strong>${escapeHtml(label)}</strong>：${escapeHtml(result.message || "")}<br /><span class="hint">这是连通性测试；Key、余额和模型权限仍以实际生成时的返回为准。测试前也建议先点“保存配置”。</span></p>`;
+    }
+    showToast(`${label}测试${result.ok ? "完成" : "失败"}`, result.ok ? "ok" : "fail");
+  } catch (error) {
+    const status = $("#networkStatus");
+    if (status) status.innerHTML = `<p class="fail"><strong>${escapeHtml(label)}</strong>：${escapeHtml(error.message)}</p>`;
+    showToast(`${label}测试失败：${error.message}`, "fail");
+  } finally {
+    setButtonBusy(button, false);
+  }
 }
 
 function applyNetworkPreset(profile) {
@@ -6701,14 +6788,18 @@ function applyNetworkPreset(profile) {
 }
 
 function getProbeUrl(label, config) {
+  if (label === "第三方 GPT") return config.compatGpt?.baseUrl || "";
   if (label === "GPT") return config.gpt?.baseUrl || defaultConfig.gpt.baseUrl;
   if (label === "Gemini") return config.gemini?.endpoint || "https://generativelanguage.googleapis.com/";
   if (label === "豆包文本") return config.doubao?.baseUrl || defaultConfig.doubao.baseUrl;
   if (label === "千问") return config.qwen?.baseUrl || defaultConfig.qwen.baseUrl;
   if (label === "Kimi") return config.kimi?.baseUrl || defaultConfig.kimi.baseUrl;
+  if (label === "千问 TTS") return config.qwenTts?.endpoint || defaultConfig.qwenTts.endpoint;
   if (label === "豆包音频") return config.audio?.endpoint || defaultConfig.audio.endpoint;
   if (label === "豆包语音识别") return config.asr?.endpoint || defaultConfig.asr.endpoint;
   if (label === "Grok") return config.grok?.baseUrl || defaultConfig.grok.baseUrl;
+  if (label === "GPT 图片") return config.gptImage?.endpoint || defaultConfig.gptImage.endpoint;
+  if (label === "豆包图片") return config.doubaoImage?.endpoint || defaultConfig.doubaoImage.endpoint;
   if (label === "中转服务") return config.network?.relayBaseUrl || "";
   return "";
 }
@@ -6748,7 +6839,7 @@ async function testNetworkRoutes() {
   try {
     $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
     const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
-    const labels = ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "豆包语音识别", "Grok"];
+    const labels = ["GPT", "第三方 GPT", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"];
     if (config.network?.relayBaseUrl) labels.push("中转服务");
     let results = [];
     let serverManaged = null;
@@ -7350,8 +7441,17 @@ function bindEvents() {
     $(selector)?.addEventListener("input", saveCreatorDraft);
   });
   $$("[data-config]").forEach((field) => {
-    field.addEventListener("input", () => markConfigDirty(true));
-    field.addEventListener("change", () => markConfigDirty(true));
+    field.addEventListener("input", () => {
+      markConfigDirty(true);
+      showApiSaveReminder(field);
+    });
+    field.addEventListener("change", () => {
+      markConfigDirty(true);
+      showApiSaveReminder(field);
+    });
+  });
+  $$("[data-config-test]").forEach((button) => {
+    button.addEventListener("click", () => testConfigField(button.dataset.configTest, button));
   });
   getSpeechInputButtons().forEach((button) => {
     button.addEventListener("click", () => toggleSpeechInput(button.dataset.speechInput));

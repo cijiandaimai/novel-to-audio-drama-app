@@ -451,6 +451,7 @@ async function fetchWithNetwork(url, options = {}, network = {}) {
 }
 
 function getProbeUrl(label, config = {}) {
+  if (String(label || "").includes("第三方 GPT")) return config.compatGpt?.baseUrl || config.gpt?.baseUrl || DEFAULT_GPT_CHAT_URL;
   if (String(label || "").includes("千问 TTS")) return config.qwenTts?.endpoint || DEFAULT_QWEN_TTS_URL;
   if (String(label || "").includes("GPT 图片")) return config.gptImage?.endpoint || DEFAULT_GPT_IMAGE_URL;
   if (String(label || "").includes("豆包图片")) return config.doubaoImage?.endpoint || DEFAULT_DOUBAO_IMAGE_URL;
