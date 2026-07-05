@@ -7480,7 +7480,7 @@ function applyNetworkPreset(profile) {
   }
   saveConfigObject(config);
   const label = useProxy ? "系统代理优先" : "中国大陆优先";
-  $("#networkStatus").innerHTML = `<p class="ok">已套用「${label}」线路预设，记得保存或继续填写 API Key。</p>`;
+  $("#networkStatus").innerHTML = `<p class="ok">已套用「${label}」线路预设，当前配置会自动保存在本机，可继续填写 API Key 或直接测试连通性。</p>`;
   showToast(`已套用「${label}」线路预设。`, "ok");
 }
 

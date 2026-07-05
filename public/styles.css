@@ -4527,3 +4527,215 @@ body.keyboard-open .assistant-compose {
     transform: translateY(0) scale(1);
   }
 }
+
+/* Mobile interaction polish: keep the primary controls reachable above the fixed nav. */
+@media (max-width: 760px) {
+  .speaker-stage .player-art {
+    height: calc(var(--app-height) - var(--bottom-nav-height) - 124px);
+    min-height: 0;
+  }
+
+  .player-shade {
+    justify-content: flex-start;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .speaker-now {
+    order: 1;
+    flex: 0 0 auto;
+  }
+
+  .player-actions {
+    order: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: 0 0 auto;
+  }
+
+  .lyric-panel {
+    order: 3;
+    min-height: 132px;
+    max-height: 178px;
+    padding: 24px 12px;
+    flex: 0 0 auto;
+  }
+
+  .player-controls {
+    order: 4;
+    gap: 9px;
+    padding: 11px;
+    flex: 0 0 auto;
+  }
+
+  .player-control-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  #playerLoopMode,
+  .player-rate,
+  .player-volume {
+    grid-column: auto;
+    min-width: 0;
+  }
+
+  .player-rate span,
+  .player-volume span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .player-meta-row {
+    order: 5;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .player-import-memory {
+    order: 6;
+  }
+
+  .player-more {
+    order: 7;
+  }
+
+  .player-playlist {
+    order: 8;
+    flex: 0 0 auto;
+  }
+
+  .player-playlist-list {
+    max-height: 126px;
+  }
+
+  .source-credit {
+    margin-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  #create .creator-main-layout .actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  #create .creator-main-layout .actions #runButton {
+    grid-column: 1 / -1;
+  }
+
+  .tavern-chat-panel {
+    order: 1;
+    grid-template-rows: auto auto auto minmax(220px, 1fr);
+  }
+
+  .tavern-role-panel {
+    order: 2;
+  }
+
+  .tavern-editor-panel {
+    order: 3;
+  }
+
+  .tavern-character-list {
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(178px, 74%);
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .tavern-character-card {
+    scroll-snap-align: start;
+  }
+
+  .tavern-mode-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .tavern-mode-row label {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .tavern-mode-row label span {
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .tavern-mode-row select {
+    min-height: 38px;
+    padding-inline: 6px;
+  }
+
+  .tavern-quick-actions {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .tavern-quick-actions button {
+    min-height: 36px;
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+
+  .tavern-chat-log {
+    order: 4;
+    min-height: 260px;
+    max-height: 42vh;
+  }
+
+  .tavern-compose {
+    order: 3;
+  }
+}
+
+@media (max-width: 560px) {
+  .speaker-stage .player-art {
+    height: calc(var(--app-height) - var(--bottom-nav-height) - 116px);
+  }
+
+  .player-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .player-control-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .player-skip-button,
+  .player-play-toggle {
+    min-height: 40px;
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+
+  .player-rate,
+  .player-volume {
+    font-size: 10px;
+  }
+
+  .player-rate select {
+    min-height: 34px;
+    padding-inline: 4px;
+  }
+
+  .editor-menu-tabs {
+    padding: 2px 2px 4px;
+    scroll-padding-inline: 6px;
+  }
+
+  .editor-menu-button {
+    flex-basis: 62px;
+    min-width: 62px;
+  }
+}
+
+@media (max-width: 760px) and (hover: none) and (pointer: coarse) {
+  body.keyboard-open .sidebar {
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, calc(100% + 18px));
+    transition: opacity 0.16s ease, transform 0.16s ease;
+  }
+}
