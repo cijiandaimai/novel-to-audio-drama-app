@@ -143,6 +143,7 @@ button {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+  touch-action: manipulation;
 }
 
 button:disabled {
@@ -933,13 +934,16 @@ textarea {
 
 .editor-fast-actions {
   display: none;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(56px, 1fr));
   gap: 6px;
 }
 
 .editor-fast-actions button {
   min-height: 36px;
-  padding: 6px 7px;
+  padding: 6px 5px;
+  font-size: 12px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .editor-fast-status {
@@ -984,13 +988,16 @@ textarea {
 
 .selected-clip-actions {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, auto));
+  grid-template-columns: repeat(5, minmax(40px, 1fr));
   gap: 6px;
 }
 
 .selected-clip-actions button {
   min-height: 32px;
-  padding: 6px 9px;
+  padding: 6px 5px;
+  font-size: 12px;
+  line-height: 1.1;
+  white-space: nowrap;
 }
 
 .editor-clip-tool-strip {
@@ -1516,14 +1523,15 @@ body[data-view="editor"] .main {
 }
 
 .clip-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .clip-actions button {
   min-height: 34px;
-  padding: 7px 10px;
+  padding: 7px 8px;
+  white-space: nowrap;
 }
 
 .editor-export-row {
@@ -1782,7 +1790,7 @@ body[data-view="editor"] .main {
 .player-art {
   --player-bg:
     linear-gradient(180deg, rgba(26, 30, 27, 0.12), rgba(26, 30, 27, 0.48)),
-    url("/assets/player-default-bg.jpg");
+    url("/assets/player-default-bg.png");
   position: relative;
   height: calc(100vh - 124px);
   min-height: 460px;

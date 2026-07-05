@@ -320,7 +320,7 @@ const tavernMemoryKey = "tavernMemory";
 const tavernModeKey = "tavernMode";
 const tavernEngineKey = "tavernEngine";
 const tavernProviderKey = "tavernProvider";
-const defaultPlayerBg = "/assets/player-default-bg.jpg";
+const defaultPlayerBg = "/assets/player-default-bg.png";
 const midnightPlayerBg = "/assets/player-midnight-bg.png";
 const playerState = {
   audioUrl: "",
@@ -447,10 +447,14 @@ const editorState = {
   playbackStartPlayhead: 0,
   playbackDuration: 0,
   micTrackId: "A",
+  micStartPlayhead: 0,
+  micStartClock: 0,
+  micPlayheadRaf: 0,
   micStream: null,
   micRecorder: null,
   micChunks: [],
-  micMimeType: "audio/webm"
+  micMimeType: "audio/webm",
+  clipBuffers: {}
 };
 const recorderState = {
   stream: null,
@@ -3195,10 +3199,7 @@ function findBestLyricMatch(audioItem = {}, lyricIndex = {}) {
   const looseKey = normalizeLyricLooseKey(audioItem.name);
   const looseName = pickLyricMatch(lyricIndex.byLoose?.get(looseKey) || [], audioItem);
   if (looseName) return looseName;
-  const fuzzy = Array.from(lyricIndex.byLoose?.entries?.() || [])
-    .filter(([key]) => key && looseKey && (key.includes(looseKey) || looseKey.includes(key)))
-    .flatMap(([, list]) => list);
-  return pickLyricMatch(fuzzy, audioItem);
+  return null;
 }
 
 function normalizeMediaCollectionKey(name = "") {
@@ -4532,7 +4533,6 @@ function playInApp(src, title, options = {}) {
   const player = $("#mainPlayer");
   const playerTitle = $("#playerTitle");
   if (!player || !src) return;
-  const previousPlaylistId = playerState.currentPlaylistId;
   const shouldAutoplay = options.autoplay !== false;
   clearTimeout(playerState.interruptionResumeTimer);
   player.src = src;
@@ -4552,15 +4552,11 @@ function playInApp(src, title, options = {}) {
   }
   if (playlistItem) {
     playerState.currentPlaylistId = playlistItem.id;
-    if (playlistItem.id !== previousPlaylistId && options.keepLyrics !== true) {
+    if (options.keepLyrics !== true) {
       if (playlistItem.lyricText) {
         applyLyricText(playlistItem.lyricText, playlistItem.lyricFileName || `${playlistItem.title}.lrc`);
       } else {
-        playerState.lyrics = [];
-        playerState.lyricFileName = "";
-        playerState.lyricMode = "none";
-        playerState.lyricFormatLabel = "";
-        renderLyrics();
+        resetPlayerLyrics();
       }
     }
     updatePlayerPathLabel(playlistItem);
@@ -4835,13 +4831,25 @@ function getActiveTrack() {
 }
 
 function getEditorDuration(trackId = editorState.activeTrackId) {
-  return getTrack(trackId)?.buffer?.duration || 0;
+  const trackDuration = getTrack(trackId)?.buffer?.duration || 0;
+  const clipSourceDuration = editorState.clips
+    .filter((clip) => clip.trackId === trackId)
+    .reduce((max, clip) => Math.max(max, getClipBuffer(clip)?.duration || clip.sourceEnd || 0), 0);
+  return Math.max(trackDuration, clipSourceDuration);
+}
+
+function getClipBuffer(clip) {
+  if (!clip) return null;
+  return (clip.bufferId && editorState.clipBuffers[clip.bufferId]) || getTrack(clip.trackId)?.buffer || null;
 }
 
 function getTimelineDuration() {
   const clipEnd = editorState.clips.reduce((max, clip) => Math.max(max, clip.timelineStart + Math.max(0, clip.sourceEnd - clip.sourceStart)), 0);
   const trackEnd = editorState.tracks.reduce((max, track) => Math.max(max, track.buffer?.duration || 0), 0);
-  return Math.max(1, clipEnd, trackEnd);
+  const recordingEnd = editorState.micRecorder?.state === "recording"
+    ? editorState.micStartPlayhead + Math.max(0, (performance.now() - editorState.micStartClock) / 1000)
+    : 0;
+  return Math.max(1, clipEnd, trackEnd, recordingEnd);
 }
 
 function snapshotEditor() {
@@ -5450,9 +5458,10 @@ function pruneClipsForTrack(trackId) {
   const duration = track.buffer?.duration || 0;
   editorState.clips = editorState.clips.filter((clip) => {
     if (clip.trackId !== trackId) return true;
-    if (!duration) return false;
-    clip.sourceStart = clamp(clip.sourceStart, 0, Math.max(0, duration - 0.1));
-    clip.sourceEnd = clamp(clip.sourceEnd, clip.sourceStart + 0.1, duration);
+    const clipDuration = getClipBuffer(clip)?.duration || duration;
+    if (!clipDuration) return false;
+    clip.sourceStart = clamp(clip.sourceStart, 0, Math.max(0, clipDuration - 0.1));
+    clip.sourceEnd = clamp(clip.sourceEnd, clip.sourceStart + 0.1, clipDuration);
     return clip.sourceEnd > clip.sourceStart;
   });
   if (editorState.selectedClipId && !editorState.clips.some((clip) => clip.id === editorState.selectedClipId)) {
@@ -5496,9 +5505,10 @@ function createWholeTrackClip(trackId) {
   const track = getTrack(trackId);
   if (!track?.buffer) return;
   editorState.clips = editorState.clips.filter((clip) => clip.trackId !== trackId);
+  const clipIndex = editorState.clips.filter((clip) => clip.trackId === trackId).length + 1;
   const clip = {
     id: `clip-${Date.now()}-${trackId}-${Math.random().toString(16).slice(2)}`,
-    name: `${track.name} 整轨`,
+    name: `${track.name} 片段 ${clipIndex}`,
     trackId,
     sourceStart: 0,
     sourceEnd: track.buffer.duration,
@@ -5532,6 +5542,46 @@ async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.a
   syncTimelineControls();
 }
 
+async function addEditorBufferClip({ arrayBuffer, url, name, trackId = editorState.activeTrackId, timelineStart = editorState.timeline.playhead }) {
+  const context = getEditorAudioContext();
+  const track = getTrack(trackId);
+  const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
+  const bufferId = `buffer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  editorState.clipBuffers[bufferId] = buffer;
+  if (!track.buffer) {
+    pushTrackSourceHistory(track);
+    track.buffer = buffer;
+    track.url = url || "";
+    track.fileName = name || "录音片段";
+  }
+  pushEditorHistory();
+  const clipIndex = editorState.clips.filter((clip) => clip.trackId === trackId).length + 1;
+  const clip = {
+    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: `${track.name} 片段 ${clipIndex}`,
+    trackId,
+    bufferId,
+    sourceName: name || "录音片段",
+    sourceStart: 0,
+    sourceEnd: buffer.duration,
+    timelineStart: Math.max(0, Number(timelineStart) || 0),
+    volume: 1,
+    fadeIn: 0,
+    fadeOut: 0,
+    muted: false
+  };
+  editorState.clips.push(clip);
+  editorState.selectedClipId = clip.id;
+  setActiveTrack(trackId);
+  setClipInputs(0, Math.min(buffer.duration, 30), clip.timelineStart);
+  setPlayhead(clip.timelineStart, { snap: false, follow: true });
+  setEditorContext("clips");
+  renderClipList();
+  renderWaveform();
+  syncTimelineControls();
+  return clip;
+}
+
 async function loadEditorFile(file, trackId = editorState.activeTrackId) {
   if (!file) return;
   const arrayBuffer = await file.arrayBuffer();
@@ -5549,6 +5599,8 @@ async function startEditorMicRecording() {
   const trackId = $("#editorMicTrack")?.value || editorState.activeTrackId;
   editorState.micTrackId = trackId;
   editorState.micChunks = [];
+  editorState.micStartPlayhead = editorState.timeline.playhead;
+  editorState.micStartClock = performance.now();
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
@@ -5568,16 +5620,20 @@ async function startEditorMicRecording() {
   });
   recorder.addEventListener("stop", async () => {
     try {
+      cancelAnimationFrame(editorState.micPlayheadRaf);
+      editorState.micPlayheadRaf = 0;
       const blob = new Blob(editorState.micChunks, { type: editorState.micMimeType });
       if (!blob.size) throw new Error("没有录到声音。");
       const name = `麦克风录音-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
-      await setEditorSource({
+      const startAt = editorState.micStartPlayhead || 0;
+      await addEditorBufferClip({
         arrayBuffer: await blob.arrayBuffer(),
         url: URL.createObjectURL(blob),
         name,
-        trackId: editorState.micTrackId
+        trackId: editorState.micTrackId,
+        timelineStart: startAt
       });
-      $("#editorMicStatus").textContent = `录音已导入 ${getTrack(editorState.micTrackId).name}。`;
+      $("#editorMicStatus").textContent = `录音已从 ${formatSeconds(startAt)} 导入 ${getTrack(editorState.micTrackId).name}。`;
       setEditorPanel("");
       showToast("麦克风录音已导入轨道。", "ok");
     } catch (error) {
@@ -5595,8 +5651,9 @@ async function startEditorMicRecording() {
   recorder.start();
   $("#startEditorMic").disabled = true;
   $("#stopEditorMic").disabled = false;
-  $("#editorMicStatus").textContent = `正在录音到 ${getTrack(trackId).name}，停止后会自动导入。`;
+  $("#editorMicStatus").textContent = `正在录音到 ${getTrack(trackId).name}，会从播放头 ${formatSeconds(editorState.micStartPlayhead)} 导入。`;
   syncEditorQuickState();
+  animateRecordingPlayhead();
   showToast(`正在录音到 ${getTrack(trackId).name}。`);
 }
 
@@ -5604,6 +5661,17 @@ function stopEditorMicRecording() {
   if (editorState.micRecorder?.state === "recording") {
     editorState.micRecorder.stop();
   }
+}
+
+function animateRecordingPlayhead() {
+  cancelAnimationFrame(editorState.micPlayheadRaf);
+  const tick = () => {
+    if (editorState.micRecorder?.state !== "recording") return;
+    const elapsed = (performance.now() - editorState.micStartClock) / 1000;
+    setPlayhead(editorState.micStartPlayhead + elapsed, { snap: false, follow: true });
+    editorState.micPlayheadRaf = requestAnimationFrame(tick);
+  };
+  editorState.micPlayheadRaf = requestAnimationFrame(tick);
 }
 
 async function loadEditorFromPlayer() {
@@ -6093,7 +6161,6 @@ function startTimelineDrag(event) {
     beginTrackResize(dividerIndex, point);
     return;
   }
-  if (!point.track?.buffer) return;
   setActiveTrack(point.track.id);
   const hit = hitTestClip(point);
   if (hit) {
@@ -6116,6 +6183,7 @@ function startTimelineDrag(event) {
     editorState.pendingDrag = { mode: "mouse-clip-drag", hit, point, x: point.x, y: point.y };
     return;
   }
+  if (!point.track?.buffer) return;
   const selection = editorState.selection;
   const handleSize = 18 * point.ratio;
   const x1 = timeToX(selection.sourceStart, point.width, point.duration, point.offset);
@@ -6310,7 +6378,7 @@ function renderClipList() {
   const list = $("#clipList");
   if (!list) return;
   if (!editorState.clips.length) {
-    list.innerHTML = "<p class=\"clip-empty\">还没有时间线片段。拖拽轨道选区后点“加入选区”，或直接导出整轨混音。</p>";
+    list.innerHTML = "<p class=\"clip-empty\">还没有时间线片段。拖拽轨道选区后点“加入选区”，或直接导出当前混音。</p>";
     syncEditorQuickState();
     return;
   }
@@ -6408,13 +6476,14 @@ function animatePreviewPlayhead() {
 function playEditorClip(clipId) {
   const clip = editorState.clips.find((item) => item.id === clipId);
   const track = getTrack(clip?.trackId);
-  if (!clip || !track?.buffer) return;
+  const buffer = getClipBuffer(clip);
+  if (!clip || !track || !buffer) return;
   stopEditorPlayback();
   const context = getEditorAudioContext();
   if (context.state === "suspended") context.resume();
   const source = context.createBufferSource();
   const gain = context.createGain();
-  source.buffer = track.buffer;
+  source.buffer = buffer;
   gain.gain.value = clip.muted || track.muted ? 0 : clamp(clip.volume * track.volume, 0, 2);
   source.connect(gain).connect(context.destination);
   source.start(0, clip.sourceStart, Math.max(0.1, clip.sourceEnd - clip.sourceStart));
@@ -6456,11 +6525,11 @@ function splitClipAtPlayhead() {
   const right = {
     ...clip,
     id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    name: `${clip.name} B`,
+    name: `${clip.name} b`,
     sourceStart: sourceSplit,
     timelineStart: playhead
   };
-  clip.name = `${clip.name} A`;
+  clip.name = `${clip.name} a`;
   clip.sourceEnd = sourceSplit;
   editorState.clips.push(right);
   editorState.selectedClipId = right.id;
@@ -6477,7 +6546,7 @@ function getRenderableClips() {
     ? editorState.clips
     : loadedTracks.map((track) => ({
         id: `whole-${track.id}`,
-        name: `${track.name} 整轨`,
+        name: `${track.name} 片段 1`,
         trackId: track.id,
         sourceStart: 0,
         sourceEnd: track.buffer.duration,
@@ -6489,7 +6558,7 @@ function getRenderableClips() {
       }));
   const clips = sourceClips.filter((clip) => {
     const track = getTrack(clip.trackId);
-    if (!track?.buffer || clip.muted || track.muted) return false;
+    if (!getClipBuffer(clip) || clip.muted || track.muted) return false;
     return !soloTracks.length || soloTracks.includes(track.id);
   });
   if (!clips.length) throw new Error("所有轨道或片段都被静音了。");
@@ -6504,11 +6573,12 @@ async function renderEditorMixBuffer() {
   const offline = new OfflineAudioContext(2, Math.ceil(totalDuration * sampleRate), sampleRate);
   for (const clip of clips) {
     const track = getTrack(clip.trackId);
+    const buffer = getClipBuffer(clip);
     const duration = Math.max(0, clip.sourceEnd - clip.sourceStart);
-    if (duration <= 0) continue;
+    if (!buffer || duration <= 0) continue;
     const source = offline.createBufferSource();
     const gain = offline.createGain();
-    source.buffer = track.buffer;
+    source.buffer = buffer;
     const volume = clamp((clip.volume || 1) * (track.volume || 1), 0, 2);
     const fadeIn = Math.min(duration, Math.max(0, clip.fadeIn || 0));
     const fadeOut = Math.min(duration, Math.max(0, clip.fadeOut || 0));
@@ -6540,7 +6610,8 @@ async function previewTimelineMix() {
     const nodes = [];
     clips.forEach((clip) => {
       const track = getTrack(clip.trackId);
-      if (!track?.buffer) return;
+      const buffer = getClipBuffer(clip);
+      if (!buffer) return;
       const clipDuration = getClipDuration(clip);
       const clipEnd = clip.timelineStart + clipDuration;
       if (clipEnd <= startAt) return;
@@ -6552,7 +6623,7 @@ async function previewTimelineMix() {
       const gain = context.createGain();
       const volume = clamp((clip.volume || 1) * (track.volume || 1), 0, 2);
       const startTime = now + delay;
-      source.buffer = track.buffer;
+      source.buffer = buffer;
       gain.gain.setValueAtTime(volume, startTime);
       if (clip.fadeIn > 0 && skipped < clip.fadeIn) {
         const initial = clamp(skipped / clip.fadeIn, 0, 1) * volume;
@@ -7772,6 +7843,8 @@ function bindEvents() {
       return;
     }
     startEditorMicRecording().catch((error) => {
+      cancelAnimationFrame(editorState.micPlayheadRaf);
+      editorState.micPlayheadRaf = 0;
       $("#editorMicStatus").textContent = `录音失败：${error.message}`;
       showToast(`录音失败：${error.message}`, "fail");
       $("#startEditorMic").disabled = false;
@@ -7835,6 +7908,8 @@ function bindEvents() {
     setActiveTrack(event.target.value);
   });
   $("#startEditorMic").addEventListener("click", () => startEditorMicRecording().catch((error) => {
+    cancelAnimationFrame(editorState.micPlayheadRaf);
+    editorState.micPlayheadRaf = 0;
     $("#editorMicStatus").textContent = `录音失败：${error.message}`;
     showToast(`录音失败：${error.message}`, "fail");
     $("#startEditorMic").disabled = false;
