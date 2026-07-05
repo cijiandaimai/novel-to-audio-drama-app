@@ -13,6 +13,7 @@ const DEFAULT_DOUBAO_CHAT_URL = "https://ark.cn-beijing.volces.com/api/v3/chat/c
 const DEFAULT_DOUBAO_AUDIO_URL = "https://openspeech.bytedance.com/api/v3/tts/create";
 const DEFAULT_DOUBAO_ASR_URL = "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash";
 const DEFAULT_GPT_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+const DEFAULT_DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const DEFAULT_GROK_URL = "https://api.x.ai/v1/chat/completions";
 const DEFAULT_QWEN_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
 const DEFAULT_KIMI_URL = "https://api.moonshot.cn/v1/chat/completions";
@@ -104,6 +105,7 @@ function normalizeChatUrl(baseUrl) {
   const url = pickText(baseUrl);
   if (!url) return "";
   if (url.endsWith("/chat/completions")) return url;
+  if (url === "https://api.deepseek.com" || url === "https://api.deepseek.com/") return DEFAULT_DEEPSEEK_URL;
   if (url.endsWith("/v1")) return `${url}/chat/completions`;
   if (url.endsWith("/api/v3")) return `${url}/chat/completions`;
   return url;
@@ -192,6 +194,7 @@ function providerLabel(providerName) {
   return {
     gpt: "GPT",
     gemini: "Gemini",
+    deepseek: "DeepSeek",
     doubao: "豆包",
     qwen: "千问",
     kimi: "Kimi",
@@ -294,6 +297,11 @@ function getServerManagedProviders() {
       model: envText("GEMINI_MODEL"),
       apiKey: envText("GEMINI_API_KEY")
     },
+    deepseek: {
+      baseUrl: envText("DEEPSEEK_BASE_URL"),
+      model: envText("DEEPSEEK_MODEL"),
+      apiKey: envText("DEEPSEEK_API_KEY")
+    },
     doubao: {
       baseUrl: envText("DOUBAO_TEXT_BASE_URL", "ARK_BASE_URL"),
       model: envText("DOUBAO_TEXT_MODEL", "DOUBAO_MODEL", "ARK_MODEL"),
@@ -357,6 +365,7 @@ function applyServerManagedConfig(clientConfig = {}) {
   const config = structuredClone(clientConfig || {});
   config.gpt = withServerProvider(config.gpt, managed.gpt);
   config.gemini = withServerProvider(config.gemini, managed.gemini);
+  config.deepseek = withServerProvider(config.deepseek, managed.deepseek);
   config.doubao = withServerProvider(config.doubao, managed.doubao);
   config.qwen = withServerProvider(config.qwen, managed.qwen);
   config.qwenTts = withServerProvider(config.qwenTts, managed.qwenTts);
@@ -368,6 +377,8 @@ function applyServerManagedConfig(clientConfig = {}) {
   config.doubaoImage = withServerProvider(config.doubaoImage, managed.doubaoImage);
   config.network = withServerProvider(config.network, managed.network);
   config.gpt.baseUrl ||= DEFAULT_GPT_CHAT_URL;
+  config.deepseek.baseUrl ||= DEFAULT_DEEPSEEK_URL;
+  config.deepseek.model ||= "deepseek-v4-flash";
   config.doubao.baseUrl ||= DEFAULT_DOUBAO_CHAT_URL;
   config.qwen.baseUrl ||= DEFAULT_QWEN_URL;
   config.qwenTts.endpoint ||= DEFAULT_QWEN_TTS_URL;
@@ -397,6 +408,7 @@ function serverCapabilities() {
     providers: {
       gpt: { hasApiKey: !!managed.gpt.apiKey, hasModel: !!managed.gpt.model },
       gemini: { hasApiKey: !!managed.gemini.apiKey, hasModel: !!managed.gemini.model },
+      deepseek: { hasApiKey: !!managed.deepseek.apiKey, hasModel: !!managed.deepseek.model },
       doubao: { hasApiKey: !!managed.doubao.apiKey, hasModel: !!managed.doubao.model },
       qwen: { hasApiKey: !!managed.qwen.apiKey, hasModel: !!managed.qwen.model },
       qwenTts: { hasApiKey: !!managed.qwenTts.apiKey, hasModel: !!managed.qwenTts.model },
@@ -412,6 +424,7 @@ function serverCapabilities() {
       doubaoAudio: ["DOUBAO_AUDIO_API_KEY", "DOUBAO_AUDIO_MODEL", "DOUBAO_AUDIO_ENDPOINT"],
       doubaoAsr: ["DOUBAO_ASR_API_KEY", "DOUBAO_ASR_MODEL", "DOUBAO_ASR_RESOURCE_ID", "DOUBAO_ASR_ENDPOINT"],
       openaiCompatible: ["OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL"],
+      deepseek: ["DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "DEEPSEEK_BASE_URL"],
       gemini: ["GEMINI_API_KEY", "GEMINI_MODEL"],
       qwen: ["QWEN_API_KEY", "QWEN_MODEL", "QWEN_BASE_URL"],
       qwenTts: ["QWEN_TTS_API_KEY", "QWEN_TTS_MODEL", "QWEN_TTS_ENDPOINT"],
@@ -452,6 +465,7 @@ async function fetchWithNetwork(url, options = {}, network = {}) {
 
 function getProbeUrl(label, config = {}) {
   if (String(label || "").includes("第三方 GPT")) return config.compatGpt?.baseUrl || config.gpt?.baseUrl || DEFAULT_GPT_CHAT_URL;
+  if (String(label || "").includes("DeepSeek")) return config.deepseek?.baseUrl || DEFAULT_DEEPSEEK_URL;
   if (String(label || "").includes("千问 TTS")) return config.qwenTts?.endpoint || DEFAULT_QWEN_TTS_URL;
   if (String(label || "").includes("GPT 图片")) return config.gptImage?.endpoint || DEFAULT_GPT_IMAGE_URL;
   if (String(label || "").includes("豆包图片")) return config.doubaoImage?.endpoint || DEFAULT_DOUBAO_IMAGE_URL;
@@ -749,6 +763,7 @@ function buildLocalAssistantReply(message = "") {
 
 function resolveAssistantProvider(config = {}) {
   if (hasProvider(config.gpt) && config.gpt?.baseUrl) return { name: "gpt", label: "GPT", provider: config.gpt };
+  if (hasProvider(config.deepseek) && config.deepseek?.baseUrl) return { name: "deepseek", label: "DeepSeek", provider: config.deepseek };
   if (hasProvider(config.doubao) && config.doubao?.baseUrl) return { name: "doubao", label: "豆包", provider: config.doubao };
   return null;
 }
@@ -890,7 +905,7 @@ const tavernModePrompts = {
 function resolveTavernProvider(config = {}, requested = "auto") {
   const provider = String(requested || "auto").toLowerCase();
   if (provider !== "auto" && hasProvider(config[provider])) return provider;
-  return ["doubao", "qwen", "kimi", "gpt", "gemini", "grok"].find((name) => hasProvider(config[name])) || "";
+  return ["deepseek", "doubao", "qwen", "kimi", "gpt", "gemini", "grok"].find((name) => hasProvider(config[name])) || "";
 }
 
 function buildTavernApiPrompt(input = {}) {
@@ -929,7 +944,7 @@ async function runTavernChat(input = {}) {
   const providerName = resolveTavernProvider(config, input.providerName || "auto");
   if (!providerName) throw new Error("请先配置可用的酒馆 API 模型。");
   const { system, user } = buildTavernApiPrompt(input);
-  const fallbackNames = ["doubao", "qwen", "kimi", "gpt", "grok"]
+  const fallbackNames = ["deepseek", "doubao", "qwen", "kimi", "gpt", "grok"]
     .filter((name) => name !== providerName);
   const reply = await invokeChat({
     providerName,

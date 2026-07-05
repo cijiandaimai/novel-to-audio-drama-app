@@ -15,6 +15,11 @@ const defaultConfig = {
     model: "",
     apiKey: ""
   },
+  deepseek: {
+    baseUrl: "https://api.deepseek.com/chat/completions",
+    model: "deepseek-v4-flash",
+    apiKey: ""
+  },
   gemini: {
     model: "",
     apiKey: "",
@@ -518,6 +523,21 @@ const apiHelp = {
     title: "第三方客户端 Key",
     url: "https://platform.openai.com/docs/api-reference/authentication",
     text: "填写第三方工具生成的客户端 Key。注意：电脑 localhost 服务打包到手机后不能直接访问，需要改成手机可访问的局域网 IP 或后端地址。"
+  },
+  "deepseek.baseUrl": {
+    title: "DeepSeek 接口地址",
+    url: "https://api-docs.deepseek.com/",
+    text: "DeepSeek 官方 OpenAI 兼容接口。默认可填 https://api.deepseek.com/chat/completions；如果只填 https://api.deepseek.com，App 会自动拼接 /chat/completions。"
+  },
+  "deepseek.model": {
+    title: "DeepSeek 模型 ID",
+    url: "https://api-docs.deepseek.com/quick_start/pricing",
+    text: "官方当前模型可填 deepseek-v4-flash 或 deepseek-v4-pro。主要用于酒馆 API 模式和白泽小助手闲聊。"
+  },
+  "deepseek.apiKey": {
+    title: "DeepSeek API Key",
+    url: "https://platform.deepseek.com/api_keys",
+    text: "进入 DeepSeek 平台创建官方 Key。建议正式使用时放到自己的后端中转里，避免 Key 暴露在 APK。"
   },
   "gemini.model": {
     title: "Gemini 模型 ID",
@@ -1334,7 +1354,7 @@ function normalizeTavernEngine(engine) {
 }
 
 function normalizeTavernProvider(provider) {
-  return ["auto", "doubao", "qwen", "kimi", "gpt", "gemini", "grok"].includes(provider) ? provider : "auto";
+  return ["auto", "doubao", "deepseek", "qwen", "kimi", "gpt", "gemini", "grok"].includes(provider) ? provider : "auto";
 }
 
 function saveTavernState() {
@@ -1516,6 +1536,7 @@ function tavernProviderLabel(providerName) {
   return {
     auto: "自动",
     doubao: "豆包",
+    deepseek: "DeepSeek",
     qwen: "千问",
     kimi: "Kimi",
     gpt: "GPT",
@@ -1553,13 +1574,14 @@ function hasTavernProvider(config, providerName) {
 function resolveTavernProvider(config = getConfig(), requested = tavernState.provider) {
   const preferred = normalizeTavernProvider(requested);
   if (preferred !== "auto" && hasTavernProvider(config, preferred)) return preferred;
-  return ["doubao", "qwen", "kimi", "gpt", "gemini", "grok"].find((name) => hasTavernProvider(config, name)) || "";
+  return ["deepseek", "doubao", "qwen", "kimi", "gpt", "gemini", "grok"].find((name) => hasTavernProvider(config, name)) || "";
 }
 
 function normalizeTavernChatUrl(baseUrl) {
   const url = String(baseUrl || "").trim();
   if (!url) return "";
   if (url.endsWith("/chat/completions")) return url;
+  if (url === "https://api.deepseek.com" || url === "https://api.deepseek.com/") return "https://api.deepseek.com/chat/completions";
   if (url.endsWith("/v1")) return `${url}/chat/completions`;
   if (url.endsWith("/api/v3")) return `${url}/chat/completions`;
   return url;
@@ -1891,6 +1913,9 @@ function endAssistantBubblePress(event) {
 function resolveAssistantTextProvider(config = getConfig()) {
   if (config.gpt?.apiKey && config.gpt?.model && config.gpt?.baseUrl) {
     return { name: "gpt", label: "GPT", provider: config.gpt };
+  }
+  if (config.deepseek?.apiKey && config.deepseek?.model && config.deepseek?.baseUrl) {
+    return { name: "deepseek", label: "DeepSeek", provider: config.deepseek };
   }
   if (config.doubao?.apiKey && config.doubao?.model && config.doubao?.baseUrl) {
     return { name: "doubao", label: "豆包", provider: config.doubao };
@@ -6809,6 +6834,7 @@ function collectConfigFromForm() {
 
 function getConfigTestLabel(path = "") {
   if (path.startsWith("compatGpt.")) return "第三方 GPT";
+  if (path.startsWith("deepseek.")) return "DeepSeek";
   if (path.startsWith("gptImage.")) return "GPT 图片";
   if (path.startsWith("doubaoImage.")) return "豆包图片";
   if (path.startsWith("qwenTts.")) return "千问 TTS";
@@ -6879,6 +6905,9 @@ function applyNetworkPreset(profile) {
   config.network.retryCount = useProxy ? "2" : "1";
   if (profile === "china") {
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+    config.deepseek ||= {};
+    config.deepseek.baseUrl = "https://api.deepseek.com/chat/completions";
+    config.deepseek.model ||= "deepseek-v4-flash";
     config.qwen.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     config.kimi.baseUrl = "https://api.moonshot.cn/v1/chat/completions";
     config.audio.endpoint = "https://openspeech.bytedance.com/api/v3/tts/create";
@@ -6891,6 +6920,9 @@ function applyNetworkPreset(profile) {
   if (useProxy) {
     config.gpt.baseUrl = "https://api.openai.com/v1/chat/completions";
     config.gemini.endpoint = "";
+    config.deepseek ||= {};
+    config.deepseek.baseUrl = "https://api.deepseek.com/chat/completions";
+    config.deepseek.model ||= "deepseek-v4-flash";
     config.doubao.baseUrl = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
     config.qwen.baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
     config.kimi.baseUrl = "https://api.moonshot.cn/v1/chat/completions";
@@ -6908,6 +6940,7 @@ function applyNetworkPreset(profile) {
 
 function getProbeUrl(label, config) {
   if (label === "第三方 GPT") return config.compatGpt?.baseUrl || "";
+  if (label === "DeepSeek") return config.deepseek?.baseUrl || defaultConfig.deepseek.baseUrl;
   if (label === "GPT") return config.gpt?.baseUrl || defaultConfig.gpt.baseUrl;
   if (label === "Gemini") return config.gemini?.endpoint || "https://generativelanguage.googleapis.com/";
   if (label === "豆包文本") return config.doubao?.baseUrl || defaultConfig.doubao.baseUrl;
@@ -6958,7 +6991,7 @@ async function testNetworkRoutes() {
   try {
     $("#networkStatus").innerHTML = "<p>正在诊断当前网络线路...</p>";
     const timeoutMs = Math.max(5000, Math.min(300000, Number(config.network?.timeoutSeconds || 120) * 1000));
-    const labels = ["GPT", "第三方 GPT", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"];
+    const labels = ["GPT", "第三方 GPT", "DeepSeek", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"];
     if (config.network?.relayBaseUrl) labels.push("中转服务");
     let results = [];
     let serverManaged = null;

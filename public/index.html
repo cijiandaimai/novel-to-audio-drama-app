@@ -255,6 +255,7 @@
                   <select id="tavernProviderSelect">
                     <option value="auto">自动选择</option>
                     <option value="doubao">豆包</option>
+                    <option value="deepseek">DeepSeek</option>
                     <option value="qwen">千问</option>
                     <option value="kimi">Kimi</option>
                     <option value="gpt">GPT</option>
@@ -861,6 +862,15 @@
             </section>
 
             <section class="panel provider">
+              <h3>DeepSeek：酒馆与客服闲聊</h3>
+              <p>官方 DeepSeek Key，主要用于酒馆 API 模式、白泽小助手闲聊和低成本中文对话。</p>
+              <label>接口地址<input data-config="deepseek.baseUrl" placeholder="https://api.deepseek.com/chat/completions" /></label>
+              <label>模型 ID<input data-config="deepseek.model" placeholder="deepseek-v4-flash" /></label>
+              <label>API Key<input data-config="deepseek.apiKey" type="password" placeholder="DeepSeek API Key" /></label>
+              <div class="tutorial">DeepSeek 使用 OpenAI 兼容格式。也可填 https://api.deepseek.com，App 会自动补 /chat/completions。</div>
+            </section>
+
+            <section class="panel provider">
               <h3>Gemini：场景扩写</h3>
               <p>用于补足剧情、场景动作和戏剧冲突。</p>
               <label>模型 ID<input data-config="gemini.model" placeholder="例如 gemini-..." /></label>
@@ -1004,7 +1014,7 @@
               <p class="assistant-section-title">常用提醒</p>
               <ul class="assistant-tip-list">
                 <li><b>A</b><span>悬浮球可以拖到顺手的位置；长按 10 秒会隐藏，在首页切换语言会再次出现。</span></li>
-                <li><b>B</b><span>大陆线路优先填豆包、千问、Kimi；海外或第三方模型建议走代理或后端中转。</span></li>
+                <li><b>B</b><span>大陆线路优先填豆包、DeepSeek、千问、Kimi；DeepSeek 适合酒馆和小助手闲聊。</span></li>
                 <li><b>C</b><span>安卓真机访问电脑本地服务时，不要填 localhost，要填电脑局域网 IP。</span></li>
                 <li><b>D</b><span>正式发布给别人使用时，尽量把付费 Key 放到自己的后端，不要直接打进 APK。</span></li>
               </ul>
