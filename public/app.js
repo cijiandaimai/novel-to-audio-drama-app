@@ -444,10 +444,28 @@ const voiceGatewayCatalog = {
   "方晴师姐": { voiceId: "zh_female_quark_zheque", model: "QUARK_VOICE" },
   huajie: { voiceId: "zh_female_quark_xiaoning", model: "QUARK_VOICE" },
   "电台华姐": { voiceId: "zh_female_quark_xiaoning", model: "QUARK_VOICE" },
+  tiandou: { voiceId: "zh_female_quark_f29", model: "QUARK_VOICE" },
+  "彩虹甜豆": { voiceId: "zh_female_quark_f29", model: "QUARK_VOICE" },
+  jiabei: { voiceId: "zh_female_quark_jiabei", model: "QUARK_VOICE" },
+  "活力嘉蓓": { voiceId: "zh_female_quark_jiabei", model: "QUARK_VOICE" },
+  niannian: { voiceId: "zh_female_quark_xiaoxiao", model: "QUARK_VOICE" },
+  "念念": { voiceId: "zh_female_quark_xiaoxiao", model: "QUARK_VOICE" },
+  suhe: { voiceId: "zh_female_quark_ajiao", model: "QUARK_VOICE" },
+  "苏荷姐姐": { voiceId: "zh_female_quark_ajiao", model: "QUARK_VOICE" },
+  ruochu: { voiceId: "zh_female_quark_lulu", model: "QUARK_VOICE" },
+  "若初": { voiceId: "zh_female_quark_lulu", model: "QUARK_VOICE" },
+  xiaojiuwo: { voiceId: "zh_female_quark_luoying", model: "QUARK_VOICE" },
+  "小酒窝": { voiceId: "zh_female_quark_luoying", model: "QUARK_VOICE" },
   daozhang: { voiceId: "zh_male_quark_taiyizhenren", model: "QUARK_VOICE" },
   "四川道长": { voiceId: "zh_male_quark_taiyizhenren", model: "QUARK_VOICE" },
   wenyu: { voiceId: "zh_male_quark_m24", model: "QUARK_VOICE" },
-  "温屿哥哥": { voiceId: "zh_male_quark_m24", model: "QUARK_VOICE" }
+  "温屿哥哥": { voiceId: "zh_male_quark_m24", model: "QUARK_VOICE" },
+  haodong: { voiceId: "zh_male_quark_bb01", model: "QUARK_VOICE" },
+  "皓东": { voiceId: "zh_male_quark_bb01", model: "QUARK_VOICE" },
+  ahui: { voiceId: "zh_male_chengfeng_ICL", model: "QUARK_VOICE" },
+  "阿辉": { voiceId: "zh_male_chengfeng_ICL", model: "QUARK_VOICE" },
+  jiankang: { voiceId: "zh_male_quark_yangchen", model: "QUARK_VOICE" },
+  "健康哥哥": { voiceId: "zh_male_quark_yangchen", model: "QUARK_VOICE" }
 };
 
 const tavernState = {
@@ -479,6 +497,8 @@ const editorState = {
   pickNext: "start",
   clipTimer: null,
   playingNodes: [],
+  playbackMode: "",
+  playbackTargetId: "",
   undoStack: [],
   redoStack: [],
   renderedUrl: "",
@@ -1923,7 +1943,9 @@ function normalizeQwenTtsEndpoint(endpoint = "") {
   const url = String(endpoint || "").trim();
   if (!url) return "";
   if (url.includes("/services/aigc/multimodal-generation/generation")) return url;
-  return `${url.replace(/\/+$/, "")}/services/aigc/multimodal-generation/generation`;
+  const base = url.replace(/\/+$/, "");
+  if (base.endsWith("/api/v1")) return `${base}/services/aigc/multimodal-generation/generation`;
+  return `${base}/api/v1/services/aigc/multimodal-generation/generation`;
 }
 
 function extractQwenTtsAudio(data = {}) {
@@ -1988,6 +2010,8 @@ async function callVoiceGatewayTtsDirect(text, config = getConfig()) {
   const useClone = Boolean(gatewayConfig.cloneVoiceId) || voice.useClone;
   return await new Promise((resolve, reject) => {
     let settled = false;
+    let fallbackTimer = null;
+    let hardTimer = null;
     const player = new window.VoiceTtsPlayer({
       apiKey: gatewayConfig.apiKey,
       gateway: String(gatewayConfig.gateway || defaultConfig.voiceGateway.gateway).replace(/\/+$/, ""),
@@ -1996,40 +2020,76 @@ async function callVoiceGatewayTtsDirect(text, config = getConfig()) {
       useClone,
       recordAudio: true,
       onError: (error) => {
-        if (settled) return;
-        settled = true;
-        reject(error instanceof Error ? error : new Error(String(error || "通用语音网关 TTS 失败。")));
+        finish(error instanceof Error ? error : new Error(String(error || "通用语音网关 TTS 失败。")), true);
       },
       onStreamComplete: async () => {
-        if (settled) return;
-        settled = true;
         try {
-          const blob = player.exportWavBlob?.();
-          resolve({
-            provider: "voice-gateway-tts",
-            audioDataUrl: blob ? await blobToDataUrl(blob) : "",
-            livePlayed: true
-          });
+          const result = await exportResult();
+          if (result.emptyAudio) {
+            finish(new Error("通用语音网关已返回结束信号，但没有返回音频帧。请换一个声线，或检查网关余额和声线权限。"), true);
+          } else {
+            finish(result);
+          }
         } catch (error) {
-          reject(error);
+          finish(error, true);
+        }
+      },
+      onPlayEnd: async () => {
+        try {
+          const result = await exportResult();
+          if (!result.emptyAudio) finish(result);
+        } catch (error) {
+          finish(error, true);
         }
       }
     });
-    player.feedText(String(text || "").slice(0, 1200), 1);
-    player.feedText("", 2);
-    window.setTimeout(() => {
+
+    function finish(value, isError = false) {
+      if (settled) return;
+      settled = true;
+      if (fallbackTimer) window.clearTimeout(fallbackTimer);
+      if (hardTimer) window.clearTimeout(hardTimer);
+      if (isError) reject(value);
+      else resolve(value);
+    }
+
+    async function exportResult() {
+      const blob = player.exportWavBlob?.();
+      if (!blob) {
+        return {
+          provider: "voice-gateway-tts",
+          audioDataUrl: "",
+          livePlayed: true,
+          emptyAudio: true
+        };
+      }
+      return {
+        provider: "voice-gateway-tts",
+        audioDataUrl: await blobToDataUrl(blob),
+        livePlayed: true
+      };
+    }
+
+    const speakText = String(text || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+    player.connect()
+      .then(() => {
+        player.feedText(speakText, 1);
+        window.setTimeout(() => player.feedText("", 2), 180);
+      })
+      .catch((error) => finish(error, true));
+
+    fallbackTimer = window.setTimeout(() => {
       if (settled) return;
       const blob = player.exportWavBlob?.();
       if (blob) {
-        settled = true;
-        blobToDataUrl(blob).then((audioDataUrl) => resolve({ provider: "voice-gateway-tts", audioDataUrl, livePlayed: true }), reject);
+        blobToDataUrl(blob)
+          .then((audioDataUrl) => finish({ provider: "voice-gateway-tts", audioDataUrl, livePlayed: true }))
+          .catch((error) => finish(error, true));
       }
     }, 18000);
-    window.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      reject(new Error("通用语音网关 TTS 超时。"));
-    }, 26000);
+    hardTimer = window.setTimeout(() => {
+      finish(new Error("通用语音网关 TTS 超时：已完成鉴权但没有收到完整音频。请确认网关余额、声线名称和手机网络可访问 WebSocket。"), true);
+    }, 36000);
   });
 }
 
@@ -3681,15 +3741,22 @@ function renderPlayerPlaylist() {
     return counts;
   }, {});
   const renderedGroups = new Set();
-  const renderItem = (item) => `
-    <article class="playlist-item${item.id === playerState.currentPlaylistId ? " active" : ""}" data-playlist-id="${item.id}">
+  const renderItem = (item) => {
+    const isActive = item.id === playerState.currentPlaylistId;
+    const isPlaying = isActive && isPlayerActivelyPlaying();
+    return `
+    <article class="playlist-item${isActive ? " active" : ""}" data-playlist-id="${item.id}">
       <button class="playlist-play" data-playlist-action="play">
-        <strong>${escapeHtml(item.title)}</strong>
-        <span>${escapeHtml(item.displayPath || item.src || "音频")}</span>
+        <span class="playlist-copy">
+          <strong>${escapeHtml(item.title)}</strong>
+          <span>${escapeHtml(item.displayPath || item.src || "音频")}</span>
+        </span>
+        <em class="playlist-toggle-label">${isPlaying ? t("pause") : t("play")}</em>
       </button>
       <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
     </article>
   `;
+  };
   list.innerHTML = playerState.playlist.map((item) => {
     const group = item.collectionName || "";
     if (!group || groupCounts[group] < 2) return renderItem(item);
@@ -3742,6 +3809,17 @@ async function loadPlaylistItem(id, { autoplay = false } = {}) {
 }
 
 async function playPlaylistItem(id) {
+  if (id && id === playerState.currentPlaylistId) {
+    const player = $("#mainPlayer");
+    if (isPlayerActivelyPlaying(player)) {
+      pauseMainPlayerByUser();
+      return;
+    }
+    if (player?.paused && (player.currentSrc || player.src)) {
+      await resumeMainPlayer("playlist");
+      return;
+    }
+  }
   await loadPlaylistItem(id, { autoplay: true });
 }
 
@@ -3832,6 +3910,36 @@ function formatLyricTime(seconds) {
   return `${minute}:${String(second).padStart(2, "0")}`;
 }
 
+function normalizePlayableSrc(src = "") {
+  const value = String(src || "").trim();
+  if (!value) return "";
+  try {
+    return new URL(value, window.location.href).href;
+  } catch {
+    return value;
+  }
+}
+
+function syncPlayActionLabels() {
+  const player = $("#mainPlayer");
+  const isPlaying = isPlayerActivelyPlaying(player);
+  const currentSrc = normalizePlayableSrc(player?.currentSrc || player?.src || "");
+  $$(".playlist-item").forEach((item) => {
+    const isCurrent = item.dataset.playlistId === playerState.currentPlaylistId;
+    const label = item.querySelector(".playlist-toggle-label");
+    if (label) label.textContent = isCurrent && isPlaying ? t("pause") : t("play");
+    const button = item.querySelector("[data-playlist-action='play']");
+    if (button) button.setAttribute("aria-pressed", isCurrent && isPlaying ? "true" : "false");
+  });
+  $$("[data-play-src]").forEach((button) => {
+    const isCurrent = currentSrc && normalizePlayableSrc(button.dataset.playSrc) === currentSrc;
+    const active = isCurrent && isPlaying;
+    button.textContent = active ? t("pause") : t("play");
+    button.classList.toggle("playing", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+}
+
 function syncPlayerControls() {
   const player = $("#mainPlayer");
   if (!player) return;
@@ -3852,6 +3960,7 @@ function syncPlayerControls() {
   if (playPause) {
     playPause.textContent = player.paused ? t("play") : t("pause");
     playPause.disabled = !hasSource && !playerState.playlist.length;
+    playPause.setAttribute("aria-pressed", !player.paused && hasSource ? "true" : "false");
   }
   const index = playerState.playlist.findIndex((item) => item.id === playerState.currentPlaylistId);
   const hasPlaylist = playerState.playlist.length > 0;
@@ -3860,6 +3969,7 @@ function syncPlayerControls() {
   const listLoop = playerState.loopMode === "list";
   if (prev) prev.disabled = !hasPlaylist || (index <= 0 && !listLoop);
   if (next) next.disabled = !hasPlaylist || index < 0 || (index >= playerState.playlist.length - 1 && !listLoop);
+  syncPlayActionLabels();
   renderPlayerLoopRateUi();
   updateMediaSessionState();
 }
@@ -5309,13 +5419,30 @@ function syncTimelineControls() {
 }
 
 function syncEditorPlaybackButtons(isPlaying = editorState.playingNodes.length > 0) {
+  const isMixPlaying = isPlaying && editorState.playbackMode === "mix";
+  const isSelectedClipPlaying = isPlaying
+    && editorState.playbackMode === "clip"
+    && editorState.playbackTargetId === editorState.selectedClipId;
   const playButtons = ["#transportPlay", "#previewTimelineMix", "#quickPreviewMix"];
   playButtons.forEach((selector) => {
     const button = $(selector);
     if (!button) return;
-    button.classList.toggle("playing", isPlaying);
-    if (selector === "#transportPlay") button.textContent = isPlaying ? "暂停" : "播放";
-    if (selector === "#previewTimelineMix" || selector === "#quickPreviewMix") button.textContent = isPlaying ? "暂停" : "预听";
+    button.classList.toggle("playing", isMixPlaying);
+    button.textContent = isMixPlaying ? "暂停" : "播放";
+    button.setAttribute("aria-pressed", isMixPlaying ? "true" : "false");
+  });
+  const selectedClipButton = $("#quickPreviewClip");
+  if (selectedClipButton) {
+    selectedClipButton.classList.toggle("playing", isSelectedClipPlaying);
+    selectedClipButton.textContent = isSelectedClipPlaying ? "暂停" : "播放";
+    selectedClipButton.setAttribute("aria-pressed", isSelectedClipPlaying ? "true" : "false");
+  }
+  $$("[data-clip-action='preview']").forEach((button) => {
+    const clipId = button.closest("[data-clip-id]")?.dataset.clipId || "";
+    const isClipPlaying = isPlaying && editorState.playbackMode === "clip" && editorState.playbackTargetId === clipId;
+    button.classList.toggle("playing", isClipPlaying);
+    button.textContent = isClipPlaying ? "暂停" : "播放";
+    button.setAttribute("aria-pressed", isClipPlaying ? "true" : "false");
   });
 }
 
@@ -6673,7 +6800,7 @@ function renderClipList() {
           <label>淡出<input type="number" step="0.1" min="0" data-clip-field="fadeOut" value="${clip.fadeOut.toFixed(1)}" /></label>
         </div>
         <div class="clip-actions">
-          <button class="secondary" data-clip-action="preview">试听</button>
+          <button class="secondary" data-clip-action="preview">播放</button>
           <button class="secondary" data-clip-action="select">载入选区</button>
           <button class="secondary" data-clip-action="remove">删除</button>
         </div>
@@ -6681,6 +6808,7 @@ function renderClipList() {
       list.appendChild(article);
     });
   syncEditorQuickState();
+  syncEditorPlaybackButtons();
 }
 
 function updateClipField(clipId, field, value, checked) {
@@ -6717,6 +6845,8 @@ function stopEditorPlayback() {
     try { node.stop(); } catch {}
   });
   editorState.playingNodes = [];
+  editorState.playbackMode = "";
+  editorState.playbackTargetId = "";
   syncEditorPlaybackButtons(false);
 }
 
@@ -6730,6 +6860,8 @@ function animatePreviewPlayhead() {
     } else {
       editorState.playheadRaf = 0;
       setPlayhead(editorState.playbackDuration, { snap: false });
+      editorState.playbackMode = "";
+      editorState.playbackTargetId = "";
       syncEditorPlaybackButtons(false);
     }
   };
@@ -6737,6 +6869,10 @@ function animatePreviewPlayhead() {
 }
 
 function playEditorClip(clipId) {
+  if (editorState.playingNodes.length && editorState.playbackMode === "clip" && editorState.playbackTargetId === clipId) {
+    stopEditorPlayback();
+    return;
+  }
   const clip = editorState.clips.find((item) => item.id === clipId);
   const track = getTrack(clip?.trackId);
   const buffer = getClipBuffer(clip);
@@ -6749,8 +6885,19 @@ function playEditorClip(clipId) {
   source.buffer = buffer;
   gain.gain.value = clip.muted || track.muted ? 0 : clamp(clip.volume * track.volume, 0, 2);
   source.connect(gain).connect(context.destination);
+  source.onended = () => {
+    editorState.playingNodes = editorState.playingNodes.filter((node) => node !== source);
+    if (!editorState.playingNodes.length && editorState.playbackMode === "clip" && editorState.playbackTargetId === clipId) {
+      editorState.playbackMode = "";
+      editorState.playbackTargetId = "";
+      syncEditorPlaybackButtons(false);
+    }
+  };
   source.start(0, clip.sourceStart, Math.max(0.1, clip.sourceEnd - clip.sourceStart));
   editorState.playingNodes = [source];
+  editorState.playbackMode = "clip";
+  editorState.playbackTargetId = clipId;
+  syncEditorPlaybackButtons(true);
 }
 
 function handleClipAction(clipId, action) {
@@ -6908,6 +7055,8 @@ async function previewTimelineMix() {
           cancelAnimationFrame(editorState.playheadRaf);
           editorState.playheadRaf = 0;
           setPlayhead(editorState.playbackDuration, { snap: false });
+          editorState.playbackMode = "";
+          editorState.playbackTargetId = "";
           syncEditorPlaybackButtons(false);
           syncEditorQuickState();
         }
@@ -6917,6 +7066,8 @@ async function previewTimelineMix() {
     });
     if (!nodes.length) throw new Error("播放头后面没有可预听的片段。");
     editorState.playingNodes = nodes;
+    editorState.playbackMode = "mix";
+    editorState.playbackTargetId = "";
     editorState.playbackStartClock = Date.now() / 1000;
     editorState.playbackStartPlayhead = startAt;
     editorState.playbackDuration = totalDuration;
@@ -6979,7 +7130,7 @@ async function exportEditorMix() {
       <strong>混音完成：</strong>${fileName}<br />
       <audio controls src="${editorState.renderedUrl}"></audio>
       <div class="actions">
-        <button data-play-src="${editorState.renderedUrl}" data-play-title="${fileName}">送到播放器</button>
+        <button data-play-src="${editorState.renderedUrl}" data-play-title="${fileName}">播放</button>
         <a download="${fileName}" href="${editorState.renderedUrl}">下载 WAV</a>
       </div>
     `;
@@ -7137,7 +7288,7 @@ async function runDirectAudio() {
       <strong>${result.title}</strong><br />
       已跳过编剧流程，直接生成音频。${savedDownloads?.count ? `<br />已按顺序保存 ${savedDownloads.count} 段音频到：${escapeHtml(savedDownloads.folder || "下载文件夹")}` : ""}<br />
       <a href="${links.audioPrompts}" target="_blank">查看使用的提示词</a>　
-      ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">在播放器收听</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
+      ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">播放</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
       <a href="${links.manifest}" target="_blank">查看任务详情</a>
     `;
     showToast(savedDownloads?.count ? "直接音频生成完成，已保存到下载文件夹。" : "直接音频生成完成。", "ok");
@@ -7341,7 +7492,7 @@ function getProbeUrl(label, config) {
   if (label === "豆包文本") return config.doubao?.baseUrl || defaultConfig.doubao.baseUrl;
   if (label === "千问") return config.qwen?.baseUrl || defaultConfig.qwen.baseUrl;
   if (label === "Kimi") return config.kimi?.baseUrl || defaultConfig.kimi.baseUrl;
-  if (label === "千问 TTS") return config.qwenTts?.endpoint || defaultConfig.qwenTts.endpoint;
+  if (label === "千问 TTS") return normalizeQwenTtsEndpoint(config.qwenTts?.endpoint || defaultConfig.qwenTts.endpoint);
   if (label === "豆包音频") return config.audio?.endpoint || defaultConfig.audio.endpoint;
   if (label === "通用语音网关") return config.voiceGateway?.gateway || defaultConfig.voiceGateway.gateway;
   if (label === "豆包语音识别") return config.asr?.endpoint || defaultConfig.asr.endpoint;
@@ -7352,8 +7503,13 @@ function getProbeUrl(label, config) {
   return "";
 }
 
+function hasUnresolvedUrlTemplate(url = "") {
+  return /\{[^}]+\}/.test(String(url || ""));
+}
+
 async function probeNetwork(label, url, timeoutMs) {
   if (!url) return { label, ok: false, message: "未填写地址，已跳过" };
+  if (hasUnresolvedUrlTemplate(url)) return { label, ok: false, message: "接口地址里还有占位符，请先替换 WorkspaceId、model 等真实参数。" };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const startedAt = Date.now();
@@ -7392,7 +7548,7 @@ async function testNetworkRoutes() {
     let results = [];
     let serverManaged = null;
     if (getRelayBaseUrl(config)) {
-      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "通用语音网关", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"] }, config);
+      const serverResult = await apiJson("/api/network-test", { config, labels: ["GPT", "第三方 GPT", "DeepSeek", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "通用语音网关", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"] }, config);
       results = serverResult.results || [];
       serverManaged = serverResult.serverManaged;
     } else {
@@ -7904,7 +8060,7 @@ async function runPipeline() {
       剧本、提示词和音频已生成。${savedDownloads?.count ? `<br />已按顺序保存 ${savedDownloads.count} 段音频到：${escapeHtml(savedDownloads.folder || "下载文件夹")}` : ""}<br />
       <a href="${links.script2}" target="_blank">下载剧本 2</a>　
       <a href="${links.audioPrompts}" target="_blank">查看音频提示词</a>　
-      ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">在播放器收听</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
+      ${links.finalAudio ? `<button data-play-src="${links.finalAudio}" data-play-title="${result.title}">播放</button>　<a href="${links.finalAudio}" target="_blank">下载音频</a>　` : ""}
       <a href="${links.manifest}" target="_blank">查看任务详情</a>
     `;
     if (links.finalAudio) playInApp(links.finalAudio, result.title);
@@ -8279,7 +8435,7 @@ function bindEvents() {
   $("#playheadInput").addEventListener("input", (event) => setPlayhead(Number(event.target.value)));
   $("#splitAtPlayhead").addEventListener("click", splitClipAtPlayhead);
   $("#previewTimelineMix").addEventListener("click", previewTimelineMix);
-  $("#stopTimelineMix").addEventListener("click", stopEditorPlayback);
+  $("#stopTimelineMix")?.addEventListener("click", stopEditorPlayback);
   $("#waveformCanvas").addEventListener("pointerdown", startTimelineDrag);
   $("#waveformCanvas").addEventListener("pointermove", moveTimelineDrag);
   $("#waveformCanvas").addEventListener("pointerup", endTimelineDrag);
@@ -8375,7 +8531,15 @@ function bindEvents() {
     }
     const button = event.target.closest("[data-play-src]");
     if (!button) return;
-    playInApp(button.dataset.playSrc, button.dataset.playTitle);
+    const player = $("#mainPlayer");
+    const sameSource = normalizePlayableSrc(button.dataset.playSrc) === normalizePlayableSrc(player?.currentSrc || player?.src || "");
+    if (sameSource && isPlayerActivelyPlaying(player)) {
+      pauseMainPlayerByUser();
+    } else if (sameSource && player?.paused) {
+      resumeMainPlayer("external-button");
+    } else {
+      playInApp(button.dataset.playSrc, button.dataset.playTitle);
+    }
   });
   $("#playerBgFile").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];

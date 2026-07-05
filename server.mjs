@@ -460,6 +460,10 @@ function networkRetryCount(network = {}) {
   return Math.max(0, Math.min(5, Number(network.retryCount || 0)));
 }
 
+function hasUnresolvedUrlTemplate(url = "") {
+  return /\{[^}]+\}/.test(String(url || ""));
+}
+
 async function fetchWithNetwork(url, options = {}, network = {}) {
   const attempts = networkRetryCount(network) + 1;
   let lastError;
@@ -483,7 +487,7 @@ function getProbeUrl(label, config = {}) {
   if (String(label || "").includes("第三方 GPT")) return config.compatGpt?.baseUrl || config.gpt?.baseUrl || DEFAULT_GPT_CHAT_URL;
   if (String(label || "").includes("DeepSeek")) return config.deepseek?.baseUrl || DEFAULT_DEEPSEEK_URL;
   if (String(label || "").includes("通用语音网关")) return config.voiceGateway?.gateway || DEFAULT_VOICE_GATEWAY_URL;
-  if (String(label || "").includes("千问 TTS")) return config.qwenTts?.endpoint || DEFAULT_QWEN_TTS_URL;
+  if (String(label || "").includes("千问 TTS")) return normalizeQwenTtsEndpoint(config.qwenTts?.endpoint || DEFAULT_QWEN_TTS_URL);
   if (String(label || "").includes("GPT 图片")) return config.gptImage?.endpoint || DEFAULT_GPT_IMAGE_URL;
   if (String(label || "").includes("豆包图片")) return config.doubaoImage?.endpoint || DEFAULT_DOUBAO_IMAGE_URL;
   if (label === "GPT") return config.gpt?.baseUrl || envText("GPT_BASE_URL", "OPENAI_BASE_URL") || "https://api.openai.com/v1/chat/completions";
@@ -499,6 +503,7 @@ function getProbeUrl(label, config = {}) {
 
 async function probeServerNetwork(label, url, network = {}) {
   if (!url) return { label, ok: false, message: "未配置地址" };
+  if (hasUnresolvedUrlTemplate(url)) return { label, ok: false, message: "接口地址里还有占位符，请先替换 WorkspaceId、model 等真实参数。" };
   const startedAt = Date.now();
   try {
     const target = new URL(url);
@@ -523,7 +528,7 @@ async function runNetworkTest(input = {}) {
   const network = config.network || {};
   const labels = Array.isArray(input.labels) && input.labels.length
     ? input.labels
-    : ["GPT", "Gemini", "豆包文本", "千问", "Kimi", "豆包音频", "通用语音网关", "豆包语音识别", "Grok"];
+    : ["GPT", "第三方 GPT", "DeepSeek", "Gemini", "豆包文本", "千问", "Kimi", "千问 TTS", "豆包音频", "通用语音网关", "豆包语音识别", "Grok", "GPT 图片", "豆包图片"];
   const results = [];
   for (const label of labels) {
     results.push(await probeServerNetwork(label, getProbeUrl(label, config), network));
@@ -710,7 +715,9 @@ function normalizeQwenTtsEndpoint(endpoint = "") {
   const url = String(endpoint || "").trim();
   if (!url) return "";
   if (url.includes("/services/aigc/multimodal-generation/generation")) return url;
-  return `${url.replace(/\/+$/, "")}/services/aigc/multimodal-generation/generation`;
+  const base = url.replace(/\/+$/, "");
+  if (base.endsWith("/api/v1")) return `${base}/services/aigc/multimodal-generation/generation`;
+  return `${base}/api/v1/services/aigc/multimodal-generation/generation`;
 }
 
 function extractQwenTtsAudio(data = {}) {
