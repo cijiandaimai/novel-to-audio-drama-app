@@ -296,6 +296,8 @@ const creatorDraftKey = "creatorDraft";
 const configDirtyKey = "configDirty";
 const assistantMessagesKey = "assistantMessages";
 const assistantOpenKey = "assistantOpen";
+const assistantHiddenKey = "assistantHidden";
+const assistantPositionKey = "assistantPosition";
 const apiSaveReminderKey = "apiSaveReminderShown";
 const tavernCharactersKey = "tavernCharacters";
 const tavernSessionsKey = "tavernSessions";
@@ -458,12 +460,19 @@ const speechInputState = {
 };
 const assistantState = {
   open: false,
+  hidden: false,
   tab: "guide",
   busy: false,
   imageBusy: false,
   imageDataUrl: "",
   imageMimeType: "",
-  messages: []
+  messages: [],
+  position: null,
+  dragStart: null,
+  dragging: false,
+  longPressed: false,
+  suppressClick: false,
+  hideTimer: null
 };
 
 let lastHomeBackAt = 0;
@@ -1772,6 +1781,8 @@ function assistantSystemPrompt() {
 
 function loadAssistantState() {
   assistantState.open = localStorage.getItem(assistantOpenKey) === "yes";
+  assistantState.hidden = localStorage.getItem(assistantHiddenKey) === "yes";
+  assistantState.position = readJsonStorage(assistantPositionKey, null);
   assistantState.messages = readJsonStorage(assistantMessagesKey, []);
   if (!assistantState.messages.length) {
     assistantState.messages = [{
@@ -1783,7 +1794,98 @@ function loadAssistantState() {
 
 function saveAssistantState() {
   localStorage.setItem(assistantOpenKey, assistantState.open ? "yes" : "no");
+  localStorage.setItem(assistantHiddenKey, assistantState.hidden ? "yes" : "no");
+  if (assistantState.position) localStorage.setItem(assistantPositionKey, JSON.stringify(assistantState.position));
   localStorage.setItem(assistantMessagesKey, JSON.stringify(assistantState.messages.slice(-30)));
+}
+
+function clampAssistantPosition(position = {}) {
+  const dock = $("#assistantDock");
+  const margin = 8;
+  const width = dock?.offsetWidth || 58;
+  const height = dock?.offsetHeight || 58;
+  return {
+    left: Math.max(margin, Math.min(window.innerWidth - width - margin, Number(position.left) || margin)),
+    top: Math.max(margin, Math.min(window.innerHeight - height - margin, Number(position.top) || margin))
+  };
+}
+
+function setAssistantPosition(position) {
+  assistantState.position = clampAssistantPosition(position);
+  const dock = $("#assistantDock");
+  if (!dock) return;
+  dock.style.left = `${assistantState.position.left}px`;
+  dock.style.top = `${assistantState.position.top}px`;
+  dock.style.right = "auto";
+  dock.style.bottom = "auto";
+}
+
+function hideAssistantBubble() {
+  assistantState.hidden = true;
+  assistantState.open = false;
+  assistantState.longPressed = true;
+  assistantState.suppressClick = true;
+  saveAssistantState();
+  renderAssistant();
+  showToast("白泽小助手已隐藏；在首页切换语言会再次出现。", "ok");
+}
+
+function revealAssistantForLanguageSwitch() {
+  if (!assistantState.hidden) return;
+  assistantState.hidden = false;
+  assistantState.open = true;
+  assistantState.tab = "guide";
+  appendAssistantMessage("assistant", "我回来了。悬浮球可以拖到顺手的位置，长按 10 秒可以隐藏；以后在首页切换语言时也会再次出现。");
+  saveAssistantState();
+  renderAssistant();
+}
+
+function beginAssistantBubblePress(event) {
+  if (event.button !== undefined && event.button !== 0) return;
+  const dock = $("#assistantDock");
+  if (!dock) return;
+  const rect = dock.getBoundingClientRect();
+  assistantState.dragStart = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    left: rect.left,
+    top: rect.top
+  };
+  assistantState.dragging = false;
+  assistantState.longPressed = false;
+  clearTimeout(assistantState.hideTimer);
+  assistantState.hideTimer = window.setTimeout(hideAssistantBubble, 10000);
+  event.currentTarget?.setPointerCapture?.(event.pointerId);
+}
+
+function moveAssistantBubble(event) {
+  const start = assistantState.dragStart;
+  if (!start || start.pointerId !== event.pointerId || assistantState.longPressed) return;
+  const dx = event.clientX - start.x;
+  const dy = event.clientY - start.y;
+  if (!assistantState.dragging && Math.hypot(dx, dy) < 6) return;
+  assistantState.dragging = true;
+  clearTimeout(assistantState.hideTimer);
+  setAssistantPosition({ left: start.left + dx, top: start.top + dy });
+  event.preventDefault();
+}
+
+function endAssistantBubblePress(event) {
+  const start = assistantState.dragStart;
+  if (!start || start.pointerId !== event.pointerId) return;
+  clearTimeout(assistantState.hideTimer);
+  if (assistantState.dragging || assistantState.longPressed) {
+    assistantState.suppressClick = true;
+    saveAssistantState();
+    window.setTimeout(() => {
+      assistantState.suppressClick = false;
+    }, 80);
+  }
+  assistantState.dragStart = null;
+  assistantState.dragging = false;
+  event.currentTarget?.releasePointerCapture?.(event.pointerId);
+  renderAssistant();
 }
 
 function resolveAssistantTextProvider(config = getConfig()) {
@@ -1813,7 +1915,22 @@ function renderAssistant() {
   const panel = $("#assistantPanel");
   const bubble = $("#assistantBubble");
   if (!dock || !panel || !bubble) return;
-  panel.classList.toggle("hidden", !assistantState.open);
+  dock.classList.toggle("hidden", assistantState.hidden);
+  dock.classList.toggle("dragging", assistantState.dragging);
+  if (assistantState.position) {
+    const position = clampAssistantPosition(assistantState.position);
+    assistantState.position = position;
+    dock.style.left = `${position.left}px`;
+    dock.style.top = `${position.top}px`;
+    dock.style.right = "auto";
+    dock.style.bottom = "auto";
+  } else {
+    dock.style.left = "";
+    dock.style.top = "";
+    dock.style.right = "";
+    dock.style.bottom = "";
+  }
+  panel.classList.toggle("hidden", assistantState.hidden || !assistantState.open);
   bubble.setAttribute("aria-expanded", assistantState.open ? "true" : "false");
   $$(".assistant-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.assistantTab === assistantState.tab);
@@ -1843,6 +1960,7 @@ function renderAssistant() {
 }
 
 function toggleAssistantPanel(open = !assistantState.open) {
+  assistantState.hidden = false;
   assistantState.open = Boolean(open);
   saveAssistantState();
   renderAssistant();
@@ -1850,6 +1968,7 @@ function toggleAssistantPanel(open = !assistantState.open) {
 
 function setAssistantTab(tab) {
   assistantState.tab = ["guide", "chat", "image"].includes(tab) ? tab : "guide";
+  assistantState.hidden = false;
   if (!assistantState.open) assistantState.open = true;
   saveAssistantState();
   renderAssistant();
@@ -7431,7 +7550,10 @@ function initInteractionSelectionGuards() {
 
 function bindEvents() {
   $$(".nav-item").forEach((item) => item.addEventListener("click", () => showView(item.dataset.view)));
-  $("#appLanguageSelect")?.addEventListener("change", (event) => applyAppLanguage(event.target.value));
+  $("#appLanguageSelect")?.addEventListener("change", (event) => {
+    applyAppLanguage(event.target.value);
+    revealAssistantForLanguageSwitch();
+  });
   $$(".sample-prompt").forEach((details) => details.addEventListener("toggle", () => loadSamplePrompt(details)));
   $$("[data-jump]").forEach((button) => button.addEventListener("click", () => {
     showView(button.dataset.jump);
@@ -7507,7 +7629,17 @@ function bindEvents() {
       sendTavernMessage().catch((error) => showToast(`酒馆回复失败：${error.message}`, "fail"));
     }
   });
-  $("#assistantBubble")?.addEventListener("click", () => toggleAssistantPanel());
+  $("#assistantBubble")?.addEventListener("pointerdown", beginAssistantBubblePress);
+  $("#assistantBubble")?.addEventListener("pointermove", moveAssistantBubble);
+  $("#assistantBubble")?.addEventListener("pointerup", endAssistantBubblePress);
+  $("#assistantBubble")?.addEventListener("pointercancel", endAssistantBubblePress);
+  $("#assistantBubble")?.addEventListener("click", () => {
+    if (assistantState.suppressClick) {
+      assistantState.suppressClick = false;
+      return;
+    }
+    toggleAssistantPanel();
+  });
   $("#closeAssistantPanel")?.addEventListener("click", () => toggleAssistantPanel(false));
   $$(".assistant-tab").forEach((button) => {
     button.addEventListener("click", () => setAssistantTab(button.dataset.assistantTab));
@@ -7530,6 +7662,13 @@ function bindEvents() {
     const prompt = $("#assistantImagePrompt");
     if (prompt) prompt.value = "";
     renderAssistant();
+  });
+  window.addEventListener("resize", () => {
+    if (assistantState.position) {
+      assistantState.position = clampAssistantPosition(assistantState.position);
+      saveAssistantState();
+      renderAssistant();
+    }
   });
   $("#loadPlayerAudio").addEventListener("click", loadEditorFromPlayer);
   $("#quickImportA")?.addEventListener("click", () => $("#editorAudioFileA")?.click());

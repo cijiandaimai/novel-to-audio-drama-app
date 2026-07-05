@@ -3314,6 +3314,14 @@ button:not(:disabled):active,
   pointer-events: none;
 }
 
+.assistant-dock.hidden {
+  display: none;
+}
+
+.assistant-dock.dragging {
+  user-select: none;
+}
+
 .assistant-bubble,
 .assistant-panel {
   pointer-events: auto;
@@ -3330,6 +3338,12 @@ button:not(:disabled):active,
   box-shadow: 0 16px 34px rgba(39, 34, 26, 0.18);
   font-size: 24px;
   font-weight: 900;
+  touch-action: none;
+  cursor: grab;
+}
+
+.assistant-bubble:active {
+  cursor: grabbing;
 }
 
 .assistant-bubble span {

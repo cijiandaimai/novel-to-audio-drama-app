@@ -1003,9 +1003,10 @@
             <div>
               <p class="assistant-section-title">常用提醒</p>
               <ul class="assistant-tip-list">
-                <li><b>A</b><span>大陆线路优先填豆包、千问、Kimi；海外或第三方模型建议走代理或后端中转。</span></li>
-                <li><b>B</b><span>安卓真机访问电脑本地服务时，不要填 localhost，要填电脑局域网 IP。</span></li>
-                <li><b>C</b><span>正式发布给别人使用时，尽量把付费 Key 放到自己的后端，不要直接打进 APK。</span></li>
+                <li><b>A</b><span>悬浮球可以拖到顺手的位置；长按 10 秒会隐藏，在首页切换语言会再次出现。</span></li>
+                <li><b>B</b><span>大陆线路优先填豆包、千问、Kimi；海外或第三方模型建议走代理或后端中转。</span></li>
+                <li><b>C</b><span>安卓真机访问电脑本地服务时，不要填 localhost，要填电脑局域网 IP。</span></li>
+                <li><b>D</b><span>正式发布给别人使用时，尽量把付费 Key 放到自己的后端，不要直接打进 APK。</span></li>
               </ul>
             </div>
             <details open>
@@ -1013,8 +1014,24 @@
               <p>先到 API 配置填写需要的模型 Key；只用中国大陆线路时，优先填豆包文本、豆包音频、千问和 Kimi。回到创作页上传小说，点击自动执行完整方案。</p>
             </details>
             <details>
+              <summary>API 配置与测试</summary>
+              <p>每个 API 输入框旁有“?”和“测”。“?”看官网和填写方法；“测”只检查网络连通，真正能不能生成还要看 Key、余额、模型权限和接口格式。填完一定要点保存配置。</p>
+            </details>
+            <details>
               <summary>酒馆怎么用</summary>
               <p>酒馆可以本地运行，也可以切换 API。角色回复旁的“配音”会调用千问 TTS，把角色台词直接变成可播放音频。</p>
+            </details>
+            <details>
+              <summary>音箱播放器</summary>
+              <p>音箱页可以导入本地音频、歌词和背景图，也可以扫描下载文件夹。播放器支持播放列表、循环、变速、歌词滚动和全屏歌词。</p>
+            </details>
+            <details>
+              <summary>音频剪辑</summary>
+              <p>剪辑页支持双轨导入、拖动音块、调整播放头、录音、撤销和混音导出。移动端优先用顶部快捷按钮导入，再在轨道里长按拖动。</p>
+            </details>
+            <details>
+              <summary>直接生成音频</summary>
+              <p>如果已经有分段提示词，可以在创作页选择跳过编剧流程，直接上传提示词生成音频；生成后会按顺序保存，并可放进播放器收听。</p>
             </details>
             <details>
               <summary>图片功能</summary>
