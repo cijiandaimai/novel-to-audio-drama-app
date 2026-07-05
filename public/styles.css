@@ -3355,11 +3355,16 @@ button:not(:disabled):active,
   box-shadow: 0 24px 60px rgba(39, 34, 26, 0.2);
 }
 
+.assistant-panel.hidden,
+.assistant-tab-panel.hidden {
+  display: none;
+}
+
 .assistant-head,
 .assistant-tabs,
 .assistant-compose,
 .assistant-body {
-  padding: 10px;
+  padding: 12px;
 }
 
 .assistant-head {
@@ -3368,6 +3373,7 @@ button:not(:disabled):active,
   gap: 10px;
   align-items: center;
   border-bottom: 1px solid rgba(55, 50, 42, 0.1);
+  background: rgba(255, 253, 247, 0.76);
 }
 
 .assistant-head div {
@@ -3383,8 +3389,14 @@ button:not(:disabled):active,
 .assistant-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
+  gap: 8px;
   border-bottom: 1px solid rgba(55, 50, 42, 0.08);
+  background: rgba(247, 242, 229, 0.68);
+}
+
+.assistant-tab {
+  min-height: 38px;
+  border-radius: 999px;
 }
 
 .assistant-tab.active {
@@ -3399,14 +3411,60 @@ button:not(:disabled):active,
 
 .assistant-tab-panel {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .assistant-tab-panel details {
-  padding: 10px;
+  padding: 11px 12px;
   border: 1px solid rgba(55, 50, 42, 0.11);
   border-radius: 8px;
   background: rgba(255, 253, 247, 0.68);
+}
+
+.assistant-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.assistant-step-list,
+.assistant-tip-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-step-list li,
+.assistant-tip-list li {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 9px;
+  border: 1px solid rgba(55, 50, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.72);
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.assistant-step-list b,
+.assistant-tip-list b {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(49, 95, 76, 0.14);
+  color: var(--moss);
+  font-size: 12px;
 }
 
 .assistant-tab-panel p {
@@ -3418,8 +3476,8 @@ button:not(:disabled):active,
 .assistant-chat-log {
   display: grid;
   gap: 9px;
-  min-height: 220px;
-  max-height: 360px;
+  min-height: 260px;
+  max-height: 380px;
   overflow: auto;
   padding: 10px;
   border: 1px solid rgba(55, 50, 42, 0.11);
@@ -3459,6 +3517,9 @@ button:not(:disabled):active,
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   padding-inline: 0;
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, rgba(255, 253, 247, 0), rgba(255, 253, 247, 0.96) 20%);
 }
 
 .assistant-compose textarea {
