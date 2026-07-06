@@ -3452,9 +3452,7 @@ function normalizeMediaBaseName(fileName = "") {
 
 function normalizeLyricMatchKey(fileName = "") {
   return normalizeMediaBaseName(fileName)
-    .replace(/^\s*\d{1,4}\s*[-_.、]\s*/, "")
-    .replace(/\s*[\[(（]?\d{1,4}[\])）]?\s*$/, "")
-    .replace(/\s*(歌词|lyrics?)$/i, "")
+    .replace(/\s*[\[(（]?\s*(歌词|lyrics?)\s*[\])）]?$/i, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -3511,7 +3509,15 @@ function buildLyricMatchIndex(lyricItems = []) {
 function pickLyricMatch(candidates = [], audioItem = {}) {
   if (!candidates.length) return null;
   const directory = getMediaPathDirectory(audioItem);
-  return candidates.find((entry) => entry.directory && entry.directory === directory) || candidates[0];
+  if (directory) {
+    const sameDirectory = candidates.filter((entry) => entry.directory && entry.directory === directory);
+    if (sameDirectory.length) return sameDirectory[0];
+    if (candidates.length === 1 && !candidates[0].directory) return candidates[0];
+    return null;
+  }
+  const rootCandidates = candidates.filter((entry) => !entry.directory);
+  if (rootCandidates.length === 1) return rootCandidates[0];
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function findBestLyricMatch(audioItem = {}, lyricIndex = {}) {

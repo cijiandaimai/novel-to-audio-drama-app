@@ -5158,8 +5158,46 @@ select {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.home-head-actions .midnight-cat-button {
+  position: static;
+  justify-self: end;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-color: rgba(111, 31, 27, 0.24);
+  background: rgba(255, 252, 244, 0.92);
+  color: var(--accent-dark);
+  box-shadow: 0 8px 18px rgba(111, 31, 27, 0.08);
+}
+
+.player-import-memory {
+  display: none;
+}
+
 /* Compact speaker header and put playback mode between speed and volume. */
 @media (max-width: 760px) {
+  .home-head-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(128px, auto);
+    align-items: stretch;
+    gap: 7px 10px;
+  }
+
+  .home-head-actions .language-switch {
+    grid-row: 1 / span 2;
+  }
+
+  .home-head-actions .midnight-cat-button {
+    grid-column: 2;
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .home-head-actions .primary[data-jump="create"] {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+  }
+
   .speaker-now {
     flex-direction: row;
     align-items: center;
