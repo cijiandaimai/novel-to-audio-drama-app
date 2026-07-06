@@ -6735,8 +6735,10 @@ function startTimelineDrag(event) {
   if (!point.track?.buffer) return;
   const selection = editorState.selection;
   const handleSize = 18 * point.ratio;
-  const x1 = timeToX(selection.sourceStart, point.width, point.duration, point.offset);
-  const x2 = timeToX(selection.sourceEnd, point.width, point.duration, point.offset);
+  const selectionLength = Math.max(0, selection.sourceEnd - selection.sourceStart);
+  const selectionTimelineStart = Number.isFinite(selection.timelineStart) ? selection.timelineStart : selection.sourceStart;
+  const x1 = timeToX(selectionTimelineStart, point.width, point.duration, point.offset);
+  const x2 = timeToX(selectionTimelineStart + selectionLength, point.width, point.duration, point.offset);
   const inside = point.track.id === selection.trackId && point.x >= x1 && point.x <= x2;
   const type = Math.abs(point.x - x1) < handleSize ? "left" : Math.abs(point.x - x2) < handleSize ? "right" : inside ? "move" : "create";
   editorState.drag = {

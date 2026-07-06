@@ -125,6 +125,13 @@
                   </label>
                 </div>
                 <div class="player-import-memory" id="playerLastImportLabel">尚未记录导入位置</div>
+                <details class="player-playlist" aria-label="播放列表">
+                  <summary><strong>播放列表</strong></summary>
+                  <div class="player-playlist-head">
+                    <button id="clearPlaylist" class="secondary">清空</button>
+                  </div>
+                  <div id="playerPlaylist" class="player-playlist-list"></div>
+                </details>
                 <details class="player-more">
                   <summary>更多设置</summary>
                   <input id="playerBgUrl" type="url" placeholder="粘贴图片链接" />
@@ -137,13 +144,6 @@
                     <button id="exportPlaybackRecord" class="secondary">导出记录</button>
                   </div>
                   <p id="bluetoothStatus" class="hint">请先在系统蓝牙中配对音箱，App 播放声音会跟随系统输出设备。</p>
-                </details>
-                <details class="player-playlist" aria-label="播放列表">
-                  <summary><strong>播放列表</strong></summary>
-                  <div class="player-playlist-head">
-                    <button id="clearPlaylist" class="secondary">清空</button>
-                  </div>
-                  <div id="playerPlaylist" class="player-playlist-list"></div>
                 </details>
               </div>
             </div>

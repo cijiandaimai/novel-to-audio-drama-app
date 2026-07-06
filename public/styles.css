@@ -5449,3 +5449,402 @@ body[data-view="editor"] #quickExportMix {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* Editor viewport fit: keep waveform, selection badges and bottom commands fully visible above the fixed nav. */
+body[data-view="editor"] {
+  overflow: hidden;
+}
+
+body[data-view="editor"] .main {
+  height: var(--app-height);
+  overflow: hidden;
+  padding: 10px 14px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 10px);
+}
+
+body[data-view="editor"] #editor {
+  height: calc(var(--app-height) - var(--bottom-nav-height) - env(safe-area-inset-bottom, 0px) - 20px);
+  overflow: hidden;
+}
+
+body[data-view="editor"] #editor .page-head,
+body[data-view="editor"] #editor .source-credit {
+  display: none !important;
+}
+
+body[data-view="editor"] .editor-workbench {
+  height: 100%;
+  min-height: 0;
+}
+
+body[data-view="editor"] .editor-main-panel {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  gap: 6px;
+  padding: 8px;
+  overflow: hidden;
+}
+
+body[data-view="editor"] .editor-command-bar,
+body[data-view="editor"] .studio-transport,
+body[data-view="editor"] .editor-wave-head,
+body[data-view="editor"] .timeline-toolbar,
+body[data-view="editor"] .timeline-pan-row,
+body[data-view="editor"] .editor-fast-workflow {
+  flex: 0 0 auto;
+}
+
+body[data-view="editor"] .editor-command-bar,
+body[data-view="editor"] .studio-transport,
+body[data-view="editor"] .timeline-toolbar,
+body[data-view="editor"] .timeline-pan-row,
+body[data-view="editor"] .editor-wave-head {
+  padding: 5px 6px;
+}
+
+body[data-view="editor"] .editor-menu-button,
+body[data-view="editor"] .editor-tool-group button,
+body[data-view="editor"] .studio-transport button,
+body[data-view="editor"] .timeline-resize-actions button,
+body[data-view="editor"] .timeline-pan-row button,
+body[data-view="editor"] .editor-inline-actions button,
+body[data-view="editor"] .editor-fast-actions button,
+body[data-view="editor"] .selected-clip-actions button,
+body[data-view="editor"] .editor-clip-tool-strip button {
+  min-height: 30px;
+  padding: 5px 8px;
+  font-size: 12px;
+  line-height: 1.1;
+}
+
+body[data-view="editor"] .editor-command-bar {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+body[data-view="editor"] .editor-tool-group {
+  gap: 5px;
+}
+
+body[data-view="editor"] .studio-transport {
+  grid-template-columns: repeat(2, minmax(48px, auto)) minmax(112px, 1fr) repeat(3, minmax(48px, auto));
+  gap: 6px;
+}
+
+body[data-view="editor"] .studio-timecode strong {
+  font-size: 17px;
+}
+
+body[data-view="editor"] .editor-wave-head {
+  grid-template-columns: minmax(0, 1fr) minmax(168px, auto);
+  gap: 6px;
+}
+
+body[data-view="editor"] .editor-time-badges,
+body[data-view="editor"] .editor-inline-actions {
+  gap: 6px;
+}
+
+body[data-view="editor"] .editor-time-badges span {
+  min-height: 38px;
+  padding: 4px 8px;
+}
+
+body[data-view="editor"] .editor-time-badges strong {
+  font-size: 14px;
+}
+
+body[data-view="editor"] #editorPreview {
+  display: none;
+}
+
+body[data-view="editor"] .timeline-toolbar {
+  min-height: 34px;
+}
+
+body[data-view="editor"] .timeline-status-card > div,
+body[data-view="editor"] .timeline-status-card > span {
+  line-height: 1.25;
+}
+
+body[data-view="editor"] .timeline-pan-row {
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(112px, 0.28fr);
+  gap: 6px;
+}
+
+body[data-view="editor"] .timeline-pan-row input[type="range"] {
+  min-height: 24px;
+}
+
+body[data-view="editor"] .waveform-wrap {
+  flex: 1 1 180px;
+  min-height: 0;
+}
+
+body[data-view="editor"] #waveformCanvas {
+  min-height: 0;
+}
+
+body[data-view="editor"] .editor-fast-workflow {
+  display: grid;
+  grid-template-areas:
+    "tracks actions"
+    "status status"
+    "selected selected"
+    "tools tools"
+    "inspector inspector";
+  grid-template-columns: minmax(150px, 0.28fr) minmax(0, 1fr);
+  gap: 6px;
+  max-height: none;
+  overflow: visible;
+  padding: 6px;
+}
+
+body[data-view="editor"] .editor-track-strip {
+  grid-area: tracks;
+  gap: 6px;
+}
+
+body[data-view="editor"] .simple-track {
+  min-height: 34px;
+  padding: 5px 8px;
+}
+
+body[data-view="editor"] .editor-fast-actions {
+  grid-area: actions;
+  align-self: stretch;
+  gap: 5px;
+}
+
+body[data-view="editor"] .editor-fast-status {
+  grid-area: status;
+  gap: 6px;
+}
+
+body[data-view="editor"] .editor-fast-status span {
+  min-height: 24px;
+  padding: 4px 7px;
+}
+
+body[data-view="editor"] .editor-selected-clip-bar {
+  grid-area: selected;
+  padding: 5px 6px;
+}
+
+body[data-view="editor"] .editor-clip-tool-strip {
+  grid-area: tools;
+}
+
+body[data-view="editor"] .editor-clip-inspector {
+  grid-area: inspector;
+}
+
+body[data-view="editor"] .editor-drawer {
+  top: auto;
+  bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+  max-height: min(48vh, 420px);
+  border-radius: 16px;
+}
+
+@media (max-height: 760px) {
+  body[data-view="editor"] .timeline-toolbar {
+    display: none;
+  }
+
+  body[data-view="editor"] .editor-fast-workflow {
+    grid-template-areas:
+      "tracks actions"
+      "status actions"
+      "selected selected"
+      "tools tools"
+      "inspector inspector";
+  }
+
+  body[data-view="editor"] .waveform-wrap {
+    flex-basis: 164px;
+  }
+}
+
+@media (max-width: 760px) {
+  body[data-view="editor"] .main {
+    padding: 7px 8px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+
+  body[data-view="editor"] #editor {
+    height: calc(var(--app-height) - var(--bottom-nav-height) - env(safe-area-inset-bottom, 0px) - 15px);
+  }
+
+  body[data-view="editor"] .editor-command-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-view="editor"] .editor-menu-tabs {
+    display: flex;
+    grid-template-columns: none;
+    gap: 5px;
+    overflow-x: auto;
+    padding: 1px 1px 3px;
+    scrollbar-width: none;
+  }
+
+  body[data-view="editor"] .editor-menu-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  body[data-view="editor"] .editor-menu-button {
+    flex: 0 0 auto;
+    min-width: 54px;
+  }
+
+  body[data-view="editor"] .editor-tool-group {
+    display: none;
+  }
+
+  body[data-view="editor"] .studio-transport {
+    grid-template-columns: minmax(58px, auto) minmax(58px, auto) minmax(0, 1fr);
+  }
+
+  body[data-view="editor"] .studio-timecode {
+    order: 0;
+    grid-column: auto;
+  }
+
+  body[data-view="editor"] .studio-transport button[data-editor-panel="import"],
+  body[data-view="editor"] .studio-transport #transportSplit,
+  body[data-view="editor"] .studio-transport button[data-editor-panel="export"] {
+    display: none;
+  }
+
+  body[data-view="editor"] .editor-wave-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-view="editor"] .timeline-pan-row {
+    grid-template-columns: auto minmax(80px, 1fr) auto minmax(86px, 0.48fr);
+  }
+
+  body[data-view="editor"] .timeline-zoom-range {
+    grid-column: auto;
+  }
+
+  body[data-view="editor"] .editor-fast-workflow {
+    grid-template-areas:
+      "tracks"
+      "actions"
+      "status"
+      "selected"
+      "tools"
+      "inspector";
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-view="editor"] .editor-track-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-view="editor"][data-editor-panel] .editor-fast-actions {
+    display: flex;
+    grid-template-columns: none;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  body[data-view="editor"][data-editor-panel] .editor-fast-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  body[data-view="editor"][data-editor-panel] .editor-fast-actions button {
+    flex: 0 0 auto;
+    min-width: 64px;
+  }
+
+  body[data-view="editor"] .editor-fast-status {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  body[data-view="editor"] .editor-selected-clip-bar,
+  body[data-view="editor"] .editor-clip-tool-strip,
+  body[data-view="editor"] .editor-clip-inspector {
+    display: none !important;
+  }
+
+  body[data-view="editor"][data-editor-panel="clips"] .editor-selected-clip-bar,
+  body[data-view="editor"][data-editor-panel="clips"] .editor-clip-tool-strip,
+  body[data-view="editor"][data-editor-panel="tracks"] .editor-selected-clip-bar,
+  body[data-view="editor"][data-editor-panel="tracks"] .editor-clip-inspector {
+    display: grid !important;
+  }
+
+  body[data-view="editor"] .editor-drawer {
+    left: 8px;
+    right: 8px;
+    bottom: 144px;
+    max-height: min(45vh, 350px);
+  }
+}
+
+@media (max-width: 420px) {
+  body[data-view="editor"] .editor-time-badges span {
+    padding-inline: 5px;
+  }
+
+  body[data-view="editor"] .editor-time-badges strong {
+    font-size: 12px;
+  }
+
+  body[data-view="editor"] .studio-timecode strong {
+    font-size: 14px;
+  }
+}
+
+/* Player playlist priority: show the playlist above More Settings and give it more reading room. */
+.player-playlist {
+  order: 7;
+}
+
+.player-more {
+  order: 8;
+}
+
+.player-playlist-list {
+  max-height: min(34vh, 320px);
+}
+
+.player-playlist[open] .player-playlist-list {
+  min-height: min(22vh, 190px);
+}
+
+@media (max-width: 760px) {
+  .player-playlist {
+    order: 7;
+    flex: 0 0 auto;
+  }
+
+  .player-more {
+    order: 8;
+    flex: 0 0 auto;
+  }
+
+  .player-playlist[open] {
+    flex: 1 1 auto;
+    min-height: min(36vh, 260px);
+  }
+
+  .player-playlist[open] .player-playlist-list {
+    min-height: min(22vh, 190px);
+  }
+
+  .player-playlist-list {
+    max-height: min(30vh, 260px);
+  }
+}
+
+@media (max-width: 420px) {
+  .player-playlist[open] .player-playlist-list {
+    min-height: min(20vh, 170px);
+  }
+
+  .player-playlist-list {
+    max-height: min(28vh, 240px);
+  }
+}
