@@ -3101,6 +3101,18 @@ button:not(:disabled):active,
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
 }
 
+.config-grid .provider {
+  order: 20;
+}
+
+.config-grid .essential-provider {
+  order: 1;
+}
+
+.config-grid .provider:first-child {
+  order: 4;
+}
+
 .tavern-layout {
   display: grid;
   grid-template-columns: minmax(220px, 0.72fr) minmax(360px, 1.38fr) minmax(300px, 0.95fr);
@@ -4528,8 +4540,98 @@ body.keyboard-open .assistant-compose {
   }
 }
 
+/* Design-system polish inspired by Material, HIG, and Ant Design patterns. */
+.sidebar {
+  border-color: rgba(55, 50, 42, 0.12);
+  border-radius: 26px;
+  background:
+    linear-gradient(180deg, rgba(255, 253, 248, 0.96), rgba(247, 242, 231, 0.9));
+  box-shadow: 0 14px 38px rgba(39, 34, 26, 0.16);
+}
+
+.nav {
+  gap: 8px;
+}
+
+.nav-item {
+  min-height: 56px;
+  border-radius: 20px;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.nav-item.active {
+  border-color: rgba(111, 31, 27, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 238, 0.95), rgba(239, 226, 199, 0.72));
+  box-shadow: inset 0 -2px 0 rgba(111, 31, 27, 0.16), 0 8px 20px rgba(111, 31, 27, 0.08);
+}
+
+.nav-item:hover {
+  background: rgba(111, 31, 27, 0.07);
+}
+
+.nav-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.page-head {
+  padding: 2px 0 4px;
+}
+
+.page-head h2 {
+  font-size: clamp(24px, 3.1vw, 34px);
+}
+
+.panel,
+.sample-card,
+.history-item,
+.workflow-strip,
+.editor-main-panel {
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(39, 34, 26, 0.08);
+}
+
+.primary,
+.secondary,
+.image-picker,
+.api-help-button,
+.api-test-button,
+.editor-menu-button,
+.player-skip-button,
+.player-play-toggle {
+  border-radius: 10px;
+}
+
+.primary {
+  background: linear-gradient(180deg, #8c2d25, #641b17);
+}
+
+.secondary,
+.image-picker {
+  background: rgba(255, 252, 244, 0.92);
+}
+
+input,
+textarea,
+select {
+  border-radius: 10px;
+}
+
+.tavern-mode-row,
+.editor-command-bar,
+.studio-transport,
+.editor-fast-workflow,
+.player-controls {
+  border-radius: 10px;
+}
+
 /* Mobile interaction polish: keep the primary controls reachable above the fixed nav. */
 @media (max-width: 760px) {
+  html {
+    scrollbar-gutter: auto;
+  }
+
   .speaker-stage .player-art {
     height: calc(var(--app-height) - var(--bottom-nav-height) - 124px);
     min-height: 0;
@@ -4611,6 +4713,84 @@ body.keyboard-open .assistant-compose {
 
   .source-credit {
     margin-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  }
+
+  body[data-view="editor"] .source-credit {
+    margin-top: calc(var(--bottom-nav-height) + 120px);
+  }
+
+  .page-head {
+    margin-bottom: 12px;
+  }
+
+  .page-note {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .config-grid {
+    gap: 10px;
+  }
+
+  .config-grid .provider {
+    padding: 12px;
+  }
+
+  .config-grid .provider h3 {
+    margin-bottom: 8px;
+  }
+
+  .config-grid .provider label,
+  .field {
+    gap: 6px;
+    margin-bottom: 11px;
+  }
+
+  .config-grid input,
+  .config-grid select {
+    min-height: 40px;
+    padding: 9px 10px;
+  }
+
+  .tutorial,
+  .api-help {
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  #history .history-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px;
+  }
+
+  #history .history-list {
+    max-height: calc(var(--app-height) - var(--bottom-nav-height) - 136px);
+    overflow-y: auto;
+    padding-bottom: 8px;
+    overscroll-behavior: contain;
+  }
+
+  #history .history-item .actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  #history .history-item .actions a,
+  #history .history-item .actions button {
+    min-height: 38px;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    padding: 7px 8px;
   }
 
   #create .creator-main-layout .actions {
@@ -4728,6 +4908,39 @@ body.keyboard-open .assistant-compose {
   .editor-menu-button {
     flex-basis: 62px;
     min-width: 62px;
+  }
+}
+
+@media (max-width: 760px) {
+  body[data-view="editor"] .editor-command-bar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  body[data-view="editor"] .editor-menu-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
+    padding: 2px;
+    scroll-snap-type: none;
+  }
+
+  body[data-view="editor"] .editor-menu-button {
+    min-width: 0;
+    flex-basis: auto;
+    padding-inline: 4px;
+    font-size: 12px;
+  }
+
+  body[data-view="editor"] .editor-tool-group {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  body[data-view="editor"] .editor-tool-group button {
+    min-width: 0;
+    padding-inline: 4px;
+    font-size: 11px;
   }
 }
 
