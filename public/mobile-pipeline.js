@@ -449,6 +449,133 @@ async function blobToDataUrl(blob) {
   });
 }
 
+function audioBufferToWavBlob(buffer) {
+  const channelCount = Math.min(2, Math.max(1, buffer.numberOfChannels || 1));
+  const sampleRate = buffer.sampleRate || 44100;
+  const sampleCount = buffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channelCount * bytesPerSample;
+  const dataSize = sampleCount * blockAlign;
+  const arrayBuffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(arrayBuffer);
+  const writeString = (offset, value) => {
+    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+  const channels = Array.from({ length: channelCount }, (_, channel) => {
+    const sourceChannel = Math.min(channel, buffer.numberOfChannels - 1);
+    return buffer.getChannelData(sourceChannel);
+  });
+  let offset = 44;
+  for (let i = 0; i < sampleCount; i++) {
+    for (let channel = 0; channel < channelCount; channel++) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][i] || 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Blob([arrayBuffer], { type: "audio/wav" });
+}
+
+function firstPlayableAudio(generated) {
+  return generated.find((segment) => segment.dataUrl || segment.url) || null;
+}
+
+async function decodeAudioSegment(context, segment) {
+  const source = segment.dataUrl || segment.url;
+  if (!source) throw new Error("缺少音频地址");
+  const response = await fetch(source);
+  if (!response.ok) throw new Error(`音频读取失败：${response.status}`);
+  const arrayBuffer = await response.arrayBuffer();
+  const decoded = await context.decodeAudioData(arrayBuffer.slice(0));
+  return { segment, buffer: decoded };
+}
+
+async function mergeGeneratedAudioSegments(generated, gapSeconds = 0.28) {
+  const first = firstPlayableAudio(generated);
+  const fallback = {
+    finalAudio: first?.dataUrl || first?.url || null,
+    finalAudioDataUrl: first?.dataUrl || null,
+    finalAudioFileName: first?.fileName || null,
+    mergedCount: first ? 1 : 0
+  };
+  const playable = generated.filter((segment) => segment.dataUrl || segment.url);
+  if (playable.length <= 1) return fallback;
+
+  const AudioContextCtor = globalThis.AudioContext || globalThis.webkitAudioContext;
+  if (!AudioContextCtor || !globalThis.OfflineAudioContext) {
+    return { ...fallback, mergeError: "当前环境不支持离线音频合成" };
+  }
+
+  let decodeContext;
+  try {
+    decodeContext = new AudioContextCtor();
+    const decoded = [];
+    const warnings = [];
+    for (const segment of playable) {
+      try {
+        decoded.push(await decodeAudioSegment(decodeContext, segment));
+      } catch (error) {
+        warnings.push(`${segment.title || segment.id || segment.fileName || "片段"}：${error.message}`);
+      }
+    }
+    if (decodeContext.close) await decodeContext.close();
+    decodeContext = null;
+    if (!decoded.length) return { ...fallback, mergeError: warnings.join("；") || "没有可合成的音频片段" };
+    if (decoded.length === 1) {
+      const only = decoded[0].segment;
+      return {
+        finalAudio: only.dataUrl || only.url || fallback.finalAudio,
+        finalAudioDataUrl: only.dataUrl || fallback.finalAudioDataUrl,
+        finalAudioFileName: only.fileName || fallback.finalAudioFileName,
+        mergedCount: 1,
+        mergeWarnings: warnings
+      };
+    }
+
+    const sampleRate = decoded[0].buffer.sampleRate || 44100;
+    const totalDuration = decoded.reduce((sum, item) => sum + item.buffer.duration, 0) + gapSeconds * (decoded.length - 1);
+    if (totalDuration > 30 * 60) {
+      return { ...fallback, mergeError: "合成总时长超过 30 分钟，请导出分段音频后用桌面端或服务端合成" };
+    }
+
+    const offline = new OfflineAudioContext(2, Math.ceil(totalDuration * sampleRate), sampleRate);
+    let cursor = 0;
+    for (const item of decoded) {
+      const source = offline.createBufferSource();
+      source.buffer = item.buffer;
+      source.connect(offline.destination);
+      source.start(cursor);
+      cursor += item.buffer.duration + gapSeconds;
+    }
+    const rendered = await offline.startRendering();
+    const blob = audioBufferToWavBlob(rendered);
+    const dataUrl = await blobToDataUrl(blob);
+    return {
+      finalAudio: dataUrl,
+      finalAudioDataUrl: dataUrl,
+      finalAudioFileName: "000-完整广播剧.wav",
+      mergedCount: decoded.length,
+      mergeWarnings: warnings
+    };
+  } catch (error) {
+    if (decodeContext?.close) await decodeContext.close();
+    return { ...fallback, mergeError: error.message };
+  }
+}
+
 async function writeMockAudio(segment, index) {
   const duration = Math.min(12, Math.max(2, Math.round((segment.durationSeconds || 45) / 15)));
   const blob = createWavBlob(duration, 0);
@@ -533,10 +660,10 @@ async function generateAudioSegments(audioConfig, prompts, voiceReferences = [],
       generated.push(await writeMockAudio(segment, i));
     }
   }
+  const merged = await mergeGeneratedAudioSegments(generated);
   return {
     generated,
-    finalAudio: generated.find((segment) => segment.url)?.url || null,
-    finalAudioDataUrl: generated.find((segment) => segment.dataUrl)?.dataUrl || null
+    ...merged
   };
 }
 
@@ -656,7 +783,11 @@ export async function runStandalonePipeline(input) {
     plan: optimizedPlan,
     stages: stages.map((stage) => ({ name: stage.name, preview: stage.output.slice(0, 1000) })),
     audioSegments: audio.generated,
-    finalAudio: audio.finalAudio
+    finalAudio: audio.finalAudio,
+    finalAudioFileName: audio.finalAudioFileName || null,
+    mergedCount: audio.mergedCount || 0,
+    mergeError: audio.mergeError || null,
+    mergeWarnings: audio.mergeWarnings || []
   };
 
   return {
@@ -690,7 +821,11 @@ export async function runDirectAudioPipeline(input) {
     mode: "direct-audio",
     voiceReferences: normalizeVoiceReferences(config.voiceReferences || []).map(({ audioBase64, ...rest }) => rest),
     audioSegments: audio.generated,
-    finalAudio: audio.finalAudio
+    finalAudio: audio.finalAudio,
+    finalAudioFileName: audio.finalAudioFileName || null,
+    mergedCount: audio.mergedCount || 0,
+    mergeError: audio.mergeError || null,
+    mergeWarnings: audio.mergeWarnings || []
   };
 
   return {

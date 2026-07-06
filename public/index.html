@@ -499,7 +499,8 @@
                   <button id="quickMicToggle" class="secondary">录音</button>
                   <button id="quickUndoImport" class="secondary">撤销</button>
                   <button id="quickClearTrack" class="secondary">移除</button>
-                  <button id="quickAddSelection" class="secondary">加入</button>
+                  <button id="quickAddSelection" class="secondary">保留</button>
+                  <button id="quickDeleteSelection" class="secondary danger">删选区</button>
                   <button id="quickSplitClip" class="secondary">分割</button>
                   <button id="quickPreviewMix" class="secondary">播放</button>
                   <button id="quickExportMix" class="primary">导出</button>
@@ -531,6 +532,18 @@
                   <label>音量 <input id="selectedClipVolume" type="range" min="0" max="2" step="0.05" value="1" disabled /><span id="selectedClipVolumeLabel">1.00</span></label>
                   <label>淡入 <input id="selectedClipFadeIn" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeInLabel">0.0s</span></label>
                   <label>淡出 <input id="selectedClipFadeOut" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeOutLabel">0.0s</span></label>
+                </div>
+              </div>
+
+              <div class="editor-wave-head" aria-label="选区快捷操作">
+                <div class="editor-time-badges">
+                  <span><small>起点</small><strong id="cutStartBadge">0:00.00</strong></span>
+                  <span><small>终点</small><strong id="cutEndBadge">0:00.00</strong></span>
+                  <span><small>选区</small><strong id="cutDurationBadge">0:00.00</strong></span>
+                </div>
+                <div class="editor-inline-actions">
+                  <button id="keepSelectionTop" class="primary" type="button">保留选区</button>
+                  <button id="deleteSelectionTop" class="secondary danger" type="button">删除选区</button>
                 </div>
               </div>
 
@@ -730,7 +743,8 @@
                 <div class="editor-selection-actions">
                   <button id="setClipStartFromPlayer" class="secondary">设起点</button>
                   <button id="setClipEndFromPlayer" class="secondary">设终点</button>
-                  <button id="addClip" class="primary">加入选区</button>
+                  <button id="addClip" class="primary">保留选区</button>
+                  <button id="deleteSelectionRange" class="secondary danger">删除选区</button>
                   <button id="addWholeClip" class="secondary">整段加入</button>
                 </div>
               </div>

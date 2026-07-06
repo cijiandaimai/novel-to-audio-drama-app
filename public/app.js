@@ -1050,6 +1050,9 @@ function relayAssetUrl(path, config = getConfig()) {
 
 function normalizeResultLinks(result, config = getConfig()) {
   const links = { ...(result?.links || {}) };
+  if (!links.finalAudio && result?.finalAudio) links.finalAudio = result.finalAudio;
+  if (!links.finalAudioDataUrl && result?.finalAudioDataUrl) links.finalAudioDataUrl = result.finalAudioDataUrl;
+  if (!links.finalAudio && links.finalAudioDataUrl) links.finalAudio = links.finalAudioDataUrl;
   for (const [key, value] of Object.entries(links)) {
     if (typeof value === "string") links[key] = relayAssetUrl(value, config);
   }
@@ -5009,12 +5012,48 @@ async function urlToBase64(url) {
 
 function collectAudioSegmentsForSaving(result, links = {}) {
   const segments = result?.manifest?.audioSegments || result?.audioSegments || [];
-  return Array.isArray(segments) ? segments.map((segment, index) => ({
+  const collected = Array.isArray(segments) ? segments.map((segment, index) => ({
     ...segment,
     index,
     fileName: segment.fileName || `${String(index + 1).padStart(3, "0")}-${segment.id || "segment"}.wav`,
     url: segment.dataUrl || segment.url || (links.outputFolder && segment.fileName ? `${links.outputFolder}${segment.fileName}` : "")
   })).filter((segment) => segment.url || segment.dataUrl || segment.base64) : [];
+  const finalAudio = links.finalAudioDataUrl
+    || result?.finalAudioDataUrl
+    || links.finalAudio
+    || result?.finalAudio
+    || result?.manifest?.finalAudio
+    || "";
+  const alreadyIncluded = finalAudio && collected.some((segment) => (segment.dataUrl || segment.url || segment.base64) === finalAudio);
+  if (finalAudio && !alreadyIncluded) {
+    const finalFileName = result?.manifest?.finalAudioFileName || result?.finalAudioFileName || "000-完整广播剧.wav";
+    collected.unshift({
+      id: "final-audio",
+      title: "完整广播剧",
+      fileName: finalFileName,
+      mimeType: guessAudioMime(finalFileName),
+      dataUrl: finalAudio.startsWith("data:") ? finalAudio : "",
+      url: finalAudio
+    });
+  }
+  return collected;
+}
+
+async function saveBlobToDownloads(blob, title, fileName, dataUrlCache = {}) {
+  const plugin = getBaizeMediaPlugin();
+  if (!plugin?.saveAudioSegments) return null;
+  const dataUrl = dataUrlCache.value || await fileToDataUrl(blob);
+  dataUrlCache.value = dataUrl;
+  const saved = await plugin.saveAudioSegments({
+    title,
+    segments: [{
+      fileName,
+      mimeType: blob.type || guessAudioMime(fileName),
+      base64: dataUrlToBase64(dataUrl)
+    }]
+  });
+  addSavedDownloadFilesToPlaylist(saved, title);
+  return saved;
 }
 
 async function saveGeneratedSegmentsToDownloads(result, links) {
@@ -5482,6 +5521,20 @@ function syncEditorQuickState() {
   const selectionLength = Math.max(0, editorState.selection.sourceEnd - editorState.selection.sourceStart);
   const selectionInfo = $("#quickSelectionInfo");
   if (selectionInfo) selectionInfo.textContent = `选区 ${formatSeconds(selectionLength)}`;
+  const startBadge = $("#cutStartBadge");
+  const endBadge = $("#cutEndBadge");
+  const durationBadge = $("#cutDurationBadge");
+  if (startBadge) startBadge.textContent = formatSeconds(editorState.selection.sourceStart);
+  if (endBadge) endBadge.textContent = formatSeconds(editorState.selection.sourceEnd);
+  if (durationBadge) durationBadge.textContent = formatSeconds(selectionLength);
+  ["#quickAddSelection", "#keepSelectionTop", "#addClip"].forEach((selector) => {
+    const button = $(selector);
+    if (button) button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
+  });
+  ["#quickDeleteSelection", "#deleteSelectionTop", "#deleteSelectionRange"].forEach((selector) => {
+    const button = $(selector);
+    if (button) button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
+  });
   const clipCount = $("#quickClipCount");
   const selectedClip = getSelectedClip();
   if (clipCount) {
@@ -5566,6 +5619,106 @@ function getClipInputs() {
     end: editorState.selection.sourceEnd,
     timelineStart: editorState.selection.timelineStart
   };
+}
+
+function addSelectionAsClip({ notify = true } = {}) {
+  const { start, end, timelineStart, trackId } = getClipInputs();
+  const clip = addEditorClip(start, end, timelineStart, trackId);
+  if (clip && notify) showToast("已把选区保留为可编辑片段。", "ok");
+  return clip;
+}
+
+function makeEditorClip({ trackId, name, sourceStart, sourceEnd, timelineStart, volume = 1, fadeIn = 0, fadeOut = 0, muted = false }) {
+  return {
+    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name,
+    trackId,
+    sourceStart,
+    sourceEnd,
+    timelineStart,
+    volume,
+    fadeIn,
+    fadeOut,
+    muted
+  };
+}
+
+function deleteSelectedRange() {
+  const { trackId, start, end } = getClipInputs();
+  const track = getTrack(trackId);
+  const duration = track?.buffer?.duration || 0;
+  const cutStart = clamp(Math.min(start, end), 0, duration);
+  const cutEnd = clamp(Math.max(start, end), cutStart, duration);
+  if (!track?.buffer || cutEnd - cutStart <= 0.05) {
+    showToast("请先在波形上拖出要删除的选区。", "fail");
+    return;
+  }
+
+  pushEditorHistory();
+  const trackClips = editorState.clips.filter((clip) => clip.trackId === trackId);
+  const otherClips = editorState.clips.filter((clip) => clip.trackId !== trackId);
+  let rebuilt = [];
+
+  if (!trackClips.length) {
+    if (cutStart > 0.05) {
+      rebuilt.push(makeEditorClip({
+        trackId,
+        name: `${track.name} · 删前`,
+        sourceStart: 0,
+        sourceEnd: cutStart,
+        timelineStart: 0,
+        volume: 1
+      }));
+    }
+    if (duration - cutEnd > 0.05) {
+      rebuilt.push(makeEditorClip({
+        trackId,
+        name: `${track.name} · 删后`,
+        sourceStart: cutEnd,
+        sourceEnd: duration,
+        timelineStart: cutStart,
+        volume: 1
+      }));
+    }
+  } else {
+    trackClips.forEach((clip) => {
+      const overlapStart = Math.max(clip.sourceStart, cutStart);
+      const overlapEnd = Math.min(clip.sourceEnd, cutEnd);
+      if (overlapEnd <= overlapStart) {
+        rebuilt.push(clip);
+        return;
+      }
+      if (overlapStart - clip.sourceStart > 0.05) {
+        rebuilt.push(makeEditorClip({
+          ...clip,
+          name: `${clip.name} a`,
+          sourceStart: clip.sourceStart,
+          sourceEnd: overlapStart,
+          timelineStart: clip.timelineStart
+        }));
+      }
+      if (clip.sourceEnd - overlapEnd > 0.05) {
+        rebuilt.push(makeEditorClip({
+          ...clip,
+          name: `${clip.name} b`,
+          sourceStart: overlapEnd,
+          sourceEnd: clip.sourceEnd,
+          timelineStart: clip.timelineStart + Math.max(0, overlapStart - clip.sourceStart)
+        }));
+      }
+    });
+  }
+
+  rebuilt = rebuilt.sort((a, b) => a.timelineStart - b.timelineStart);
+  editorState.clips = [...otherClips, ...rebuilt];
+  editorState.selectedClipId = rebuilt[0]?.id || "";
+  const nextStart = Math.min(cutStart, duration);
+  setClipInputs(nextStart, Math.min(duration, nextStart + Math.max(0.1, cutEnd - cutStart)), nextStart);
+  setPlayhead(nextStart, { snap: false, follow: true });
+  setEditorContext("clips");
+  renderClipList();
+  renderWaveform();
+  showToast("已按选区生成删除后的片段。", "ok");
 }
 
 function getSelectedClip() {
@@ -6180,19 +6333,19 @@ function xToTime(x, width, duration, offset = 0, projectDuration = duration) {
 }
 
 function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDuration, offset, projectDuration, ratio) {
-  ctx.fillStyle = track.id === editorState.activeTrackId ? "rgba(255, 253, 247, 0.92)" : "rgba(255, 253, 247, 0.62)";
+  ctx.fillStyle = track.id === editorState.activeTrackId ? "rgba(255, 255, 255, 0.075)" : "rgba(255, 255, 255, 0.045)";
   ctx.fillRect(0, laneTop, width, laneHeight);
-  ctx.fillStyle = "rgba(31, 33, 31, 0.72)";
+  ctx.fillStyle = "rgba(255, 250, 240, 0.72)";
   ctx.font = `${12 * ratio}px Microsoft YaHei, sans-serif`;
   ctx.fillText(`${track.name} · ${track.label}`, 14 * ratio, laneTop + 22 * ratio);
-  ctx.strokeStyle = "rgba(31, 33, 31, 0.14)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.09)";
   ctx.beginPath();
   ctx.moveTo(0, laneTop + laneHeight / 2);
   ctx.lineTo(width, laneTop + laneHeight / 2);
   ctx.stroke();
 
   if (!track.buffer) {
-    ctx.fillStyle = "rgba(116, 111, 99, 0.78)";
+    ctx.fillStyle = "rgba(255, 250, 240, 0.42)";
     ctx.fillText("导入音频后显示波形", 14 * ratio, laneTop + laneHeight / 2 + 6 * ratio);
     return;
   }
@@ -6202,7 +6355,7 @@ function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDurati
   const data = track.buffer.getChannelData(0);
   if (visibleStart >= visibleEnd) return;
   const samplesPerPixel = Math.max(1, Math.floor(Math.max(1, visibleEnd - visibleStart) / width));
-  ctx.strokeStyle = track.id === "A" ? "#315f4c" : "#6f1f1b";
+  ctx.strokeStyle = track.id === "A" ? "#48d08b" : "#ff9f74";
   ctx.lineWidth = Math.max(1, ratio);
   ctx.beginPath();
   for (let x = 0; x < width; x += 1) {
@@ -6225,15 +6378,15 @@ function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDurati
 function drawPlayheadScrub(ctx, playheadX, info) {
   const { width, scrubTop, scrubHeight, ratio } = info;
   const railY = scrubTop + scrubHeight / 2;
-  ctx.fillStyle = "rgba(31, 33, 31, 0.08)";
+  ctx.fillStyle = "rgba(255, 255, 255, 0.055)";
   ctx.fillRect(0, scrubTop, width, scrubHeight);
-  ctx.strokeStyle = "rgba(31, 33, 31, 0.18)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
   ctx.lineWidth = Math.max(1, ratio);
   ctx.beginPath();
   ctx.moveTo(0, scrubTop + 0.5 * ratio);
   ctx.lineTo(width, scrubTop + 0.5 * ratio);
   ctx.stroke();
-  ctx.strokeStyle = "rgba(49, 95, 76, 0.28)";
+  ctx.strokeStyle = "rgba(72, 208, 139, 0.36)";
   ctx.lineWidth = Math.max(2 * ratio, 2);
   ctx.beginPath();
   ctx.moveTo(12 * ratio, railY);
@@ -6241,7 +6394,7 @@ function drawPlayheadScrub(ctx, playheadX, info) {
   ctx.stroke();
 
   const clampedX = clamp(playheadX, 12 * ratio, width - 12 * ratio);
-  ctx.fillStyle = "rgba(31, 33, 31, 0.92)";
+  ctx.fillStyle = "#b88b4a";
   ctx.beginPath();
   ctx.arc(clampedX, railY, 10 * ratio, 0, Math.PI * 2);
   ctx.fill();
@@ -6259,7 +6412,7 @@ function drawPlayheadScrub(ctx, playheadX, info) {
   const labelHeight = 18 * ratio;
   const labelX = clamp(clampedX - labelWidth / 2, 6 * ratio, width - labelWidth - 6 * ratio);
   const labelY = scrubTop + 4 * ratio;
-  ctx.fillStyle = "rgba(31, 33, 31, 0.86)";
+  ctx.fillStyle = "rgba(10, 12, 16, 0.88)";
   ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
   ctx.fillStyle = "#fffaf0";
   ctx.textAlign = "center";
@@ -6285,9 +6438,9 @@ function renderWaveform() {
   const { layout, duration, projectDuration, offset, scrubTop } = info;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "rgba(255, 250, 238, 0.86)";
+  ctx.fillStyle = "#17171d";
   ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "rgba(49, 95, 76, 0.14)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.075)";
   ctx.lineWidth = 1;
   const gridStep = Math.max(Number(editorState.timeline.grid) || 0.5, duration / 8);
   const firstTick = Math.ceil(offset / gridStep) * gridStep;
@@ -6297,7 +6450,7 @@ function renderWaveform() {
     ctx.moveTo(x, 0);
     ctx.lineTo(x, scrubTop);
     ctx.stroke();
-    ctx.fillStyle = "rgba(116, 111, 99, 0.75)";
+    ctx.fillStyle = "rgba(255, 250, 240, 0.52)";
     ctx.font = `${10 * ratio}px Microsoft YaHei, sans-serif`;
     ctx.fillText(formatSeconds(time), x + 4 * ratio, 12 * ratio);
   }
@@ -6306,7 +6459,7 @@ function renderWaveform() {
     drawTrackWaveform(ctx, lane.track, lane.top, lane.height, width, duration, offset, projectDuration, ratio);
   });
 
-  ctx.strokeStyle = "rgba(31, 33, 31, 0.22)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.12)";
   ctx.lineWidth = Math.max(1, ratio);
   layout.slice(0, -1).forEach((lane) => {
     const y = lane.top + lane.height;
@@ -6314,7 +6467,7 @@ function renderWaveform() {
     ctx.moveTo(0, y);
     ctx.lineTo(width, y);
     ctx.stroke();
-    ctx.fillStyle = "rgba(49, 95, 76, 0.28)";
+    ctx.fillStyle = "rgba(72, 208, 139, 0.2)";
     ctx.fillRect(0, y - 3 * ratio, width, 6 * ratio);
   });
 
@@ -6329,11 +6482,11 @@ function renderWaveform() {
     const y = lane.top + lane.height - clipHeight - 10 * ratio;
     const selected = clip.id === editorState.selectedClipId;
     ctx.fillStyle = clip.muted
-      ? "rgba(116, 111, 99, 0.28)"
+      ? "rgba(255, 255, 255, 0.12)"
       : selected
-        ? "rgba(184, 139, 74, 0.34)"
-        : "rgba(49, 95, 76, 0.2)";
-    ctx.strokeStyle = selected ? "rgba(184, 139, 74, 0.95)" : clip.trackId === "A" ? "rgba(49, 95, 76, 0.72)" : "rgba(111, 31, 27, 0.72)";
+        ? "rgba(184, 139, 74, 0.42)"
+        : "rgba(72, 208, 139, 0.22)";
+    ctx.strokeStyle = selected ? "rgba(255, 206, 115, 0.98)" : clip.trackId === "A" ? "rgba(72, 208, 139, 0.82)" : "rgba(255, 159, 116, 0.82)";
     ctx.lineWidth = selected ? 2 * ratio : 1 * ratio;
     ctx.fillRect(x, y, w, clipHeight);
     ctx.strokeRect(x, y, w, clipHeight);
@@ -6343,7 +6496,7 @@ function renderWaveform() {
       ctx.fillRect(x + w - Math.min(8 * ratio, w / 3), y, Math.min(8 * ratio, w / 3), clipHeight);
     }
     if (w > 70 * ratio) {
-      ctx.fillStyle = "rgba(31, 33, 31, 0.72)";
+      ctx.fillStyle = "rgba(255, 250, 240, 0.82)";
       ctx.font = `${11 * ratio}px Microsoft YaHei, sans-serif`;
       ctx.fillText(clip.name, x + 8 * ratio, y + 23 * ratio);
     }
@@ -6359,16 +6512,16 @@ function renderWaveform() {
     const x1 = timeToX(selectionStart, width, duration, offset);
     const x2 = timeToX(selectionStart + selectionDuration, width, duration, offset);
     const y = lane.top;
-    ctx.fillStyle = "rgba(111, 31, 27, 0.16)";
+    ctx.fillStyle = "rgba(184, 139, 74, 0.22)";
     ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), lane.height);
-    ctx.strokeStyle = "rgba(111, 31, 27, 0.82)";
+    ctx.strokeStyle = "rgba(255, 206, 115, 0.92)";
     ctx.lineWidth = 2 * ratio;
     ctx.strokeRect(x1, y + 1 * ratio, Math.max(2 * ratio, x2 - x1), lane.height - 2 * ratio);
   }
 
   const playheadX = timeToX(editorState.timeline.playhead, width, duration, offset);
   if (playheadX >= 0 && playheadX <= width) {
-    ctx.strokeStyle = "rgba(31, 33, 31, 0.85)";
+    ctx.strokeStyle = "rgba(255, 250, 240, 0.95)";
     ctx.lineWidth = 2 * ratio;
     ctx.beginPath();
     ctx.moveTo(playheadX, 0);
@@ -7131,22 +7284,30 @@ async function exportEditorMix() {
     if (editorState.renderedUrl) URL.revokeObjectURL(editorState.renderedUrl);
     editorState.renderedUrl = URL.createObjectURL(blob);
     const fileName = "白泽声工坊-双轨混音.wav";
+    const dataUrlCache = {};
+    let savedDownloads = null;
+    try {
+      savedDownloads = await saveBlobToDownloads(blob, "剪辑导出", fileName, dataUrlCache);
+    } catch (error) {
+      showToast(`混音已导出，但保存到下载文件夹失败：${error.message || error}`, "fail");
+    }
     $("#editorResult").classList.remove("hidden");
     $("#editorResult").innerHTML = `
       <strong>混音完成：</strong>${fileName}<br />
+      ${savedDownloads?.count ? `已保存到：${escapeHtml(savedDownloads.folder || "下载文件夹")}<br />` : ""}
       <audio controls src="${editorState.renderedUrl}"></audio>
       <div class="actions">
         <button data-play-src="${editorState.renderedUrl}" data-play-title="${fileName}">播放</button>
         <a download="${fileName}" href="${editorState.renderedUrl}">下载 WAV</a>
       </div>
     `;
-    showToast("双轨混音导出完成。", "ok");
+    showToast(savedDownloads?.count ? "双轨混音导出完成，已保存到下载文件夹。" : "双轨混音导出完成。", "ok");
     if (blob.size <= 3500000) {
       saveLocalHistory({
         jobId: `edit-${Date.now()}`,
         title: fileName,
         createdAt: new Date().toISOString(),
-        finalAudioDataUrl: await fileToDataUrl(blob),
+        finalAudioDataUrl: dataUrlCache.value || await fileToDataUrl(blob),
         manifest: ""
       });
     }
@@ -8312,10 +8473,10 @@ function bindEvents() {
   });
   $("#quickUndoImport")?.addEventListener("click", () => undoTrackImport(editorState.activeTrackId));
   $("#quickClearTrack")?.addEventListener("click", () => clearTrackSource(editorState.activeTrackId));
-  $("#quickAddSelection")?.addEventListener("click", () => {
-    const { start, end, timelineStart, trackId } = getClipInputs();
-    addEditorClip(start, end, timelineStart, trackId);
-  });
+  $("#quickAddSelection")?.addEventListener("click", () => addSelectionAsClip());
+  $("#keepSelectionTop")?.addEventListener("click", () => addSelectionAsClip());
+  $("#quickDeleteSelection")?.addEventListener("click", deleteSelectedRange);
+  $("#deleteSelectionTop")?.addEventListener("click", deleteSelectedRange);
   $("#quickSplitClip")?.addEventListener("click", splitClipAtPlayhead);
   $("#quickPreviewMix")?.addEventListener("click", previewTimelineMix);
   $("#quickExportMix")?.addEventListener("click", exportEditorMix);
@@ -8461,10 +8622,8 @@ function bindEvents() {
     const { start } = getClipInputs();
     setClipInputs(start, preview.currentTime || 0, editorState.selection.timelineStart);
   });
-  $("#addClip").addEventListener("click", () => {
-    const { start, end, timelineStart, trackId } = getClipInputs();
-    addEditorClip(start, end, timelineStart, trackId);
-  });
+  $("#addClip").addEventListener("click", () => addSelectionAsClip());
+  $("#deleteSelectionRange")?.addEventListener("click", deleteSelectedRange);
   $("#addWholeClip").addEventListener("click", () => {
     const track = getActiveTrack();
     addEditorClip(0, track.buffer?.duration || 0, editorState.selection.timelineStart, track.id);
