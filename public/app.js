@@ -954,7 +954,7 @@ function applyAppLanguage(language = getAppLanguage()) {
   setText("#testBluetoothAudio", t("test"));
   setText("#exportPlaybackRecord", t("exportRecord"));
   setText("#bluetoothStatus", t("bluetoothHint"));
-  setText(".player-playlist-head strong", t("playlist"));
+  setText(".player-playlist summary strong", t("playlist"));
   setText("#clearPlaylist", t("clear"));
   setText(".home-actions [data-jump='tavern']", t("tavern"));
   setText(".home-actions [data-jump='config']", t("apiConfig"));

@@ -2279,22 +2279,44 @@ body[data-view="editor"] .main {
 }
 
 .player-playlist {
-  display: grid;
-  gap: 8px;
+  display: block;
   padding: 10px;
   border: 1px solid rgba(255, 250, 238, 0.22);
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.2);
 }
 
+.player-playlist summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  list-style: none;
+  color: #fffaf0;
+  font-weight: 800;
+}
+
+.player-playlist summary::-webkit-details-marker {
+  display: none;
+}
+
+.player-playlist summary::after {
+  content: "+";
+}
+
+.player-playlist[open] summary::after {
+  content: "-";
+}
+
 .player-playlist-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 10px;
+  margin-top: 10px;
 }
 
-.player-playlist-head strong {
+.player-playlist summary strong {
   color: #fffaf0;
 }
 
@@ -2309,6 +2331,7 @@ body[data-view="editor"] .main {
   display: grid;
   gap: 7px;
   max-height: 160px;
+  margin-top: 8px;
   overflow: auto;
   padding-right: 2px;
 }
@@ -5133,4 +5156,65 @@ select {
 
 .player-meta-row {
   grid-template-columns: minmax(0, 1fr);
+}
+
+/* Compact speaker header and put playback mode between speed and volume. */
+@media (max-width: 760px) {
+  .speaker-now {
+    flex-direction: row;
+    align-items: center;
+    min-height: 52px;
+    gap: 8px;
+    padding: 8px 10px;
+  }
+
+  .speaker-now > div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+  }
+
+  .speaker-now .eyebrow {
+    margin-bottom: 0;
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .player-shade h3 {
+    -webkit-line-clamp: 1;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+
+  .speaker-now .secondary {
+    flex: 0 0 auto;
+    min-width: 52px;
+    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+
+  #playerPrev {
+    order: 1;
+  }
+
+  #playerPlayPause {
+    order: 2;
+  }
+
+  #playerNext {
+    order: 3;
+  }
+
+  .player-rate {
+    order: 4;
+  }
+
+  #playerLoopMode {
+    order: 5;
+  }
+
+  .player-volume {
+    order: 6;
+  }
 }
