@@ -88,6 +88,7 @@
                     <button id="playerPlayPause" class="player-play-toggle" aria-label="播放或暂停">播放</button>
                     <button id="playerNext" class="player-skip-button" aria-label="下一首">下一首</button>
                     <button id="playerLoopMode" class="player-skip-button" aria-label="循环模式">顺序</button>
+                    <button id="openPlayerQueue" class="player-skip-button player-queue-toggle" aria-label="播放队列">队列 <span id="playerQueueCount">0</span></button>
                     <label class="player-rate">
                       <span>速度</span>
                       <select id="playerRate" aria-label="播放速度">
@@ -125,13 +126,20 @@
                   </label>
                 </div>
                 <div class="player-import-memory" id="playerLastImportLabel">尚未记录导入位置</div>
-                <details class="player-playlist" aria-label="播放列表">
-                  <summary><strong>播放列表</strong></summary>
+                <div id="playerQueueBackdrop" class="player-queue-backdrop hidden"></div>
+                <aside id="playerQueueDrawer" class="player-queue-drawer" aria-hidden="true" aria-label="播放队列">
+                  <div class="player-queue-head">
+                    <div>
+                      <strong>播放队列</strong>
+                      <span id="playerQueueSubtitle">0 段</span>
+                    </div>
+                    <button id="closePlayerQueue" class="secondary" type="button">收起</button>
+                  </div>
                   <div class="player-playlist-head">
-                    <button id="clearPlaylist" class="secondary">清空</button>
+                    <button id="clearPlaylist" class="secondary" type="button">清空</button>
                   </div>
                   <div id="playerPlaylist" class="player-playlist-list"></div>
-                </details>
+                </aside>
                 <details class="player-more">
                   <summary>更多设置</summary>
                   <input id="playerBgUrl" type="url" placeholder="粘贴图片链接" />
@@ -407,7 +415,7 @@
                 </div>
                 <div class="actions">
                   <button id="startVoiceRecord" class="secondary">开始录音</button>
-                  <button id="stopVoiceRecord" class="secondary" disabled>停止录音</button>
+                  <button id="stopVoiceRecord" class="secondary hidden" disabled>停止录音</button>
                   <button id="saveVoiceRecord" class="primary" disabled>保存录音</button>
                 </div>
                 <audio id="voiceRecordPreview" controls></audio>
@@ -499,6 +507,8 @@
                   <button id="quickMicToggle" class="secondary">录音</button>
                   <button id="quickUndoImport" class="secondary">撤销</button>
                   <button id="quickClearTrack" class="secondary">移除</button>
+                  <button id="quickTrimModeKeep" class="secondary">保留模式</button>
+                  <button id="quickTrimModeDelete" class="secondary danger">删中间</button>
                   <button id="quickAddSelection" class="secondary">保留</button>
                   <button id="quickDeleteSelection" class="secondary danger">删选区</button>
                   <button id="quickSplitClip" class="secondary">分割</button>
@@ -542,7 +552,11 @@
                   <span><small>选区</small><strong id="cutDurationBadge">0:00.00</strong></span>
                 </div>
                 <div class="editor-inline-actions">
-                  <button id="keepSelectionTop" class="primary" type="button">保留选区</button>
+                  <div class="trim-mode-tabs" aria-label="裁剪模式">
+                    <button id="trimModeKeep" class="primary" type="button">保留选区</button>
+                    <button id="trimModeDelete" class="secondary" type="button">删除中间</button>
+                  </div>
+                  <button id="keepSelectionTop" class="primary" type="button">执行保留</button>
                   <button id="deleteSelectionTop" class="secondary danger" type="button">删除选区</button>
                 </div>
               </div>
@@ -592,7 +606,7 @@
                   </div>
                   <div class="editor-quick-row">
                     <button id="startEditorMic" class="secondary">开始录音</button>
-                    <button id="stopEditorMic" class="secondary" disabled>停止并导入</button>
+                    <button id="stopEditorMic" class="secondary hidden" disabled>停止并导入</button>
                   </div>
                   <p id="editorMicStatus" class="hint">录音会直接导入目标轨道，覆盖前会自动保存为可撤销状态。</p>
                 </div>
@@ -725,6 +739,8 @@
                   <label class="timeline-grid">播放头
                     <input id="playheadInput" type="number" min="0" step="0.01" value="0" />
                   </label>
+                  <button id="addTimelineMarker" class="secondary" type="button">打标记</button>
+                  <button id="clearTimelineMarkers" class="secondary" type="button">清标记</button>
                 </div>
                 <div class="editor-selection">
                   <label class="field">
@@ -740,13 +756,23 @@
                     <input id="clipTimelineStart" type="number" min="0" step="0.01" value="0" />
                   </label>
                 </div>
+                <div class="editor-nudge-row" aria-label="选区长按微调">
+                  <button id="nudgeSelectionStartLeft" class="secondary" type="button">起点 -0.1s</button>
+                  <button id="nudgeSelectionStartRight" class="secondary" type="button">起点 +0.1s</button>
+                  <button id="nudgeSelectionEndLeft" class="secondary" type="button">终点 -0.1s</button>
+                  <button id="nudgeSelectionEndRight" class="secondary" type="button">终点 +0.1s</button>
+                </div>
                 <div class="editor-selection-actions">
                   <button id="setClipStartFromPlayer" class="secondary">设起点</button>
                   <button id="setClipEndFromPlayer" class="secondary">设终点</button>
-                  <button id="addClip" class="primary">保留选区</button>
-                  <button id="deleteSelectionRange" class="secondary danger">删除选区</button>
+                  <button id="addClip" class="primary">执行保留</button>
+                  <button id="deleteSelectionRange" class="secondary danger">删除中间</button>
                   <button id="addWholeClip" class="secondary">整段加入</button>
                 </div>
+                <details class="timeline-marker-panel" open>
+                  <summary>标记点 <span id="timelineMarkerCount">0/10</span></summary>
+                  <div id="timelineMarkersList" class="timeline-marker-list"></div>
+                </details>
               </div>
 
               <div class="editor-drawer" data-editor-drawer="tracks">

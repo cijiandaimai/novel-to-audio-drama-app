@@ -355,7 +355,9 @@ const playerState = {
   interruptionResumeAttempts: 0,
   interruptionResumeTimer: 0,
   loopMode: "none",
-  playbackRate: 1
+  playbackRate: 1,
+  queueDrawerOpen: false,
+  queueDragId: ""
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -486,6 +488,7 @@ const editorState = {
   ],
   activeTrackId: "A",
   selection: { trackId: "A", sourceStart: 0, sourceEnd: 0, timelineStart: 0 },
+  trimMode: "keep",
   timeline: { zoom: 1, offset: 0, playhead: 0, snap: true, grid: 0.5 },
   drag: null,
   sourceBuffer: null,
@@ -516,13 +519,16 @@ const editorState = {
   micPlayheadRaf: 0,
   micStream: null,
   micRecorder: null,
+  micPending: false,
   micChunks: [],
   micMimeType: "audio/webm",
+  markers: [],
   clipBuffers: {}
 };
 const recorderState = {
   stream: null,
   recorder: null,
+  pending: false,
   chunks: [],
   dataUrl: "",
   mimeType: "audio/webm"
@@ -3725,6 +3731,81 @@ function updatePlayerPathLabel(item = null) {
   if (lyricLabel) lyricLabel.textContent = playerState.lyricFormatLabel || t("lyricEmpty");
 }
 
+function updatePlayerQueueSummary() {
+  const count = playerState.playlist.length;
+  const countText = `${count}`;
+  const subtitle = count ? `${count} 段` : "空队列";
+  const countBadge = $("#playerQueueCount");
+  if (countBadge) countBadge.textContent = countText;
+  const subtitleNode = $("#playerQueueSubtitle");
+  if (subtitleNode) subtitleNode.textContent = subtitle;
+  const openButton = $("#openPlayerQueue");
+  if (openButton) {
+    openButton.disabled = !count;
+    openButton.setAttribute("aria-expanded", playerState.queueDrawerOpen ? "true" : "false");
+  }
+  const clearButton = $("#clearPlaylist");
+  if (clearButton) clearButton.disabled = !count;
+}
+
+function scrollCurrentQueueItemIntoView() {
+  if (!playerState.queueDrawerOpen) return;
+  requestAnimationFrame(() => {
+    const current = $("#playerPlaylist")?.querySelector(".playlist-item.active");
+    current?.scrollIntoView({ block: "nearest" });
+  });
+}
+
+function setPlayerQueueDrawer(open) {
+  playerState.queueDrawerOpen = Boolean(open && playerState.playlist.length);
+  const drawer = $("#playerQueueDrawer");
+  const backdrop = $("#playerQueueBackdrop");
+  drawer?.classList.toggle("open", playerState.queueDrawerOpen);
+  drawer?.setAttribute("aria-hidden", playerState.queueDrawerOpen ? "false" : "true");
+  backdrop?.classList.toggle("hidden", !playerState.queueDrawerOpen);
+  document.body.classList.toggle("player-queue-open", playerState.queueDrawerOpen);
+  updatePlayerQueueSummary();
+  scrollCurrentQueueItemIntoView();
+}
+
+function handlePlayerQueueKeydown(event) {
+  if (event.key !== "Escape" || !playerState.queueDrawerOpen) return;
+  event.preventDefault();
+  setPlayerQueueDrawer(false);
+}
+
+function syncPlaylistOrderDocument() {
+  updatePlaybackDocument((doc) => {
+    doc.currentPlaylistId = playerState.currentPlaylistId;
+    doc.playlistOrder = playerState.playlist.map((entry) => getTrackDocumentId(entry)).filter(Boolean);
+  });
+}
+
+function movePlaylistItem(id, direction) {
+  const index = playerState.playlist.findIndex((item) => item.id === id);
+  if (index < 0) return;
+  const targetIndex = clamp(index + direction, 0, playerState.playlist.length - 1);
+  if (targetIndex === index) return;
+  const [item] = playerState.playlist.splice(index, 1);
+  playerState.playlist.splice(targetIndex, 0, item);
+  saveAndRenderPlayerPlaylist();
+  syncPlaylistOrderDocument();
+}
+
+function reorderPlaylistItem(sourceId, targetId, insertAfter = false) {
+  if (!sourceId || !targetId || sourceId === targetId) return;
+  const sourceIndex = playerState.playlist.findIndex((item) => item.id === sourceId);
+  const targetIndex = playerState.playlist.findIndex((item) => item.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+  const [item] = playerState.playlist.splice(sourceIndex, 1);
+  let nextIndex = playerState.playlist.findIndex((entry) => entry.id === targetId);
+  if (nextIndex < 0) nextIndex = playerState.playlist.length;
+  if (insertAfter) nextIndex += 1;
+  playerState.playlist.splice(clamp(nextIndex, 0, playerState.playlist.length), 0, item);
+  saveAndRenderPlayerPlaylist();
+  syncPlaylistOrderDocument();
+}
+
 function resetPlayerLyrics() {
   playerState.lyrics = [];
   playerState.lyricFileName = "";
@@ -3739,48 +3820,37 @@ function resetPlayerLyrics() {
 function renderPlayerPlaylist() {
   const list = $("#playerPlaylist");
   if (!list) return;
+  updatePlayerQueueSummary();
   if (!playerState.playlist.length) {
     list.innerHTML = `<p class="playlist-empty">${escapeHtml(t("playlistEmpty"))}</p>`;
     updatePlayerPathLabel();
+    setPlayerQueueDrawer(false);
     return;
   }
-  const groupCounts = playerState.playlist.reduce((counts, item) => {
-    const key = item.collectionName || "";
-    if (key) counts[key] = (counts[key] || 0) + 1;
-    return counts;
-  }, {});
-  const renderedGroups = new Set();
-  const renderItem = (item) => {
+  list.innerHTML = playerState.playlist.map((item, index) => {
     const isActive = item.id === playerState.currentPlaylistId;
     const isPlaying = isActive && isPlayerActivelyPlaying();
     return `
-    <article class="playlist-item${isActive ? " active" : ""}" data-playlist-id="${item.id}">
+    <article class="playlist-item${isActive ? " active" : ""}${isPlaying ? " playing" : ""}" data-playlist-id="${item.id}" draggable="true" ${isActive ? 'aria-current="true"' : ""}>
+      <span class="playlist-drag-handle" aria-hidden="true">☰</span>
       <button class="playlist-play" data-playlist-action="play">
+        <span class="playlist-current-bars" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="playlist-copy">
           <strong>${escapeHtml(item.title)}</strong>
-          <span>${escapeHtml(item.displayPath || item.src || "音频")}</span>
+          <span>${escapeHtml(item.collectionName ? `${item.collectionName}｜${item.displayPath || item.src || "音频"}` : (item.displayPath || item.src || "音频"))}</span>
         </span>
         <em class="playlist-toggle-label">${isPlaying ? t("pause") : t("play")}</em>
       </button>
+      <div class="playlist-sort-actions" aria-label="排序">
+        <button class="playlist-move" data-playlist-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="上移 ${escapeHtml(item.title)}">↑</button>
+        <button class="playlist-move" data-playlist-action="move-down" ${index === playerState.playlist.length - 1 ? "disabled" : ""} aria-label="下移 ${escapeHtml(item.title)}">↓</button>
+      </div>
       <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
     </article>
   `;
-  };
-  list.innerHTML = playerState.playlist.map((item) => {
-    const group = item.collectionName || "";
-    if (!group || groupCounts[group] < 2) return renderItem(item);
-    if (renderedGroups.has(group)) return "";
-    renderedGroups.add(group);
-    const children = playerState.playlist.filter((entry) => entry.collectionName === group);
-    const active = children.some((entry) => entry.id === playerState.currentPlaylistId);
-    return `
-      <details class="playlist-group" ${active ? "open" : ""}>
-        <summary>${escapeHtml(group)} <span>${children.length} 段</span></summary>
-        ${children.map(renderItem).join("")}
-      </details>
-    `;
   }).join("");
   updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
+  scrollCurrentQueueItemIntoView();
 }
 
 function loadPlayerPlaylist() {
@@ -3859,8 +3929,16 @@ function playPreviousPlaylistItem() {
 
 async function removePlaylistItem(id) {
   const item = playerState.playlist.find((entry) => entry.id === id);
+  const removedIndex = playerState.playlist.findIndex((entry) => entry.id === id);
+  const wasCurrent = playerState.currentPlaylistId === id;
   playerState.playlist = playerState.playlist.filter((entry) => entry.id !== id);
-  if (playerState.currentPlaylistId === id) {
+  const nextItem = wasCurrent
+    ? playerState.playlist[removedIndex] || playerState.playlist[removedIndex - 1] || null
+    : null;
+  if (wasCurrent && nextItem) {
+    playerState.currentPlaylistId = "";
+    await loadPlaylistItem(nextItem.id, { autoplay: true });
+  } else if (wasCurrent) {
     playerState.currentPlaylistId = "";
     const player = $("#mainPlayer");
     if (player) {
@@ -3877,10 +3955,7 @@ async function removePlaylistItem(id) {
     syncPlayerControls();
   }
   saveAndRenderPlayerPlaylist();
-  updatePlaybackDocument((doc) => {
-    doc.currentPlaylistId = playerState.currentPlaylistId;
-    doc.playlistOrder = playerState.playlist.map((entry) => getTrackDocumentId(entry)).filter(Boolean);
-  });
+  syncPlaylistOrderDocument();
   if (item?.sourceType === "local") await deletePlayerMediaBlob(item.blobId);
 }
 
@@ -3903,6 +3978,7 @@ async function clearPlayerPlaylist() {
   $("#playerTitle").textContent = "选择一段广播剧开始收听";
   resetPlayerLyrics();
   saveAndRenderPlayerPlaylist();
+  setPlayerQueueDrawer(false);
   updatePlaybackDocument((doc) => {
     doc.currentPlaylistId = "";
     doc.playlistOrder = [];
@@ -3935,6 +4011,10 @@ function syncPlayActionLabels() {
   const currentSrc = normalizePlayableSrc(player?.currentSrc || player?.src || "");
   $$(".playlist-item").forEach((item) => {
     const isCurrent = item.dataset.playlistId === playerState.currentPlaylistId;
+    item.classList.toggle("active", isCurrent);
+    item.classList.toggle("playing", isCurrent && isPlaying);
+    if (isCurrent) item.setAttribute("aria-current", "true");
+    else item.removeAttribute("aria-current");
     const label = item.querySelector(".playlist-toggle-label");
     if (label) label.textContent = isCurrent && isPlaying ? t("pause") : t("play");
     const button = item.querySelector("[data-playlist-action='play']");
@@ -3979,6 +4059,7 @@ function syncPlayerControls() {
   if (prev) prev.disabled = !hasPlaylist || (index <= 0 && !listLoop);
   if (next) next.disabled = !hasPlaylist || index < 0 || (index >= playerState.playlist.length - 1 && !listLoop);
   syncPlayActionLabels();
+  updatePlayerQueueSummary();
   renderPlayerLoopRateUi();
   updateMediaSessionState();
 }
@@ -4700,6 +4781,7 @@ async function importLyrics(file) {
 function togglePlayerFullscreen() {
   const target = $("#playerArt");
   if (!target) return;
+  setPlayerQueueDrawer(false);
   if (isPlayerFullscreen(target)) {
     exitPlayerFullscreen();
     return;
@@ -5116,7 +5198,34 @@ function addSavedDownloadFilesToPlaylist(savedDownloads, title = "未命名作�
   saveAndRenderPlayerPlaylist();
 }
 
+function isVoiceRecording() {
+  return recorderState.recorder?.state === "recording";
+}
+
+function syncVoiceRecordUi() {
+  const startButton = $("#startVoiceRecord");
+  const stopButton = $("#stopVoiceRecord");
+  const saveButton = $("#saveVoiceRecord");
+  const recording = isVoiceRecording();
+  if (startButton) {
+    startButton.disabled = recorderState.pending;
+    startButton.textContent = recorderState.pending ? "正在启动..." : recording ? "停止录音" : "开始录音";
+    startButton.classList.toggle("primary", recording);
+    startButton.classList.toggle("secondary", !recording);
+  }
+  if (stopButton) {
+    stopButton.disabled = !recording;
+    stopButton.classList.add("hidden");
+  }
+  if (saveButton && recording) saveButton.disabled = true;
+}
+
 async function startVoiceRecording() {
+  if (isVoiceRecording()) {
+    stopVoiceRecording();
+    return;
+  }
+  if (recorderState.pending) return;
   if (!navigator.mediaDevices?.getUserMedia) {
     showToast("当前环境不支持录音，请改用上传参考音频。", "fail");
     return;
@@ -5129,46 +5238,58 @@ async function startVoiceRecording() {
   }
   recorderState.chunks = [];
   recorderState.dataUrl = "";
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true
-    }
-  });
-  const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-    ? "audio/webm;codecs=opus"
-    : "audio/webm";
-  const recorder = new MediaRecorder(stream, { mimeType });
-  recorderState.stream = stream;
-  recorderState.recorder = recorder;
-  recorderState.mimeType = mimeType;
-  recorder.addEventListener("dataavailable", (event) => {
-    if (event.data?.size) recorderState.chunks.push(event.data);
-  });
-  recorder.addEventListener("stop", async () => {
-    const blob = new Blob(recorderState.chunks, { type: recorderState.mimeType });
-    recorderState.dataUrl = await fileToDataUrl(blob);
-    $("#voiceRecordPreview").src = recorderState.dataUrl;
-    $("#saveVoiceRecord").disabled = false;
-    $("#voiceRecordStatus").textContent = "录音完成，可以试听并保存为参考音色。";
+  recorderState.pending = true;
+  syncVoiceRecordUi();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    const recorder = new MediaRecorder(stream, { mimeType });
+    recorderState.stream = stream;
+    recorderState.recorder = recorder;
+    recorderState.mimeType = mimeType;
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) recorderState.chunks.push(event.data);
+    });
+    recorder.addEventListener("stop", async () => {
+      const blob = new Blob(recorderState.chunks, { type: recorderState.mimeType });
+      recorderState.dataUrl = await fileToDataUrl(blob);
+      $("#voiceRecordPreview").src = recorderState.dataUrl;
+      $("#saveVoiceRecord").disabled = false;
+      $("#voiceRecordStatus").textContent = "录音完成，可以试听并保存为参考音色。";
+      recorderState.stream?.getTracks().forEach((track) => track.stop());
+      recorderState.stream = null;
+      recorderState.recorder = null;
+      syncVoiceRecordUi();
+    });
+    recorder.start();
+    recorderState.pending = false;
+    syncVoiceRecordUi();
+    $("#saveVoiceRecord").disabled = true;
+    $("#voiceRecordStatus").textContent = "录音中，请保持 5-20 秒清晰干声。";
+    showToast("录音已开始，请保持清晰干声。");
+  } catch (error) {
     recorderState.stream?.getTracks().forEach((track) => track.stop());
     recorderState.stream = null;
-  });
-  recorder.start();
-  $("#startVoiceRecord").disabled = true;
-  $("#stopVoiceRecord").disabled = false;
-  $("#saveVoiceRecord").disabled = true;
-  $("#voiceRecordStatus").textContent = "录音中，请保持 5-20 秒清晰干声。";
-  showToast("录音已开始，请保持清晰干声。");
+    recorderState.recorder = null;
+    recorderState.pending = false;
+    syncVoiceRecordUi();
+    throw error;
+  }
 }
 
 function stopVoiceRecording() {
   if (recorderState.recorder?.state === "recording") {
     recorderState.recorder.stop();
   }
-  $("#startVoiceRecord").disabled = false;
-  $("#stopVoiceRecord").disabled = true;
+  syncVoiceRecordUi();
 }
 
 function saveRecordedVoiceReference() {
@@ -5275,6 +5396,8 @@ function snapshotEditor() {
     clips: editorState.clips,
     selectedClipId: editorState.selectedClipId,
     selection: editorState.selection,
+    trimMode: editorState.trimMode,
+    markers: editorState.markers,
     timeline: editorState.timeline,
     trackHeights: editorState.tracks.map((track) => ({ id: track.id, heightWeight: track.heightWeight || 1 }))
   });
@@ -5285,6 +5408,8 @@ function restoreEditor(snapshot) {
   editorState.clips = data.clips || [];
   editorState.selectedClipId = data.selectedClipId && editorState.clips.some((clip) => clip.id === data.selectedClipId) ? data.selectedClipId : "";
   editorState.selection = data.selection || editorState.selection;
+  editorState.trimMode = data.trimMode === "delete-middle" ? "delete-middle" : "keep";
+  editorState.markers = Array.isArray(data.markers) ? data.markers : [];
   editorState.timeline = { ...editorState.timeline, ...(data.timeline || {}) };
   (data.trackHeights || []).forEach((saved) => {
     const track = getTrack(saved.id);
@@ -5520,21 +5645,50 @@ function syncEditorQuickState() {
   });
   const selectionLength = Math.max(0, editorState.selection.sourceEnd - editorState.selection.sourceStart);
   const selectionInfo = $("#quickSelectionInfo");
-  if (selectionInfo) selectionInfo.textContent = `选区 ${formatSeconds(selectionLength)}`;
+  if (selectionInfo) {
+    const modeLabel = editorState.trimMode === "delete-middle" ? "删除中间" : "保留选区";
+    selectionInfo.textContent = `${modeLabel} ${formatSeconds(selectionLength)}`;
+  }
   const startBadge = $("#cutStartBadge");
   const endBadge = $("#cutEndBadge");
   const durationBadge = $("#cutDurationBadge");
   if (startBadge) startBadge.textContent = formatSeconds(editorState.selection.sourceStart);
   if (endBadge) endBadge.textContent = formatSeconds(editorState.selection.sourceEnd);
   if (durationBadge) durationBadge.textContent = formatSeconds(selectionLength);
+  const deleteMode = editorState.trimMode === "delete-middle";
+  [
+    ["#trimModeKeep", !deleteMode],
+    ["#quickTrimModeKeep", !deleteMode],
+    ["#trimModeDelete", deleteMode],
+    ["#quickTrimModeDelete", deleteMode]
+  ].forEach(([selector, active]) => {
+    const button = $(selector);
+    if (!button) return;
+    button.classList.toggle("active", active);
+    button.classList.toggle("primary", active);
+    button.classList.toggle("secondary", !active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  const modeActionLabel = deleteMode ? "删除中间" : "执行保留";
   ["#quickAddSelection", "#keepSelectionTop", "#addClip"].forEach((selector) => {
     const button = $(selector);
-    if (button) button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
+    if (button) {
+      button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
+      button.textContent = selector === "#quickAddSelection" ? (deleteMode ? "删中间" : "保留") : modeActionLabel;
+    }
   });
   ["#quickDeleteSelection", "#deleteSelectionTop", "#deleteSelectionRange"].forEach((selector) => {
     const button = $(selector);
+    if (button) {
+      button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
+      if (selector === "#deleteSelectionRange") button.textContent = "删除中间";
+    }
+  });
+  ["#nudgeSelectionStartLeft", "#nudgeSelectionStartRight", "#nudgeSelectionEndLeft", "#nudgeSelectionEndRight"].forEach((selector) => {
+    const button = $(selector);
     if (button) button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
   });
+  renderTimelineMarkers();
   const clipCount = $("#quickClipCount");
   const selectedClip = getSelectedClip();
   if (clipCount) {
@@ -5547,12 +5701,32 @@ function syncEditorQuickState() {
   if (transportPlayhead) transportPlayhead.textContent = formatSeconds(editorState.timeline.playhead);
   const transportDuration = $("#transportDurationLabel");
   if (transportDuration) transportDuration.textContent = `总长 ${formatSeconds(getTimelineDuration())}`;
+  const recording = editorState.micRecorder?.state === "recording";
   const micToggle = $("#quickMicToggle");
   if (micToggle) {
-    const recording = editorState.micRecorder?.state === "recording";
-    micToggle.textContent = recording ? "停止录音" : "录音";
+    micToggle.disabled = editorState.micPending;
+    micToggle.textContent = editorState.micPending ? "正在启动..." : recording ? "停止录音" : "录音";
     micToggle.classList.toggle("primary", recording);
     micToggle.classList.toggle("secondary", !recording);
+  }
+  const startEditorMic = $("#startEditorMic");
+  if (startEditorMic) {
+    startEditorMic.disabled = editorState.micPending;
+    startEditorMic.textContent = editorState.micPending ? "正在启动..." : recording ? "停止录音" : "开始录音";
+    startEditorMic.classList.toggle("primary", recording);
+    startEditorMic.classList.toggle("secondary", !recording);
+  }
+  const stopEditorMic = $("#stopEditorMic");
+  if (stopEditorMic) {
+    stopEditorMic.disabled = !recording;
+    stopEditorMic.classList.add("hidden");
+  }
+  const transportRecord = $("#transportRecord");
+  if (transportRecord) {
+    transportRecord.disabled = editorState.micPending;
+    transportRecord.textContent = editorState.micPending ? "正在启动..." : recording ? "停止录音" : "录音";
+    transportRecord.classList.toggle("primary", recording);
+    transportRecord.classList.toggle("secondary", !recording);
   }
   const active = getActiveTrack();
   const undoImport = $("#quickUndoImport");
@@ -5719,6 +5893,121 @@ function deleteSelectedRange() {
   renderClipList();
   renderWaveform();
   showToast("已按选区生成删除后的片段。", "ok");
+}
+
+function applyTrimModeAction() {
+  if (editorState.trimMode === "delete-middle") {
+    deleteSelectedRange();
+    return;
+  }
+  addSelectionAsClip();
+}
+
+function setTrimMode(mode = "keep") {
+  editorState.trimMode = mode === "delete-middle" ? "delete-middle" : "keep";
+  syncEditorQuickState();
+  renderWaveform();
+}
+
+function nudgeSelectionBoundary(edge, direction = 1) {
+  const { start, end, timelineStart, trackId } = getClipInputs();
+  const track = getTrack(trackId);
+  const duration = track?.buffer?.duration || 0;
+  if (!track?.buffer || end - start <= 0.05) return;
+  const step = 0.1;
+  if (edge === "start") {
+    const nextStart = clamp(Number((start + direction * step).toFixed(2)), 0, end - 0.1);
+    const delta = nextStart - start;
+    setClipInputs(nextStart, end, Math.max(0, Number((timelineStart + delta).toFixed(2))));
+    setPlayhead(nextStart, { snap: false, follow: true, render: false });
+  } else {
+    const nextEnd = clamp(Number((end + direction * step).toFixed(2)), start + 0.1, duration);
+    setClipInputs(start, nextEnd, timelineStart);
+    setPlayhead(nextEnd, { snap: false, follow: true, render: false });
+  }
+  renderWaveform();
+}
+
+function normalizeTimelineMarkers() {
+  const projectDuration = getTimelineDuration();
+  const deduped = [];
+  [...(editorState.markers || [])]
+    .map((marker, index) => ({
+      id: marker.id || `mark-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}`,
+      time: clamp(Number(marker.time) || 0, 0, projectDuration),
+      label: marker.label || ""
+    }))
+    .sort((a, b) => a.time - b.time)
+    .forEach((marker) => {
+      if (deduped.some((item) => Math.abs(item.time - marker.time) < 1)) return;
+      deduped.push(marker);
+    });
+  editorState.markers = deduped.slice(0, 10);
+  return editorState.markers;
+}
+
+function renderTimelineMarkers() {
+  const markers = normalizeTimelineMarkers();
+  const count = $("#timelineMarkerCount");
+  if (count) count.textContent = `${markers.length}/10`;
+  const list = $("#timelineMarkersList");
+  if (!list) return;
+  if (!markers.length) {
+    list.innerHTML = `<p class="timeline-marker-empty">暂无标记，点“打标记”记录播放头位置。</p>`;
+    return;
+  }
+  list.innerHTML = markers.map((marker, index) => `
+    <article class="timeline-marker-item" data-marker-id="${marker.id}">
+      <button class="timeline-marker-jump" data-marker-action="jump" type="button">
+        <strong>M${index + 1}</strong>
+        <span>${formatSeconds(marker.time)}</span>
+      </button>
+      <button class="timeline-marker-delete" data-marker-action="delete" type="button" aria-label="删除标记 ${index + 1}">删除</button>
+    </article>
+  `).join("");
+}
+
+function addTimelineMarker(time = editorState.timeline.playhead) {
+  const markers = normalizeTimelineMarkers();
+  const markerTime = clamp(Number(time) || 0, 0, getTimelineDuration());
+  if (markers.length >= 10) {
+    showToast("标记最多 10 个。", "fail");
+    return;
+  }
+  if (markers.some((marker) => Math.abs(marker.time - markerTime) < 1)) {
+    showToast("1 秒内已有标记。", "fail");
+    return;
+  }
+  pushEditorHistory();
+  editorState.markers.push({
+    id: `mark-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    time: Number(markerTime.toFixed(2))
+  });
+  renderTimelineMarkers();
+  renderWaveform();
+  showToast(`已添加标记：${formatSeconds(markerTime)}`, "ok");
+}
+
+function jumpToTimelineMarker(id) {
+  const marker = normalizeTimelineMarkers().find((item) => item.id === id);
+  if (!marker) return;
+  setPlayhead(marker.time, { snap: false, follow: true });
+}
+
+function removeTimelineMarker(id) {
+  if (!id) return;
+  pushEditorHistory();
+  editorState.markers = normalizeTimelineMarkers().filter((marker) => marker.id !== id);
+  renderTimelineMarkers();
+  renderWaveform();
+}
+
+function clearTimelineMarkers() {
+  if (!editorState.markers.length) return;
+  pushEditorHistory();
+  editorState.markers = [];
+  renderTimelineMarkers();
+  renderWaveform();
 }
 
 function getSelectedClip() {
@@ -6141,6 +6430,11 @@ async function loadEditorFile(file, trackId = editorState.activeTrackId) {
 }
 
 async function startEditorMicRecording() {
+  if (editorState.micRecorder?.state === "recording") {
+    stopEditorMicRecording();
+    return;
+  }
+  if (editorState.micPending) return;
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
     showToast("当前环境不支持麦克风录音。", "fail");
     return;
@@ -6150,66 +6444,78 @@ async function startEditorMicRecording() {
   editorState.micChunks = [];
   editorState.micStartPlayhead = editorState.timeline.playhead;
   editorState.micStartClock = performance.now();
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true
-    }
-  });
-  const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-    ? "audio/webm;codecs=opus"
-    : "audio/webm";
-  const recorder = new MediaRecorder(stream, { mimeType });
-  editorState.micStream = stream;
-  editorState.micRecorder = recorder;
-  editorState.micMimeType = mimeType;
-  recorder.addEventListener("dataavailable", (event) => {
-    if (event.data?.size) editorState.micChunks.push(event.data);
-  });
-  recorder.addEventListener("stop", async () => {
-    try {
-      cancelAnimationFrame(editorState.micPlayheadRaf);
-      editorState.micPlayheadRaf = 0;
-      const blob = new Blob(editorState.micChunks, { type: editorState.micMimeType });
-      if (!blob.size) throw new Error("没有录到声音。");
-      const name = `麦克风录音-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
-      const startAt = editorState.micStartPlayhead || 0;
-      await addEditorBufferClip({
-        arrayBuffer: await blob.arrayBuffer(),
-        url: URL.createObjectURL(blob),
-        name,
-        trackId: editorState.micTrackId,
-        timelineStart: startAt
-      });
-      $("#editorMicStatus").textContent = `录音已从 ${formatSeconds(startAt)} 导入 ${getTrack(editorState.micTrackId).name}。`;
-      setEditorPanel("");
-      showToast("麦克风录音已导入轨道。", "ok");
-    } catch (error) {
-      $("#editorMicStatus").textContent = `录音导入失败：${error.message}`;
-      showToast(`录音导入失败：${error.message}`, "fail");
-    } finally {
-      editorState.micStream?.getTracks().forEach((track) => track.stop());
-      editorState.micStream = null;
-      editorState.micRecorder = null;
-      $("#startEditorMic").disabled = false;
-      $("#stopEditorMic").disabled = true;
-      syncEditorQuickState();
-    }
-  });
-  recorder.start();
-  $("#startEditorMic").disabled = true;
-  $("#stopEditorMic").disabled = false;
-  $("#editorMicStatus").textContent = `正在录音到 ${getTrack(trackId).name}，会从播放头 ${formatSeconds(editorState.micStartPlayhead)} 导入。`;
+  editorState.micPending = true;
   syncEditorQuickState();
-  animateRecordingPlayhead();
-  showToast(`正在录音到 ${getTrack(trackId).name}。`);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    const recorder = new MediaRecorder(stream, { mimeType });
+    editorState.micStream = stream;
+    editorState.micRecorder = recorder;
+    editorState.micMimeType = mimeType;
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) editorState.micChunks.push(event.data);
+    });
+    recorder.addEventListener("stop", async () => {
+      try {
+        cancelAnimationFrame(editorState.micPlayheadRaf);
+        editorState.micPlayheadRaf = 0;
+        const blob = new Blob(editorState.micChunks, { type: editorState.micMimeType });
+        if (!blob.size) throw new Error("没有录到声音。");
+        const name = `麦克风录音-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+        const startAt = editorState.micStartPlayhead || 0;
+        await addEditorBufferClip({
+          arrayBuffer: await blob.arrayBuffer(),
+          url: URL.createObjectURL(blob),
+          name,
+          trackId: editorState.micTrackId,
+          timelineStart: startAt
+        });
+        $("#editorMicStatus").textContent = `录音已从 ${formatSeconds(startAt)} 导入 ${getTrack(editorState.micTrackId).name}。`;
+        setEditorPanel("");
+        showToast("麦克风录音已导入轨道。", "ok");
+      } catch (error) {
+        $("#editorMicStatus").textContent = `录音导入失败：${error.message}`;
+        showToast(`录音导入失败：${error.message}`, "fail");
+      } finally {
+        editorState.micStream?.getTracks().forEach((track) => track.stop());
+        editorState.micStream = null;
+        editorState.micRecorder = null;
+        editorState.micPending = false;
+        syncEditorQuickState();
+      }
+    });
+    recorder.start();
+    editorState.micPending = false;
+    $("#editorMicStatus").textContent = `正在录音到 ${getTrack(trackId).name}，会从播放头 ${formatSeconds(editorState.micStartPlayhead)} 导入。`;
+    syncEditorQuickState();
+    animateRecordingPlayhead();
+    showToast(`正在录音到 ${getTrack(trackId).name}。`);
+  } catch (error) {
+    cancelAnimationFrame(editorState.micPlayheadRaf);
+    editorState.micPlayheadRaf = 0;
+    editorState.micStream?.getTracks().forEach((track) => track.stop());
+    editorState.micStream = null;
+    editorState.micRecorder = null;
+    editorState.micPending = false;
+    syncEditorQuickState();
+    throw error;
+  }
 }
 
 function stopEditorMicRecording() {
   if (editorState.micRecorder?.state === "recording") {
     editorState.micRecorder.stop();
   }
+  syncEditorQuickState();
 }
 
 function animateRecordingPlayhead() {
@@ -6324,12 +6630,22 @@ function canvasTimelineInfo(canvas) {
   };
 }
 
-function timeToX(time, width, duration, offset = 0) {
-  return ((time - offset) / Math.max(0.01, duration)) * width;
+function timelineTimeToX(time, info) {
+  return ((time - info.offset) / Math.max(0.01, info.duration)) * info.width;
 }
 
-function xToTime(x, width, duration, offset = 0, projectDuration = duration) {
-  return clamp(offset + (x / Math.max(1, width)) * duration, 0, projectDuration);
+function timelineXToTime(x, info) {
+  return clamp(info.offset + (x / Math.max(1, info.width)) * info.duration, 0, info.projectDuration);
+}
+
+function timeToX(time, widthOrInfo, duration, offset = 0) {
+  if (widthOrInfo && typeof widthOrInfo === "object") return timelineTimeToX(time, widthOrInfo);
+  return ((time - offset) / Math.max(0.01, duration)) * widthOrInfo;
+}
+
+function xToTime(x, widthOrInfo, duration, offset = 0, projectDuration = duration) {
+  if (widthOrInfo && typeof widthOrInfo === "object") return timelineXToTime(x, widthOrInfo);
+  return clamp(offset + (x / Math.max(1, widthOrInfo)) * duration, 0, projectDuration);
 }
 
 function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDuration, offset, projectDuration, ratio) {
@@ -6445,7 +6761,7 @@ function renderWaveform() {
   const gridStep = Math.max(Number(editorState.timeline.grid) || 0.5, duration / 8);
   const firstTick = Math.ceil(offset / gridStep) * gridStep;
   for (let time = firstTick; time <= offset + duration + 0.001; time += gridStep) {
-    const x = timeToX(time, width, duration, offset);
+    const x = timeToX(time, info);
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, scrubTop);
@@ -6476,7 +6792,7 @@ function renderWaveform() {
     if (!lane) return;
     const clipEnd = clip.timelineStart + clip.sourceEnd - clip.sourceStart;
     if (clipEnd < offset || clip.timelineStart > offset + duration) return;
-    const x = timeToX(clip.timelineStart, width, duration, offset);
+    const x = timeToX(clip.timelineStart, info);
     const w = Math.max(3 * ratio, ((clip.sourceEnd - clip.sourceStart) / duration) * width);
     const clipHeight = Math.min(40 * ratio, Math.max(24 * ratio, lane.height - 44 * ratio));
     const y = lane.top + lane.height - clipHeight - 10 * ratio;
@@ -6509,17 +6825,50 @@ function renderWaveform() {
     if (!lane) return;
     const selectionDuration = Math.max(0, selection.sourceEnd - selection.sourceStart);
     const selectionStart = Number.isFinite(selection.timelineStart) ? selection.timelineStart : selection.sourceStart;
-    const x1 = timeToX(selectionStart, width, duration, offset);
-    const x2 = timeToX(selectionStart + selectionDuration, width, duration, offset);
+    const x1 = timeToX(selectionStart, info);
+    const x2 = timeToX(selectionStart + selectionDuration, info);
     const y = lane.top;
-    ctx.fillStyle = "rgba(184, 139, 74, 0.22)";
+    const deleteMode = editorState.trimMode === "delete-middle";
+    ctx.fillStyle = deleteMode ? "rgba(111, 31, 27, 0.24)" : "rgba(184, 139, 74, 0.22)";
     ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), lane.height);
-    ctx.strokeStyle = "rgba(255, 206, 115, 0.92)";
+    ctx.strokeStyle = deleteMode ? "rgba(255, 126, 104, 0.94)" : "rgba(255, 206, 115, 0.92)";
     ctx.lineWidth = 2 * ratio;
     ctx.strokeRect(x1, y + 1 * ratio, Math.max(2 * ratio, x2 - x1), lane.height - 2 * ratio);
+    if (Math.abs(x2 - x1) > 78 * ratio) {
+      ctx.fillStyle = deleteMode ? "rgba(255, 232, 224, 0.92)" : "rgba(255, 250, 240, 0.92)";
+      ctx.font = `${11 * ratio}px Microsoft YaHei, sans-serif`;
+      ctx.fillText(deleteMode ? "删除中间" : "保留选区", x1 + 8 * ratio, y + 20 * ratio);
+    }
   }
 
-  const playheadX = timeToX(editorState.timeline.playhead, width, duration, offset);
+  normalizeTimelineMarkers().forEach((marker, index) => {
+    if (marker.time < offset || marker.time > offset + duration) return;
+    const markerX = timeToX(marker.time, info);
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 206, 115, 0.78)";
+    ctx.lineWidth = Math.max(1.5 * ratio, 1);
+    ctx.setLineDash([5 * ratio, 5 * ratio]);
+    ctx.beginPath();
+    ctx.moveTo(markerX, 20 * ratio);
+    ctx.lineTo(markerX, scrubTop);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#ffce73";
+    ctx.beginPath();
+    ctx.moveTo(markerX, 4 * ratio);
+    ctx.lineTo(markerX - 7 * ratio, 18 * ratio);
+    ctx.lineTo(markerX + 7 * ratio, 18 * ratio);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "rgba(10, 12, 16, 0.82)";
+    ctx.fillRect(markerX + 5 * ratio, 4 * ratio, 28 * ratio, 16 * ratio);
+    ctx.fillStyle = "#fffaf0";
+    ctx.font = `${10 * ratio}px Consolas, "SFMono-Regular", monospace`;
+    ctx.fillText(`M${index + 1}`, markerX + 9 * ratio, 16 * ratio);
+    ctx.restore();
+  });
+
+  const playheadX = timeToX(editorState.timeline.playhead, info);
   if (playheadX >= 0 && playheadX <= width) {
     ctx.strokeStyle = "rgba(255, 250, 240, 0.95)";
     ctx.lineWidth = 2 * ratio;
@@ -6539,7 +6888,7 @@ function getCanvasPointer(event) {
   const lane = info.layout.find((item) => y >= item.top && y <= item.top + item.height) || info.layout[info.layout.length - 1];
   const trackIndex = lane?.index ?? 0;
   const track = lane?.track || editorState.tracks[trackIndex];
-  const time = xToTime(x, info.width, info.duration, info.offset, info.projectDuration);
+  const time = xToTime(x, info);
   return { canvas, ...info, x, y, lane, trackIndex, track, time };
 }
 
@@ -6552,8 +6901,8 @@ function hitTestClip(point) {
     if (!lane) continue;
     const start = clip.timelineStart;
     const end = clip.timelineStart + clip.sourceEnd - clip.sourceStart;
-    const x1 = timeToX(start, point.width, point.duration, point.offset);
-    const x2 = timeToX(end, point.width, point.duration, point.offset);
+    const x1 = timeToX(start, point);
+    const x2 = timeToX(end, point);
     const y1 = lane.top;
     const y2 = y1 + lane.height;
     if (point.x < x1 || point.x > x2 || point.y < y1 || point.y > y2) continue;
@@ -6564,10 +6913,15 @@ function hitTestClip(point) {
 }
 
 function hitTestPlayheadHandle(point) {
-  const playheadX = timeToX(editorState.timeline.playhead, point.width, point.duration, point.offset);
+  const playheadX = timeToX(editorState.timeline.playhead, point);
   const nearHandle = Math.abs(point.x - playheadX) <= 24 * point.ratio;
   const inScrubLane = point.y >= point.scrubTop;
   return inScrubLane || (nearHandle && point.y >= point.scrubTop - 18 * point.ratio);
+}
+
+function hitTestTimelineMarker(point) {
+  const threshold = 14 * point.ratio;
+  return normalizeTimelineMarkers().find((marker) => Math.abs(point.x - timeToX(marker.time, point)) <= threshold) || null;
 }
 
 function getClipSourceAtTimelineTime(clip, timelineTime) {
@@ -6710,6 +7064,11 @@ function startTimelineDrag(event) {
     beginTrackResize(dividerIndex, point);
     return;
   }
+  const marker = hitTestTimelineMarker(point);
+  if (marker && point.y < point.scrubTop) {
+    setPlayhead(marker.time, { snap: false, follow: true });
+    return;
+  }
   setActiveTrack(point.track.id);
   const hit = hitTestClip(point);
   if (hit) {
@@ -6737,8 +7096,8 @@ function startTimelineDrag(event) {
   const handleSize = 18 * point.ratio;
   const selectionLength = Math.max(0, selection.sourceEnd - selection.sourceStart);
   const selectionTimelineStart = Number.isFinite(selection.timelineStart) ? selection.timelineStart : selection.sourceStart;
-  const x1 = timeToX(selectionTimelineStart, point.width, point.duration, point.offset);
-  const x2 = timeToX(selectionTimelineStart + selectionLength, point.width, point.duration, point.offset);
+  const x1 = timeToX(selectionTimelineStart, point);
+  const x2 = timeToX(selectionTimelineStart + selectionLength, point);
   const inside = point.track.id === selection.trackId && point.x >= x1 && point.x <= x2;
   const type = Math.abs(point.x - x1) < handleSize ? "left" : Math.abs(point.x - x2) < handleSize ? "right" : inside ? "move" : "create";
   editorState.drag = {
@@ -8371,8 +8730,11 @@ function bindEvents() {
   $("#startVoiceRecord").addEventListener("click", () => startVoiceRecording().catch((error) => {
     $("#voiceRecordStatus").textContent = `录音失败：${error.message}`;
     showToast(`录音失败：${error.message}`, "fail");
-    $("#startVoiceRecord").disabled = false;
-    $("#stopVoiceRecord").disabled = true;
+    recorderState.pending = false;
+    recorderState.stream?.getTracks().forEach((track) => track.stop());
+    recorderState.stream = null;
+    recorderState.recorder = null;
+    syncVoiceRecordUi();
   }));
   $("#stopVoiceRecord").addEventListener("click", stopVoiceRecording);
   $("#saveVoiceRecord").addEventListener("click", saveRecordedVoiceReference);
@@ -8465,18 +8827,21 @@ function bindEvents() {
       editorState.micPlayheadRaf = 0;
       $("#editorMicStatus").textContent = `录音失败：${error.message}`;
       showToast(`录音失败：${error.message}`, "fail");
-      $("#startEditorMic").disabled = false;
-      $("#stopEditorMic").disabled = true;
       editorState.micStream?.getTracks().forEach((track) => track.stop());
       editorState.micStream = null;
       editorState.micRecorder = null;
+      editorState.micPending = false;
       syncEditorQuickState();
     });
   });
   $("#quickUndoImport")?.addEventListener("click", () => undoTrackImport(editorState.activeTrackId));
   $("#quickClearTrack")?.addEventListener("click", () => clearTrackSource(editorState.activeTrackId));
-  $("#quickAddSelection")?.addEventListener("click", () => addSelectionAsClip());
-  $("#keepSelectionTop")?.addEventListener("click", () => addSelectionAsClip());
+  $("#quickTrimModeKeep")?.addEventListener("click", () => setTrimMode("keep"));
+  $("#quickTrimModeDelete")?.addEventListener("click", () => setTrimMode("delete-middle"));
+  $("#trimModeKeep")?.addEventListener("click", () => setTrimMode("keep"));
+  $("#trimModeDelete")?.addEventListener("click", () => setTrimMode("delete-middle"));
+  $("#quickAddSelection")?.addEventListener("click", applyTrimModeAction);
+  $("#keepSelectionTop")?.addEventListener("click", applyTrimModeAction);
   $("#quickDeleteSelection")?.addEventListener("click", deleteSelectedRange);
   $("#deleteSelectionTop")?.addEventListener("click", deleteSelectedRange);
   $("#quickSplitClip")?.addEventListener("click", splitClipAtPlayhead);
@@ -8491,6 +8856,10 @@ function bindEvents() {
   $("#quickPreviewClip")?.addEventListener("click", previewSelectedClip);
   bindPressRepeat("#nudgeClipLeft", () => nudgeSelectedClip(-1));
   bindPressRepeat("#nudgeClipRight", () => nudgeSelectedClip(1));
+  bindPressRepeat("#nudgeSelectionStartLeft", () => nudgeSelectionBoundary("start", -1));
+  bindPressRepeat("#nudgeSelectionStartRight", () => nudgeSelectionBoundary("start", 1));
+  bindPressRepeat("#nudgeSelectionEndLeft", () => nudgeSelectionBoundary("end", -1));
+  bindPressRepeat("#nudgeSelectionEndRight", () => nudgeSelectionBoundary("end", 1));
   $("#duplicateSelectedClip")?.addEventListener("click", duplicateSelectedClip);
   $("#deleteSelectedClip")?.addEventListener("click", removeSelectedClip);
   $("#copySelectedClip")?.addEventListener("click", copySelectedClip);
@@ -8530,10 +8899,11 @@ function bindEvents() {
     editorState.micPlayheadRaf = 0;
     $("#editorMicStatus").textContent = `录音失败：${error.message}`;
     showToast(`录音失败：${error.message}`, "fail");
-    $("#startEditorMic").disabled = false;
-    $("#stopEditorMic").disabled = true;
     editorState.micStream?.getTracks().forEach((track) => track.stop());
     editorState.micStream = null;
+    editorState.micRecorder = null;
+    editorState.micPending = false;
+    syncEditorQuickState();
   }));
   $("#stopEditorMic").addEventListener("click", stopEditorMicRecording);
   $$("[data-undo-import]").forEach((button) => {
@@ -8624,8 +8994,17 @@ function bindEvents() {
     const { start } = getClipInputs();
     setClipInputs(start, preview.currentTime || 0, editorState.selection.timelineStart);
   });
-  $("#addClip").addEventListener("click", () => addSelectionAsClip());
+  $("#addClip").addEventListener("click", applyTrimModeAction);
   $("#deleteSelectionRange")?.addEventListener("click", deleteSelectedRange);
+  $("#addTimelineMarker")?.addEventListener("click", () => addTimelineMarker());
+  $("#clearTimelineMarkers")?.addEventListener("click", clearTimelineMarkers);
+  $("#timelineMarkersList")?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-marker-action]")?.dataset.markerAction;
+    if (!action) return;
+    const markerId = event.target.closest("[data-marker-id]")?.dataset.markerId;
+    if (action === "jump") jumpToTimelineMarker(markerId);
+    if (action === "delete") removeTimelineMarker(markerId);
+  });
   $("#addWholeClip").addEventListener("click", () => {
     const track = getActiveTrack();
     addEditorClip(0, track.buffer?.duration || 0, editorState.selection.timelineStart, track.id);
@@ -8747,10 +9126,48 @@ function bindEvents() {
   $("#playerPlaylist").addEventListener("click", (event) => {
     const action = event.target.closest("[data-playlist-action]")?.dataset.playlistAction;
     if (!action) return;
+    event.preventDefault();
     const itemId = event.target.closest("[data-playlist-id]")?.dataset.playlistId;
     if (action === "play") playPlaylistItem(itemId);
     if (action === "remove") removePlaylistItem(itemId);
+    if (action === "move-up") movePlaylistItem(itemId, -1);
+    if (action === "move-down") movePlaylistItem(itemId, 1);
   });
+  $("#playerPlaylist").addEventListener("dragstart", (event) => {
+    const row = event.target.closest("[data-playlist-id]");
+    if (!row) return;
+    playerState.queueDragId = row.dataset.playlistId;
+    row.classList.add("dragging");
+    event.dataTransfer?.setData("text/plain", playerState.queueDragId);
+    if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+  });
+  $("#playerPlaylist").addEventListener("dragover", (event) => {
+    const row = event.target.closest("[data-playlist-id]");
+    if (!row || !playerState.queueDragId || row.dataset.playlistId === playerState.queueDragId) return;
+    event.preventDefault();
+    $$(".playlist-item.drag-over").forEach((item) => item.classList.remove("drag-over", "drag-after"));
+    const rect = row.getBoundingClientRect();
+    const after = event.clientY > rect.top + rect.height / 2;
+    row.classList.add("drag-over");
+    row.classList.toggle("drag-after", after);
+  });
+  $("#playerPlaylist").addEventListener("drop", (event) => {
+    const row = event.target.closest("[data-playlist-id]");
+    const sourceId = playerState.queueDragId || event.dataTransfer?.getData("text/plain");
+    if (!row || !sourceId) return;
+    event.preventDefault();
+    const rect = row.getBoundingClientRect();
+    reorderPlaylistItem(sourceId, row.dataset.playlistId, event.clientY > rect.top + rect.height / 2);
+    playerState.queueDragId = "";
+    $$(".playlist-item.drag-over, .playlist-item.dragging").forEach((item) => item.classList.remove("drag-over", "drag-after", "dragging"));
+  });
+  $("#playerPlaylist").addEventListener("dragend", () => {
+    playerState.queueDragId = "";
+    $$(".playlist-item.drag-over, .playlist-item.dragging").forEach((item) => item.classList.remove("drag-over", "drag-after", "dragging"));
+  });
+  $("#openPlayerQueue")?.addEventListener("click", () => setPlayerQueueDrawer(true));
+  $("#closePlayerQueue")?.addEventListener("click", () => setPlayerQueueDrawer(false));
+  $("#playerQueueBackdrop")?.addEventListener("click", () => setPlayerQueueDrawer(false));
   $("#clearPlaylist").addEventListener("click", clearPlayerPlaylist);
   $("#playerArt").addEventListener("pointerdown", startPlayerFullscreenGesture);
   $("#playerArt").addEventListener("mousedown", startPlayerFullscreenGesture);
@@ -8761,6 +9178,7 @@ function bindEvents() {
   $("#playerArt").addEventListener("touchend", exitPlayerFullscreenOnTouchEnd);
   document.addEventListener("fullscreenchange", syncPlayerFullscreenUi);
   document.addEventListener("keydown", handlePlayerFullscreenKey);
+  document.addEventListener("keydown", handlePlayerQueueKeydown);
   document.addEventListener("keydown", handleEditorShortcut);
   document.addEventListener("touchstart", handleRouteSwipeStart, { passive: true });
   document.addEventListener("touchend", handleRouteSwipeEnd, { passive: true });
