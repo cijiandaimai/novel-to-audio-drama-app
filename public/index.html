@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#f7f2e7" />
     <meta name="color-scheme" content="light" />
-    <title>白泽声工坊</title>
+    <title>白泽 IP 预演台</title>
     <link rel="icon" href="/assets/app-icon.png" type="image/png" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -18,8 +18,8 @@
             <img src="/assets/app-icon.png" alt="" />
           </div>
           <div>
-            <h1>白泽声工坊</h1>
-            <p>编剧、配音、配乐、合成</p>
+            <h1>白泽 IP 预演台</h1>
+            <p>AI 影视预创作工具</p>
           </div>
         </div>
         <nav class="nav" aria-label="主导航">
@@ -1075,7 +1075,7 @@
         <div class="assistant-head">
           <div>
             <strong>白泽小助手</strong>
-            <span id="assistantProviderLabel">使用说明 / AI 客服</span>
+            <span id="assistantProviderLabel">AI 影视预创作工具 / 使用说明</span>
           </div>
           <button id="closeAssistantPanel" class="secondary" type="button">收起</button>
         </div>
@@ -1086,51 +1086,77 @@
         </div>
         <div class="assistant-body">
           <section class="assistant-tab-panel" data-assistant-panel="guide">
+            <div class="assistant-guide-hero">
+              <p class="assistant-section-title">白泽 IP 预演台</p>
+              <strong>AI 影视预创作工具</strong>
+              <span>把灵感、小说、人物关系和故事梗概，快速变成剧本、角色对白、广播剧样片和影视化提案。</span>
+            </div>
             <div>
-              <p class="assistant-section-title">新手入门</p>
+              <p class="assistant-section-title">推荐创作路径</p>
               <ol class="assistant-step-list">
-                <li><b>1</b><span>到 API 配置页填写 Key、模型 ID 和接口地址。</span></li>
-                <li><b>2</b><span>点输入框旁边的“测”，先检查网络能不能连上。</span></li>
-                <li><b>3</b><span>API 输入后会自动保存；需要确认时可以点“测”做连通检查。</span></li>
-                <li><b>4</b><span>回到创作页上传小说，或到酒馆切换 API 模式开始对话。</span></li>
+                <li><b>1</b><span><strong>收集灵感：</strong>先写一句话创意、人物关系、题材标签、对标作品或小说片段。</span></li>
+                <li><b>2</b><span><strong>生成故事骨架：</strong>让 AI 输出卖点、冲突、三幕结构、短剧/长剧分集大纲和反转节点。</span></li>
+                <li><b>3</b><span><strong>转成剧本：</strong>进入创作页，把素材扩写为分场剧本、对白、旁白、音效和情绪提示。</span></li>
+                <li><b>4</b><span><strong>声音预演：</strong>用角色音色生成对白样片，听节奏、人物辨识度和情绪张力。</span></li>
+                <li><b>5</b><span><strong>微调导出：</strong>到剪辑页剪掉空白、调音量/混响、录制补充台词，导出 WAV 样片或播放队列。</span></li>
               </ol>
             </div>
             <div>
-              <p class="assistant-section-title">常用提醒</p>
+              <p class="assistant-section-title">常用技巧</p>
               <ul class="assistant-tip-list">
-                <li><b>A</b><span>悬浮球可以拖到顺手的位置；长按 10 秒会隐藏，在首页切换语言会再次出现。</span></li>
-                <li><b>B</b><span>大陆线路优先填豆包、DeepSeek、千问、Kimi；DeepSeek 适合酒馆和小助手闲聊。</span></li>
-                <li><b>C</b><span>安卓真机访问电脑本地服务时，不要填 localhost，要填电脑局域网 IP。</span></li>
-                <li><b>D</b><span>正式发布给别人使用时，尽量把付费 Key 放到自己的后端，不要直接打进 APK。</span></li>
+                <li><b>A</b><span>悬浮球可以拖到顺手位置；需要帮助时随时点开，不再设置长按隐藏。</span></li>
+                <li><b>B</b><span>短剧先抓“强钩子”：前三场要有身份差、误会、危机、反转或明确爽点。</span></li>
+                <li><b>C</b><span>长剧先做“世界观 + 人物弧光 + 分集节奏”，再拆第一集剧本，不要一开始就生成全剧正文。</span></li>
+                <li><b>D</b><span>声音样片不是最终成片，它更适合给编剧、导演、制片或团队快速判断故事有没有戏。</span></li>
               </ul>
             </div>
             <details open>
-              <summary>如何开始创作</summary>
-              <p>先到 API 配置填写需要的模型 Key；只用中国大陆线路时，优先填豆包文本、豆包音频、千问和 Kimi。回到创作页上传小说，点击自动执行完整方案。</p>
+              <summary>1. 从一个想法开始</summary>
+              <p>在创作页输入一句话创意也可以开始，例如“失忆女法医发现自己正在验前世爱人的尸体”。建议补充：题材、主角身份、核心冲突、目标受众、希望的结局气质。信息越明确，剧本越稳。</p>
             </details>
             <details>
-              <summary>API 配置与测试</summary>
-              <p>每个 API 输入框旁有“?”和“测”。“?”看官网和填写方法；“测”只检查网络连通，真正能不能生成还要看 Key、余额、模型权限和接口格式。填写后会自动保存在本机。</p>
+              <summary>2. 小说 / IP 素材怎么导入</summary>
+              <p>可以粘贴小说片段、章节梗概、人物小传或世界观设定。长文本建议分章节处理：先生成总纲，再逐章改编。涉及他人版权的内容请只用于授权项目或个人研究。</p>
             </details>
             <details>
-              <summary>酒馆怎么用</summary>
-              <p>酒馆可以本地运行，也可以切换 API。角色回复旁的“配音”会调用千问 TTS，把角色台词直接变成可播放音频。</p>
+              <summary>3. 短剧预创作技巧</summary>
+              <p>短剧重点看高频刺激：开场钩子、每 1-3 分钟一次信息翻转、角色目标清楚、冲突外化。可以让 AI 先输出“80 集短剧分集钩子表”，再挑前 3 集精修成剧本。</p>
             </details>
             <details>
-              <summary>音箱播放器</summary>
-              <p>音箱页可以导入本地音频、歌词和背景图，也可以扫描下载文件夹。播放器支持播放列表、循环、变速、歌词滚动和全屏歌词。</p>
+              <summary>4. 长剧预创作技巧</summary>
+              <p>长剧重点看结构耐力：主线、支线、人物弧光、阶段性目标和中段升级。建议先做 12/24/36 集大纲，再生成第一集冷开场、人物出场场、关键冲突场。</p>
             </details>
             <details>
-              <summary>音频剪辑</summary>
-              <p>剪辑页支持双轨导入、拖动音块、调整播放头、录音、撤销和混音导出。移动端优先用顶部快捷按钮导入，再在轨道里长按拖动。</p>
+              <summary>5. 角色和对白</summary>
+              <p>给每个角色写清楚：欲望、恐惧、秘密、说话方式、与主角关系。对白生成后要听一遍声音样片，听起来不像真人说话的句子，通常也不适合拍摄。</p>
             </details>
             <details>
-              <summary>直接生成音频</summary>
-              <p>如果已经有分段提示词，可以在创作页选择跳过编剧流程，直接上传提示词生成音频；生成后会按顺序保存，并可放进播放器收听。</p>
+              <summary>6. 广播剧样片 / 声音预演</summary>
+              <p>声音样片用于验证剧情节奏、台词密度、角色辨识度和情绪走向。生成后可以进播放器审听，也可以进入剪辑页做双轨混音、补录和导出。</p>
             </details>
             <details>
-              <summary>图片功能</summary>
-              <p>在“图片”页输入要求，可生成插画、封面、播放器背景，也可以上传参考图后让模型改图。优先 GPT，失败后尝试豆包图片模型。</p>
+              <summary>7. 音箱播放器</summary>
+              <p>音箱页负责审听样片、导入本地音频、绑定歌词、调整播放队列、循环和变速。主播放器允许后台播放；其他页面里的试听音频离开对应页面会自动停止。</p>
+            </details>
+            <details>
+              <summary>8. 音频剪辑 / K歌录音</summary>
+              <p>剪辑页支持轨道 1 人声、轨道 2 伴奏/氛围。上半区拖动做选区，下半区拖动移动音块；可静音选区、独奏选区、调音量、混响、录音、K歌伴奏录制和导出 WAV。</p>
+            </details>
+            <details>
+              <summary>9. API 配置</summary>
+              <p>文本生成可配置 GPT、豆包、DeepSeek、Kimi、千问等；配音可配置豆包音频、千问 TTS 或语音网关。输入框旁的“？”看说明，“测”做连通检查。正式给别人用时，付费 Key 尽量放到自己的后端中转。</p>
+            </details>
+            <details>
+              <summary>10. 图片功能</summary>
+              <p>图片页适合做概念海报、角色氛围图、App 图标、播放器背景或提案配图。上传参考图后可以让模型按你的要求修改；没有图片模型配置时，会返回可复制的图片提示词。</p>
+            </details>
+            <details>
+              <summary>11. 导出和打包 APK</summary>
+              <p>混音导出会生成 WAV；GitHub 打包时进入 Actions → Build Android Debug APK → Run workflow → 选择 main → Run workflow，等待绿色对勾后下载 baize-voice-studio-debug-apk，解压得到 APK。</p>
+            </details>
+            <details>
+              <summary>12. 常见问题排查</summary>
+              <p>API 失败先检查 Key、额度、模型 ID、Base URL 和网络；安卓真机访问电脑本地服务不能填 localhost，要填电脑局域网 IP；导出或播放异常时，先停止其他试听音频再重试。</p>
             </details>
           </section>
           <section class="assistant-tab-panel hidden" data-assistant-panel="chat">
@@ -1162,15 +1188,15 @@
       <div class="modal-panel app-intro-panel">
         <div class="panel-title-row">
           <div>
-            <p class="eyebrow">使用说明</p>
-            <h3 id="appIntroTitle">白泽声工坊是框架型工具</h3>
+            <p class="eyebrow">AI 影视预创作工具</p>
+            <h3 id="appIntroTitle">白泽 IP 预演台</h3>
           </div>
           <button id="closeAppIntroTop" class="secondary">关闭</button>
         </div>
         <div class="app-intro-copy">
-          <p>要使用完整 AI 功能，需要去对应模型官方购买额度，并在 API 配置页填入自己的 Key。</p>
-          <p>本应用不上传、不云端储存个人信息；个人配置、播放列表、导入记录等只保留在本机。</p>
-          <p>调用第三方模型时，你提交的文本会按你配置发送到对应官方接口或后端中转服务，请自行确认服务条款。</p>
+          <p>这是一款 AI 影视预创作工具，适合把灵感、小说、IP 设定快速预演成短剧/长剧大纲、角色对白、广播剧样片和影视化提案。</p>
+          <p>完整 AI 功能需要去对应模型官方购买额度，并在 API 配置页填入自己的 Key；正式给别人使用时，建议通过自己的后端中转保护 Key。</p>
+          <p>本应用不上传、不云端储存个人信息；个人配置、播放列表、导入记录等只保留在本机。调用第三方模型时，文本会按你的配置发送到对应官方接口或后端服务。</p>
         </div>
         <label class="intro-check"><input id="dontShowAppIntro" type="checkbox" /> 下次不再提示</label>
         <div class="actions">

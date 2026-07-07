@@ -1,6 +1,6 @@
 {
   "appId": "com.cijiandaimai.novelradio",
-  "appName": "白泽声工坊",
+  "appName": "白泽 IP 预演台",
   "webDir": "public",
   "server": {
     "androidScheme": "https",
