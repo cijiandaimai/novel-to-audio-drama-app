@@ -3038,6 +3038,7 @@ function closeTransientSurfaces() {
 function showView(name, options = {}) {
   const viewName = normalizeView(name);
   const previousView = normalizeView(document.body.dataset.view || lastRouteView);
+  if (previousView && previousView !== viewName) stopViewTransientAudio(previousView);
   const previousMainIndex = mainNavViews.indexOf(previousView);
   const nextMainIndex = mainNavViews.indexOf(viewName);
   const routeMotion = nextMainIndex >= 0 && previousMainIndex >= 0 && nextMainIndex !== previousMainIndex
@@ -3066,6 +3067,28 @@ function showView(name, options = {}) {
   if (viewName === "editor") requestAnimationFrame(renderWaveform);
   if (options.announce) showToast(`已切换到${viewLabels[viewName] || "页面"}。`, "ok");
   lastRouteView = viewName;
+}
+
+function pauseAudioElement(audio, { reset = true } = {}) {
+  if (!audio || audio.id === "mainPlayer") return;
+  try { audio.pause(); } catch {}
+  if (reset) {
+    try { audio.currentTime = 0; } catch {}
+  }
+}
+
+function stopTransientAudioIn(root, { except = null, reset = true } = {}) {
+  if (!root) return;
+  root.querySelectorAll?.("audio")?.forEach((audio) => {
+    if (audio === except || audio.id === "mainPlayer") return;
+    pauseAudioElement(audio, { reset });
+  });
+}
+
+function stopViewTransientAudio(viewName) {
+  if (viewName === "editor") stopEditorPlayback();
+  const view = $(`#${viewName}`);
+  stopTransientAudioIn(view);
 }
 
 function initRouteNavigation() {
@@ -5157,6 +5180,34 @@ function playInApp(src, title, options = {}) {
     });
 }
 
+function handleInlineAudioPreview(button) {
+  const container = button.closest("#editorResult, .result-box, .history-item, .sample-card, .panel") || document;
+  const src = normalizePlayableSrc(button.dataset.playSrc || "");
+  const audio = Array.from(container.querySelectorAll("audio"))
+    .find((item) => normalizePlayableSrc(item.currentSrc || item.src || item.getAttribute("src") || "") === src)
+    || container.querySelector("audio");
+  if (!audio) return false;
+  if (container.closest("#editor")) {
+    stopEditorPlayback();
+    stopTransientAudioIn($("#editor"), { except: audio });
+  } else {
+    stopTransientAudioIn(container.closest(".view") || document, { except: audio, reset: false });
+  }
+  if (!audio.paused && !audio.ended) {
+    pauseAudioElement(audio, { reset: false });
+    button.textContent = "试听";
+    return true;
+  }
+  audio.play()
+    .then(() => {
+      button.textContent = "暂停试听";
+      audio.addEventListener("pause", () => { button.textContent = "试听"; }, { once: true });
+      audio.addEventListener("ended", () => { button.textContent = "试听"; }, { once: true });
+    })
+    .catch(() => showToast("试听失败，请用下方音频控件播放。", "fail"));
+  return true;
+}
+
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -6758,6 +6809,8 @@ async function startEditorMicRecording() {
     return;
   }
   const trackId = $("#editorMicTrack")?.value || editorState.activeTrackId;
+  stopEditorPlayback();
+  stopTransientAudioIn($("#editor"));
   editorState.micTrackId = trackId;
   editorState.micChunks = [];
   editorState.micStartPlayhead = editorState.timeline.playhead;
@@ -6863,6 +6916,7 @@ async function startKaraokeRecording() {
   }
   if (editorState.micRecorder?.state === "recording") stopEditorMicRecording();
   stopEditorPlayback();
+  stopTransientAudioIn($("#editor"));
   const backingClips = getKaraokeBackingClips();
   const backingEnd = backingClips.reduce((max, clip) => Math.max(max, clip.timelineStart + getClipDuration(clip)), backingTrack.buffer.duration);
   let startAt = clamp(editorState.timeline.playhead || 0, 0, Math.max(0, backingEnd - 0.05));
@@ -7902,6 +7956,7 @@ function playEditorClip(clipId) {
   const buffer = getClipBuffer(clip);
   if (!clip || !track || !buffer) return;
   stopEditorPlayback();
+  stopTransientAudioIn($("#editor"));
   const context = getEditorAudioContext();
   if (context.state === "suspended") context.resume();
   const source = context.createBufferSource();
@@ -8082,6 +8137,7 @@ async function previewTimelineMix() {
     return;
   }
   stopEditorPlayback();
+  stopTransientAudioIn($("#editor"));
   try {
     const { clips } = getRenderableClips();
     const context = getEditorAudioContext();
@@ -8222,7 +8278,7 @@ async function exportEditorMix() {
       ${savedDownloads?.count ? `已保存到：${escapeHtml(savedDownloads.folder || "下载文件夹")}<br />` : ""}
       <audio controls src="${editorState.renderedUrl}"></audio>
       <div class="actions">
-        <button data-play-src="${editorState.renderedUrl}" data-play-title="${fileName}">播放</button>
+        <button data-play-src="${editorState.renderedUrl}" data-play-title="${fileName}" data-play-scope="inline">试听</button>
         <a download="${fileName}" href="${editorState.renderedUrl}">下载 WAV</a>
       </div>
     `;
@@ -9523,6 +9579,10 @@ function bindEvents() {
   $("#clipStart").addEventListener("input", () => setClipInputs(Number($("#clipStart").value), editorState.selection.sourceEnd, editorState.selection.timelineStart));
   $("#clipEnd").addEventListener("input", () => setClipInputs(editorState.selection.sourceStart, Number($("#clipEnd").value), editorState.selection.timelineStart));
   $("#clipTimelineStart").addEventListener("input", () => setClipInputs(editorState.selection.sourceStart, editorState.selection.sourceEnd, Number($("#clipTimelineStart").value)));
+  $("#editorPreview")?.addEventListener("play", (event) => {
+    stopEditorPlayback();
+    stopTransientAudioIn($("#editor"), { except: event.currentTarget, reset: false });
+  });
   $("#undoEdit").addEventListener("click", undoEditor);
   $("#redoEdit").addEventListener("click", redoEditor);
   $("#zoomOutTimeline").addEventListener("click", () => setTimelineZoom(editorState.timeline.zoom / 1.35));
@@ -9625,6 +9685,13 @@ function bindEvents() {
   $("#lockMidnightMode").addEventListener("click", lockMidnightMode);
   $("#runMidnightRewrite").addEventListener("click", runMidnightRewrite);
   window.addEventListener("resize", renderWaveform);
+  document.addEventListener("play", (event) => {
+    const audio = event.target;
+    if (!(audio instanceof HTMLAudioElement) || audio.id === "mainPlayer") return;
+    const view = audio.closest(".view");
+    if (view?.id === "editor") stopEditorPlayback();
+    stopTransientAudioIn(view || document, { except: audio, reset: false });
+  }, true);
   document.addEventListener("click", (event) => {
     const helpButton = event.target.closest("[data-api-help]");
     if (helpButton) {
@@ -9647,6 +9714,10 @@ function bindEvents() {
     }
     const button = event.target.closest("[data-play-src]");
     if (!button) return;
+    if (button.dataset.playScope === "inline") {
+      handleInlineAudioPreview(button);
+      return;
+    }
     const player = $("#mainPlayer");
     const sameSource = normalizePlayableSrc(button.dataset.playSrc) === normalizePlayableSrc(player?.currentSrc || player?.src || "");
     if (sameSource && isPlayerActivelyPlaying(player)) {
