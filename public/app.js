@@ -3833,19 +3833,21 @@ function renderPlayerPlaylist() {
     return `
     <article class="playlist-item${isActive ? " active" : ""}${isPlaying ? " playing" : ""}" data-playlist-id="${item.id}" draggable="true" ${isActive ? 'aria-current="true"' : ""}>
       <span class="playlist-drag-handle" aria-hidden="true">☰</span>
-      <button class="playlist-play" data-playlist-action="play">
+      <button class="playlist-play playlist-title-button" data-playlist-action="play">
         <span class="playlist-current-bars" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="playlist-copy">
           <strong>${escapeHtml(item.title)}</strong>
           <span>${escapeHtml(item.collectionName ? `${item.collectionName}｜${item.displayPath || item.src || "音频"}` : (item.displayPath || item.src || "音频"))}</span>
         </span>
-        <em class="playlist-toggle-label">${isPlaying ? t("pause") : t("play")}</em>
       </button>
-      <div class="playlist-sort-actions" aria-label="排序">
+      <div class="playlist-row-actions" aria-label="${escapeHtml(item.title)} 操作">
         <button class="playlist-move" data-playlist-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="上移 ${escapeHtml(item.title)}">↑</button>
         <button class="playlist-move" data-playlist-action="move-down" ${index === playerState.playlist.length - 1 ? "disabled" : ""} aria-label="下移 ${escapeHtml(item.title)}">↓</button>
+        <button class="playlist-inline-play" data-playlist-action="play" aria-label="${isPlaying ? "暂停" : "播放"} ${escapeHtml(item.title)}">
+          <em class="playlist-toggle-label">${isPlaying ? t("pause") : t("play")}</em>
+        </button>
+        <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
       </div>
-      <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
     </article>
   `;
   }).join("");
