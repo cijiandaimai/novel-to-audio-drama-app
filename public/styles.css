@@ -3412,6 +3412,7 @@ button:not(:disabled):active,
 
 .tavern-chat-actions {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 8px;
   flex: 0 0 auto;
 }
@@ -3419,6 +3420,14 @@ button:not(:disabled):active,
 .tavern-chat-actions button {
   min-height: 34px;
   padding: 7px 10px;
+}
+
+.tavern-export-hint {
+  flex: 1 0 100%;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
 }
 
 .tavern-mode-row {
@@ -4195,6 +4204,10 @@ button:not(:disabled):active,
 
   .tavern-chat-actions button {
     flex: 1 1 0;
+  }
+
+  .tavern-export-hint {
+    text-align: left;
   }
 
   .tavern-mode-row,

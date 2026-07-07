@@ -2955,6 +2955,7 @@ function exportTavernChat() {
 }
 
 function exportAllTavernChatsTxt() {
+  const fileName = `白泽IP预演台-全部酒馆对话-${new Date().toISOString().slice(0, 10)}.txt`;
   const content = [
     "白泽 IP 预演台｜全部酒馆对话",
     `导出时间：${new Date().toLocaleString()}`,
@@ -2988,10 +2989,16 @@ function exportAllTavernChatsTxt() {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `白泽IP预演台-全部酒馆对话-${new Date().toISOString().slice(0, 10)}.txt`;
+  anchor.download = fileName;
   anchor.click();
   URL.revokeObjectURL(url);
-  showToast("全部酒馆对话已导出为 TXT。", "ok");
+  const folderHint = /Android/i.test(navigator.userAgent || "")
+    ? "手机的“下载 / Download”文件夹"
+    : "浏览器默认下载文件夹";
+  const hint = `已导出：${fileName}，请到${folderHint}查看。`;
+  const hintNode = $("#tavernExportHint");
+  if (hintNode) hintNode.textContent = hint;
+  showToast(hint, "ok");
 }
 
 function exportTavernCharacter() {
