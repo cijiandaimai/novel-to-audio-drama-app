@@ -1102,6 +1102,30 @@ async function runTavernHistorian(input = {}) {
   };
 }
 
+async function runTavernAudit(input = {}) {
+  const config = applyServerManagedConfig(input.config || {});
+  const providerName = resolveTavernProvider(config, input.providerName || "auto");
+  if (!providerName) throw new Error("请先配置可用的史官审校 API 模型。");
+  const fallbackNames = ["deepseek", "doubao", "qwen", "kimi", "gpt", "gemini", "grok"]
+    .filter((name) => name !== providerName);
+  const reply = await invokeChat({
+    providerName,
+    provider: providerConfig(config, providerName),
+    fallbackProviders: fallbackNames.map((name) => providerConfig(config, name)).filter((provider) => !missingProvider(provider)),
+    system: String(input.system || "你是史官审校官，负责检查角色回复是否违反角色卡、世界书、史书、已发生事实或信息权限。不要续写剧情，只输出审校报告。"),
+    user: String(input.user || ""),
+    temperature: 0.18,
+    network: config.network,
+    mock: ""
+  });
+  if (!reply?.trim()) throw new Error("史官审校 API 没有返回内容。");
+  return {
+    providerName,
+    providerLabel: providerLabel(providerName),
+    reply: reply.trim()
+  };
+}
+
 async function readPromptGuide() {
   try {
     const guide = await fs.readFile(promptGuidePath, "utf8");
@@ -1708,6 +1732,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/tavern-historian") {
       const input = await readJson(req);
       const result = await runTavernHistorian(input);
+      sendJson(res, 200, result);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/tavern-audit") {
+      const input = await readJson(req);
+      const result = await runTavernAudit(input);
       sendJson(res, 200, result);
       return;
     }

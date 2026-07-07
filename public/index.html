@@ -423,9 +423,15 @@
                     </label>
                     <div class="actions tavern-historian-actions">
                       <button id="updateTavernChronicle" class="primary" type="button">史官修史</button>
+                      <button id="auditTavernReply" class="secondary" type="button">史官审校</button>
                       <button id="saveTavernChronicle" class="secondary" type="button">保存史书</button>
                       <button id="exportTavernChronicle" class="secondary" type="button">导出史书</button>
                     </div>
+                    <label class="field">
+                      <span>史官审校报告</span>
+                      <textarea id="tavernAuditReportInput" class="short-textarea tavern-audit-report" placeholder="点击“史官审校”，检查最近一轮 AI 回复是否 OOC、违反角色卡/世界书/史书，或出现信息越权。"></textarea>
+                    </label>
+                    <small id="tavernAuditStatus" class="tavern-audit-status">审校只出报告，不自动改写剧情。</small>
                     <small id="tavernHistorianStatus" class="tavern-historian-status">史官必须接入 API；已发生事实不可随意改写。</small>
                   </div>
                 </div>
