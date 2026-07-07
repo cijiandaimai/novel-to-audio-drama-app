@@ -322,6 +322,8 @@ const tavernChronicleKey = "tavernChronicle";
 const tavernHistorianModeKey = "tavernHistorianMode";
 const tavernWriterModeKey = "tavernWriterMode";
 const tavernPossessedCharacterKey = "tavernPossessedCharacter";
+const tavernWorldlinesKey = "tavernWorldlines";
+const tavernActiveWorldlineKey = "tavernActiveWorldline";
 const tavernModeKey = "tavernMode";
 const tavernEngineKey = "tavernEngine";
 const tavernProviderKey = "tavernProvider";
@@ -508,6 +510,8 @@ const tavernState = {
   historianMode: false,
   writerMode: "player",
   possessedCharacterId: "",
+  worldlines: [],
+  activeWorldlineId: "",
   mode: "story",
   engine: "local",
   provider: "auto",
@@ -1565,6 +1569,86 @@ function normalizeTavernPlotControl(value = {}) {
   };
 }
 
+function cloneTavernData(value, fallback) {
+  try {
+    return JSON.parse(JSON.stringify(value ?? fallback));
+  } catch {
+    return JSON.parse(JSON.stringify(fallback));
+  }
+}
+
+function normalizeTavernSnapshot(snapshot = {}) {
+  const source = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const characters = Array.isArray(source.characters) && source.characters.length
+    ? source.characters.map(normalizeTavernCharacter)
+    : tavernState.characters.map(normalizeTavernCharacter);
+  const sessions = source.sessions && typeof source.sessions === "object"
+    ? cloneTavernData(source.sessions, {})
+    : cloneTavernData(tavernState.sessions, {});
+  return {
+    version: 1,
+    characters,
+    sessions,
+    activeId: characters.some((character) => character.id === source.activeId) ? source.activeId : characters[0]?.id || "",
+    world: String(source.world || tavernState.world || defaultTavernWorld),
+    memory: String(source.memory || tavernState.memory || defaultTavernMemory),
+    chronicle: String(source.chronicle || tavernState.chronicle || defaultTavernChronicle),
+    historianMode: Boolean(source.historianMode),
+    writerMode: normalizeTavernWriterMode(source.writerMode || "player"),
+    possessedCharacterId: characters.some((character) => character.id === source.possessedCharacterId)
+      ? source.possessedCharacterId
+      : characters[0]?.id || "",
+    mode: normalizeTavernMode(source.mode || tavernState.mode),
+    engine: normalizeTavernEngine(source.engine || tavernState.engine),
+    provider: normalizeTavernProvider(source.provider || tavernState.provider),
+    plotControl: normalizeTavernPlotControl(source.plotControl || tavernState.plotControl)
+  };
+}
+
+function createTavernSnapshot() {
+  syncTavernEditorFormToState();
+  return normalizeTavernSnapshot({
+    characters: tavernState.characters,
+    sessions: tavernState.sessions,
+    activeId: tavernState.activeId,
+    world: tavernState.world,
+    memory: tavernState.memory,
+    chronicle: tavernState.chronicle,
+    historianMode: tavernState.historianMode,
+    writerMode: tavernState.writerMode,
+    possessedCharacterId: tavernState.possessedCharacterId,
+    mode: tavernState.mode,
+    engine: tavernState.engine,
+    provider: tavernState.provider,
+    plotControl: tavernState.plotControl
+  });
+}
+
+function normalizeTavernWorldline(item = {}) {
+  const now = new Date().toISOString();
+  const source = item && typeof item === "object" ? item : {};
+  return {
+    id: String(source.id || createLocalId("worldline")),
+    name: String(source.name || "未命名世界线").trim() || "未命名世界线",
+    description: String(source.description || "").trim(),
+    parentId: String(source.parentId || ""),
+    forkedFromMessageId: String(source.forkedFromMessageId || ""),
+    createdAt: source.createdAt || now,
+    updatedAt: source.updatedAt || now,
+    snapshot: normalizeTavernSnapshot(source.snapshot || {})
+  };
+}
+
+function saveTavernWorldlines() {
+  const safeList = tavernState.worldlines
+    .map(normalizeTavernWorldline)
+    .sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)))
+    .slice(0, 30);
+  tavernState.worldlines = safeList;
+  localStorage.setItem(tavernWorldlinesKey, JSON.stringify(safeList));
+  localStorage.setItem(tavernActiveWorldlineKey, tavernState.activeWorldlineId || "");
+}
+
 function saveTavernState() {
   localStorage.setItem(tavernCharactersKey, JSON.stringify(tavernState.characters));
   localStorage.setItem(tavernSessionsKey, JSON.stringify(tavernState.sessions));
@@ -1575,6 +1659,7 @@ function saveTavernState() {
   localStorage.setItem(tavernHistorianModeKey, tavernState.historianMode ? "1" : "");
   localStorage.setItem(tavernWriterModeKey, tavernState.writerMode);
   localStorage.setItem(tavernPossessedCharacterKey, tavernState.possessedCharacterId || "");
+  localStorage.setItem(tavernActiveWorldlineKey, tavernState.activeWorldlineId || "");
   localStorage.setItem(tavernModeKey, tavernState.mode);
   localStorage.setItem(tavernEngineKey, tavernState.engine);
   localStorage.setItem(tavernProviderKey, tavernState.provider);
@@ -1636,7 +1721,15 @@ function loadTavernState() {
   tavernState.engine = normalizeTavernEngine(localStorage.getItem(tavernEngineKey) || "local");
   tavernState.provider = normalizeTavernProvider(localStorage.getItem(tavernProviderKey) || "auto");
   tavernState.plotControl = normalizeTavernPlotControl(readJsonStorage(tavernPlotControlKey, defaultTavernPlotControl));
+  const storedWorldlines = readJsonStorage(tavernWorldlinesKey, []);
+  tavernState.worldlines = (Array.isArray(storedWorldlines) ? storedWorldlines : [])
+    .map(normalizeTavernWorldline);
+  tavernState.activeWorldlineId = localStorage.getItem(tavernActiveWorldlineKey) || tavernState.worldlines[0]?.id || "";
+  if (tavernState.activeWorldlineId && !tavernState.worldlines.some((line) => line.id === tavernState.activeWorldlineId)) {
+    tavernState.activeWorldlineId = tavernState.worldlines[0]?.id || "";
+  }
   tavernState.characters.forEach(seedTavernSession);
+  saveTavernWorldlines();
   saveTavernState();
 }
 
@@ -1673,6 +1766,7 @@ function renderTavernEditor(character = getTavernCharacter()) {
   renderTavernPlotControlUi();
   renderTavernHistorianUi();
   renderTavernWriterUi();
+  renderTavernWorldlineUi();
   updateTavernEngineUi();
 }
 
@@ -1939,6 +2033,140 @@ function createTavernCharacter() {
   renderTavern();
   $("#tavernNameInput")?.focus();
   showToast("已创建本地角色卡。", "ok");
+}
+
+function syncTavernEditorFormToState() {
+  const character = getTavernCharacter();
+  if (character) {
+    const name = $("#tavernNameInput")?.value.trim();
+    if (name) character.name = name;
+    if ($("#tavernTaglineInput")) character.tagline = $("#tavernTaglineInput").value.trim() || character.tagline || "本地角色卡";
+    if ($("#tavernPersonaInput")) character.persona = $("#tavernPersonaInput").value.trim();
+    if ($("#tavernGreetingInput")) character.greeting = $("#tavernGreetingInput").value.trim();
+    character.apiProvider = getTavernCharacterProvider(character);
+  }
+  if ($("#tavernWorldInput")) tavernState.world = $("#tavernWorldInput").value.trim() || tavernState.world;
+  if ($("#tavernMemoryInput")) tavernState.memory = $("#tavernMemoryInput").value.trim() || tavernState.memory;
+  if ($("#tavernChronicleInput")) tavernState.chronicle = $("#tavernChronicleInput").value.trim() || tavernState.chronicle || defaultTavernChronicle;
+  tavernState.mode = normalizeTavernMode($("#tavernModeSelect")?.value || tavernState.mode);
+  tavernState.engine = normalizeTavernEngine($("#tavernEngineSelect")?.value || tavernState.engine);
+  tavernState.writerMode = normalizeTavernWriterMode($("#tavernSpeakerMode")?.value || tavernState.writerMode);
+  tavernState.possessedCharacterId = $("#tavernPossessCharacterSelect")?.value || tavernState.possessedCharacterId;
+  tavernState.historianMode = tavernState.writerMode === "historian";
+}
+
+function renderTavernWorldlineUi() {
+  const select = $("#tavernWorldlineSelect");
+  const nameInput = $("#tavernWorldlineName");
+  const status = $("#tavernWorldlineStatus");
+  const loadButton = $("#loadTavernWorldline");
+  const deleteButton = $("#deleteTavernWorldline");
+  if (!select && !status) return;
+  if (select) {
+    select.innerHTML = tavernState.worldlines.length
+      ? tavernState.worldlines.map((line) => `
+        <option value="${escapeHtml(line.id)}">${escapeHtml(line.name)}｜${new Date(line.updatedAt).toLocaleString()}</option>
+      `).join("")
+      : `<option value="">暂无世界线存档</option>`;
+    select.value = tavernState.activeWorldlineId || tavernState.worldlines[0]?.id || "";
+  }
+  const active = tavernState.worldlines.find((line) => line.id === (select?.value || tavernState.activeWorldlineId));
+  if (nameInput && !nameInput.value.trim()) nameInput.value = active?.name || "主世界线";
+  if (status) {
+    status.textContent = active
+      ? `当前选中：${active.name}。共 ${tavernState.worldlines.length} 条世界线；读取会覆盖当前酒馆状态。`
+      : "还没有世界线存档。建议先点“保存节点”。";
+  }
+  if (loadButton) loadButton.disabled = !active;
+  if (deleteButton) deleteButton.disabled = !active;
+}
+
+function upsertTavernWorldline({ fork = false } = {}) {
+  const snapshot = createTavernSnapshot();
+  const nameInput = $("#tavernWorldlineName");
+  const selectedId = $("#tavernWorldlineSelect")?.value || tavernState.activeWorldlineId;
+  const selected = tavernState.worldlines.find((line) => line.id === selectedId);
+  const now = new Date().toISOString();
+  const defaultName = fork
+    ? `${selected?.name || nameInput?.value.trim() || "主世界线"}｜平行宇宙`
+    : nameInput?.value.trim() || selected?.name || "主世界线";
+  const name = window.prompt(fork ? "给这条平行宇宙起个名字：" : "保存为世界线：", defaultName)?.trim();
+  if (!name) return;
+  if (fork || !selected) {
+    const line = normalizeTavernWorldline({
+      id: createLocalId("worldline"),
+      name,
+      parentId: selected?.id || "",
+      createdAt: now,
+      updatedAt: now,
+      snapshot
+    });
+    tavernState.worldlines.unshift(line);
+    tavernState.activeWorldlineId = line.id;
+  } else {
+    selected.name = name;
+    selected.updatedAt = now;
+    selected.snapshot = snapshot;
+    tavernState.activeWorldlineId = selected.id;
+  }
+  saveTavernWorldlines();
+  saveTavernState();
+  if (nameInput) nameInput.value = name;
+  renderTavernWorldlineUi();
+  showToast(fork ? "已另开平行宇宙。" : "世界线节点已保存。", "ok");
+}
+
+function applyTavernSnapshot(snapshot = {}) {
+  const next = normalizeTavernSnapshot(snapshot);
+  tavernState.characters = next.characters;
+  tavernState.sessions = cloneTavernData(next.sessions, {});
+  tavernState.activeId = next.activeId;
+  tavernState.world = next.world;
+  tavernState.memory = next.memory;
+  tavernState.chronicle = next.chronicle;
+  tavernState.historianMode = next.historianMode;
+  tavernState.writerMode = next.writerMode;
+  tavernState.possessedCharacterId = next.possessedCharacterId;
+  tavernState.mode = next.mode;
+  tavernState.engine = next.engine;
+  tavernState.provider = next.provider;
+  tavernState.plotControl = next.plotControl;
+  tavernState.characters.forEach(seedTavernSession);
+}
+
+function loadTavernWorldline() {
+  const id = $("#tavernWorldlineSelect")?.value || tavernState.activeWorldlineId;
+  const line = tavernState.worldlines.find((item) => item.id === id);
+  if (!line) return;
+  if (!window.confirm(`读取「${line.name}」会覆盖当前酒馆状态，继续？`)) return;
+  applyTavernSnapshot(line.snapshot);
+  tavernState.activeWorldlineId = line.id;
+  saveTavernState();
+  saveTavernWorldlines();
+  renderTavern();
+  showToast(`已读取世界线：${line.name}`, "ok");
+}
+
+function deleteTavernWorldline() {
+  const id = $("#tavernWorldlineSelect")?.value || tavernState.activeWorldlineId;
+  const line = tavernState.worldlines.find((item) => item.id === id);
+  if (!line) return;
+  if (!window.confirm(`删除世界线「${line.name}」？`)) return;
+  tavernState.worldlines = tavernState.worldlines.filter((item) => item.id !== id);
+  tavernState.activeWorldlineId = tavernState.worldlines[0]?.id || "";
+  saveTavernWorldlines();
+  renderTavernWorldlineUi();
+  showToast("世界线已删除。", "ok");
+}
+
+function selectTavernWorldline(id) {
+  const line = tavernState.worldlines.find((item) => item.id === id);
+  if (!line) return;
+  tavernState.activeWorldlineId = line.id;
+  localStorage.setItem(tavernActiveWorldlineKey, line.id);
+  const nameInput = $("#tavernWorldlineName");
+  if (nameInput) nameInput.value = line.name;
+  renderTavernWorldlineUi();
 }
 
 function saveTavernCharacterFromForm() {
@@ -9871,6 +10099,11 @@ function bindEvents() {
   $("#tavernHistorianToggle")?.addEventListener("change", (event) => setTavernHistorianMode(event.target.checked));
   $("#tavernSpeakerMode")?.addEventListener("change", (event) => setTavernWriterMode(event.target.value));
   $("#tavernPossessCharacterSelect")?.addEventListener("change", (event) => setTavernPossessedCharacter(event.target.value));
+  $("#saveTavernWorldline")?.addEventListener("click", () => upsertTavernWorldline());
+  $("#forkTavernWorldline")?.addEventListener("click", () => upsertTavernWorldline({ fork: true }));
+  $("#loadTavernWorldline")?.addEventListener("click", loadTavernWorldline);
+  $("#deleteTavernWorldline")?.addEventListener("click", deleteTavernWorldline);
+  $("#tavernWorldlineSelect")?.addEventListener("change", (event) => selectTavernWorldline(event.target.value));
   $("#tavernModeSelect")?.addEventListener("change", (event) => setTavernMode(event.target.value));
   $("#tavernEngineSelect")?.addEventListener("change", (event) => setTavernEngine(event.target.value));
   $("#tavernProviderSelect")?.addEventListener("change", (event) => setTavernProvider(event.target.value));

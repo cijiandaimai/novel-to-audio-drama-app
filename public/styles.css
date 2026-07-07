@@ -3348,6 +3348,36 @@ button:not(:disabled):active,
   padding-inline: 8px;
 }
 
+.tavern-worldline-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(49, 95, 76, 0.16);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(49, 95, 76, 0.09), rgba(255, 253, 247, 0.86)),
+    rgba(255, 253, 247, 0.72);
+}
+
+.tavern-worldline-card p,
+.tavern-worldline-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.tavern-worldline-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.tavern-worldline-actions button {
+  min-height: 38px;
+  padding-inline: 6px;
+}
+
 .tavern-editor-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5206,6 +5236,10 @@ select {
 
   .tavern-historian-actions {
     grid-template-columns: 1fr;
+  }
+
+  .tavern-worldline-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tavern-chat-log {

@@ -430,6 +430,32 @@
                   </div>
                 </div>
               </details>
+              <details class="tavern-fold tavern-worldline-fold" open>
+                <summary>
+                  <span>世界线管理</span>
+                  <small>存档 / 读档 / 平行宇宙</small>
+                </summary>
+                <div class="tavern-fold-body">
+                  <div class="tavern-worldline-card">
+                    <p>把当前角色、对话、世界书、史书、记忆和高级设置保存成一个世界线节点。读取会回到该节点；另开平行宇宙会复制当前状态继续试另一种剧情。</p>
+                    <label class="field">
+                      <span>世界线名称</span>
+                      <input id="tavernWorldlineName" type="text" placeholder="例如：主世界线 / 谢无痕提前死亡线" />
+                    </label>
+                    <label class="field">
+                      <span>已保存世界线</span>
+                      <select id="tavernWorldlineSelect"></select>
+                    </label>
+                    <div class="actions tavern-worldline-actions">
+                      <button id="saveTavernWorldline" class="primary" type="button">保存节点</button>
+                      <button id="forkTavernWorldline" class="secondary" type="button">另开平行宇宙</button>
+                      <button id="loadTavernWorldline" class="secondary" type="button">读取</button>
+                      <button id="deleteTavernWorldline" class="secondary danger" type="button">删除</button>
+                    </div>
+                    <small id="tavernWorldlineStatus" class="tavern-worldline-status">还没有世界线存档。</small>
+                  </div>
+                </div>
+              </details>
               <div class="actions tavern-editor-actions">
                 <button id="saveTavernCharacter" class="primary">保存角色</button>
                 <button id="summarizeTavernMemory" class="secondary">整理记忆</button>
