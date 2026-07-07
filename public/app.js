@@ -357,7 +357,8 @@ const playerState = {
   loopMode: "none",
   playbackRate: 1,
   queueDrawerOpen: false,
-  queueDragId: ""
+  queueDragId: "",
+  queueTouchY: 0
 };
 const voiceRefsKey = "voiceReferences";
 const midnightUnlockKey = "midnightNekomataUnlocked";
@@ -3831,6 +3832,35 @@ function handlePlayerQueueScrollLock(event) {
     event.preventDefault();
     return;
   }
+  const list = event.target.closest?.(".player-playlist-list");
+  if (!list) {
+    event.preventDefault();
+    event.stopPropagation();
+    return;
+  }
+  const maxScroll = Math.max(0, list.scrollHeight - list.clientHeight);
+  const currentY = event.touches?.[0]?.clientY;
+  const deltaY = typeof currentY === "number"
+    ? playerState.queueTouchY - currentY
+    : Number(event.deltaY) || 0;
+  const atTop = list.scrollTop <= 0;
+  const atBottom = list.scrollTop >= maxScroll - 1;
+  if ((deltaY < 0 && atTop) || (deltaY > 0 && atBottom) || maxScroll <= 0) {
+    event.preventDefault();
+  }
+  if (typeof currentY === "number") playerState.queueTouchY = currentY;
+  event.stopPropagation();
+}
+
+function handlePlayerQueueTouchStart(event) {
+  if (!playerState.queueDrawerOpen) return;
+  const drawer = $("#playerQueueDrawer");
+  if (!drawer?.contains(event.target)) {
+    event.preventDefault();
+    return;
+  }
+  playerState.queueTouchY = event.touches?.[0]?.clientY || 0;
+  event.stopPropagation();
 }
 
 function syncPlaylistOrderDocument() {
@@ -3903,7 +3933,7 @@ function renderPlayerPlaylist() {
       <div class="playlist-row-actions" aria-label="${escapeHtml(item.title)} 操作">
         <button class="playlist-move" data-playlist-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="上移 ${escapeHtml(item.title)}">↑</button>
         <button class="playlist-move" data-playlist-action="move-down" ${index === playerState.playlist.length - 1 ? "disabled" : ""} aria-label="下移 ${escapeHtml(item.title)}">↓</button>
-        <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
+        <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">删</button>
       </div>
     </article>
   `;
@@ -9627,6 +9657,7 @@ function bindEvents() {
   document.addEventListener("keydown", handlePlayerFullscreenKey);
   document.addEventListener("keydown", handlePlayerQueueKeydown);
   document.addEventListener("wheel", handlePlayerQueueScrollLock, { passive: false, capture: true });
+  document.addEventListener("touchstart", handlePlayerQueueTouchStart, { passive: false, capture: true });
   document.addEventListener("touchmove", handlePlayerQueueScrollLock, { passive: false, capture: true });
   document.addEventListener("keydown", handleEditorShortcut);
   document.addEventListener("touchstart", handleRouteSwipeStart, { passive: true });
