@@ -3693,11 +3693,51 @@ button:not(:disabled):active,
   color: var(--accent-dark);
 }
 
+.tavern-message.possess p {
+  border-color: rgba(184, 139, 74, 0.32);
+  background:
+    linear-gradient(135deg, rgba(184, 139, 74, 0.16), rgba(255, 253, 247, 0.9));
+}
+
+.tavern-message.possess span {
+  color: #7a5623;
+}
+
 .tavern-compose {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto auto;
   gap: 8px;
   align-items: end;
+}
+
+.tavern-writer-controls {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(120px, 0.9fr) minmax(0, 1.6fr);
+  gap: 8px;
+  align-items: end;
+  padding: 9px;
+  border: 1px solid rgba(55, 50, 42, 0.1);
+  border-radius: 9px;
+  background: rgba(255, 253, 247, 0.68);
+}
+
+.tavern-writer-controls label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.tavern-writer-controls select {
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
+.tavern-writer-controls small {
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .tavern-compose textarea {
@@ -4275,6 +4315,10 @@ button:not(:disabled):active,
 
   .tavern-compose {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tavern-writer-controls {
+    grid-template-columns: 1fr;
   }
 
   .tavern-compose textarea {

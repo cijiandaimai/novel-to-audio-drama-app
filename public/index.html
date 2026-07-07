@@ -334,6 +334,21 @@
               </details>
               <div id="tavernChatLog" class="tavern-chat-log" aria-live="polite"></div>
               <div class="tavern-compose">
+                <div class="tavern-writer-controls">
+                  <label>
+                    <span>发言身份</span>
+                    <select id="tavernSpeakerMode">
+                      <option value="player">玩家</option>
+                      <option value="historian">史官</option>
+                      <option value="possess">编剧夺舍</option>
+                    </select>
+                  </label>
+                  <label id="tavernPossessCharacterWrap" hidden>
+                    <span>夺舍角色</span>
+                    <select id="tavernPossessCharacterSelect"></select>
+                  </label>
+                  <small id="tavernWriterHint">玩家身份：你以普通参与者进入当前角色线对话。</small>
+                </div>
                 <textarea id="tavernUserInput" placeholder="输入你想对角色说的话。Ctrl + Enter 发送。"></textarea>
                 <button id="expandTavernInput" class="secondary" type="button" aria-pressed="false">放大输入</button>
                 <button class="secondary speech-input-button" type="button" data-speech-input="tavernUserInput">语音输入</button>
