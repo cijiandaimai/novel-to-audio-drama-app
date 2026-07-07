@@ -5741,7 +5741,7 @@ function updateEditorLyricPreview() {
   const metaNode = $("#editorLyricMeta");
   if (!lineNode || !metaNode) return;
   if (!playerState.lyrics.length) {
-    metaNode.textContent = "歌词";
+    metaNode.textContent = "双击导入歌词";
     lineNode.textContent = "歌词未导入";
     return;
   }
@@ -5753,6 +5753,11 @@ function updateEditorLyricPreview() {
   lineNode.textContent = line
     ? `${current ? "" : "即将："}${line.text}${line.translation ? ` / ${line.translation}` : ""}`
     : "歌词已结束";
+}
+
+function openLyricFilePickerFromEditor(event) {
+  event?.preventDefault?.();
+  $("#lyricFile")?.click();
 }
 
 function syncEditorQuickState() {
@@ -9563,6 +9568,14 @@ function bindEvents() {
     if (!file) return;
     await importLyrics(file);
     event.target.value = "";
+  });
+  $("#editorLyricPreview")?.addEventListener("dblclick", openLyricFilePickerFromEditor);
+  $("#editorLyricPreview")?.addEventListener("pointerup", (event) => {
+    if (event.pointerType !== "touch") return;
+    const now = Date.now();
+    const previous = Number($("#editorLyricPreview")?.dataset.lastTap || 0);
+    $("#editorLyricPreview").dataset.lastTap = String(now);
+    if (now - previous < 360) openLyricFilePickerFromEditor(event);
   });
   $("#fullScreenPlayer").addEventListener("click", togglePlayerFullscreen);
   $("#lyricPanel").addEventListener("pointerdown", startFullscreenLyricScrub);

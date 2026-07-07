@@ -5348,6 +5348,13 @@ body[data-view="editor"] .editor-menu-button.active {
   border: 1px solid rgba(255, 250, 238, 0.1);
   border-radius: 10px;
   background: rgba(255, 250, 238, 0.06);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.editor-lyric-preview:hover {
+  border-color: rgba(255, 206, 115, 0.32);
+  background: rgba(255, 250, 238, 0.1);
 }
 
 .editor-lyric-preview small {
