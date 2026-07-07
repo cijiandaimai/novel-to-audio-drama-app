@@ -224,6 +224,19 @@
                 </div>
               </div>
               <div id="tavernCharacterList" class="tavern-character-list"></div>
+              <label class="tavern-role-model-row">
+                <span>当前角色 API 模型</span>
+                <select id="tavernCharacterProviderSelect">
+                  <option value="auto">自动选择</option>
+                  <option value="doubao">豆包</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="qwen">千问</option>
+                  <option value="kimi">Kimi</option>
+                  <option value="gpt">GPT</option>
+                  <option value="gemini">Gemini</option>
+                  <option value="grok">Grok</option>
+                </select>
+              </label>
               <details class="tavern-local-note">
                 <summary>本地运行说明</summary>
                 <span>当前为本地规则引擎，不上传角色卡、世界书、记忆和聊天记录。</span>
@@ -238,11 +251,18 @@
                   <p id="tavernActiveTagline">选择角色后开始对话。</p>
                 </div>
                 <div class="tavern-chat-actions">
-                  <button id="exportTavernChat" class="secondary">导出</button>
+                  <button id="exportTavernChat" class="secondary">导出当前</button>
+                  <button id="exportAllTavernChats" class="secondary">全部TXT</button>
                   <button id="clearTavernChat" class="secondary">清空</button>
                 </div>
               </div>
-              <div class="tavern-mode-row">
+              <details class="tavern-advanced-settings">
+                <summary>
+                  <span>高级回复设置</span>
+                  <small>模式 / 角色 API / 自动超级前置提示词</small>
+                </summary>
+                <div class="tavern-advanced-body">
+                  <div class="tavern-mode-row">
                 <label>
                   <span>酒馆模式</span>
                   <select id="tavernModeSelect">
@@ -261,7 +281,7 @@
                   </select>
                 </label>
                 <label>
-                  <span>API 模型</span>
+                  <span>当前角色 API</span>
                   <select id="tavernProviderSelect">
                     <option value="auto">自动选择</option>
                     <option value="doubao">豆包</option>
@@ -281,7 +301,7 @@
                   <button class="secondary" type="button" data-tavern-action="memory">记忆</button>
                 </div>
               </div>
-              <section id="tavernPlotControlPanel" class="tavern-plot-control" data-mode="off" aria-label="剧情走向控制">
+                  <section id="tavernPlotControlPanel" class="tavern-plot-control" data-mode="off" aria-label="剧情走向控制">
                 <div class="tavern-plot-head">
                   <div>
                     <strong>自动超级前置提示词</strong>
@@ -309,9 +329,12 @@
                 </div>
                 <textarea id="tavernPlotCustomPrompt" class="tavern-plot-custom" rows="3" placeholder="切到自定义后填写你的剧情走向提示词。"></textarea>
               </section>
+                </div>
+              </details>
               <div id="tavernChatLog" class="tavern-chat-log" aria-live="polite"></div>
               <div class="tavern-compose">
                 <textarea id="tavernUserInput" placeholder="输入你想对角色说的话。Ctrl + Enter 发送。"></textarea>
+                <button id="expandTavernInput" class="secondary" type="button" aria-pressed="false">放大输入</button>
                 <button class="secondary speech-input-button" type="button" data-speech-input="tavernUserInput">语音输入</button>
                 <button id="sendTavernMessage" class="primary">发送</button>
               </div>

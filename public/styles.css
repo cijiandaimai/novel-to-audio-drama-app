@@ -3209,6 +3209,25 @@ button:not(:disabled):active,
   padding: 6px 9px;
 }
 
+.tavern-role-model-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(55, 50, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.66);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tavern-role-model-row select {
+  min-height: 36px;
+  padding: 7px 9px;
+}
+
 .tavern-editor-panel {
   display: grid;
   gap: 12px;
@@ -3440,6 +3459,42 @@ button:not(:disabled):active,
   padding: 7px 8px;
 }
 
+.tavern-advanced-settings {
+  overflow: hidden;
+  border: 1px solid rgba(55, 50, 42, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.tavern-advanced-settings summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 9px 12px;
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 900;
+  list-style: none;
+}
+
+.tavern-advanced-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.tavern-advanced-settings summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tavern-advanced-body {
+  display: grid;
+  gap: 10px;
+  padding: 0 10px 10px;
+}
+
 .tavern-plot-control {
   display: grid;
   gap: 10px;
@@ -3537,8 +3592,8 @@ button:not(:disabled):active,
   display: grid;
   align-content: start;
   gap: 10px;
-  min-height: 340px;
-  max-height: min(58vh, 620px);
+  min-height: 430px;
+  max-height: min(70vh, 760px);
   overflow: auto;
   padding: 14px;
   border: 1px solid rgba(55, 50, 42, 0.13);
@@ -3583,14 +3638,19 @@ button:not(:disabled):active,
 
 .tavern-compose {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  gap: 8px;
   align-items: end;
 }
 
 .tavern-compose textarea {
   min-height: 72px;
   max-height: 150px;
+}
+
+.tavern-compose.expanded textarea {
+  min-height: min(42vh, 360px);
+  max-height: min(55vh, 520px);
 }
 
 .tavern-compose button {
@@ -4153,7 +4213,7 @@ button:not(:disabled):active,
   }
 
   .tavern-compose {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .tavern-compose textarea {
@@ -4943,12 +5003,12 @@ select {
   }
 
   .tavern-chat-panel {
-    order: 1;
+    order: 2;
     grid-template-rows: auto auto auto minmax(220px, 1fr);
   }
 
   .tavern-role-panel {
-    order: 2;
+    order: 1;
   }
 
   .tavern-editor-panel {
@@ -5041,12 +5101,23 @@ select {
 
   .tavern-chat-log {
     order: 4;
-    min-height: 260px;
-    max-height: 42vh;
+    min-height: 360px;
+    max-height: 58vh;
   }
 
   .tavern-compose {
     order: 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tavern-compose textarea {
+    grid-column: 1 / -1;
+  }
+
+  .tavern-compose button {
+    min-height: 42px;
+    padding-inline: 6px;
+    font-size: 12px;
   }
 }
 

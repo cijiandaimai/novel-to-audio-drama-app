@@ -1516,7 +1516,8 @@ function normalizeTavernCharacter(character = {}) {
     name: String(character.name || "未命名角色").trim() || "未命名角色",
     tagline: String(character.tagline || "本地角色卡").trim(),
     persona: String(character.persona || "").trim(),
-    greeting: String(character.greeting || "").trim()
+    greeting: String(character.greeting || "").trim(),
+    apiProvider: normalizeTavernProvider(character.apiProvider || character.provider || "auto")
   };
 }
 
@@ -1560,6 +1561,10 @@ function saveTavernState() {
 
 function getTavernCharacter(id = tavernState.activeId) {
   return tavernState.characters.find((character) => character.id === id) || tavernState.characters[0] || null;
+}
+
+function getTavernCharacterProvider(character = getTavernCharacter()) {
+  return normalizeTavernProvider(character?.apiProvider || tavernState.provider || "auto");
 }
 
 function getTavernMessages(id = tavernState.activeId) {
@@ -1613,7 +1618,7 @@ function renderTavernCharacterList() {
     <button class="tavern-character-card${character.id === tavernState.activeId ? " active" : ""}" data-tavern-character="${escapeHtml(character.id)}">
       <strong>${escapeHtml(character.name)}</strong>
       <span>${escapeHtml(character.tagline || "本地角色卡")}</span>
-      <small>${getTavernMessages(character.id).length} 条记录</small>
+      <small>${getTavernMessages(character.id).length} 条记录 · ${escapeHtml(tavernProviderLabel(getTavernCharacterProvider(character)))}</small>
     </button>
   `).join("");
 }
@@ -1625,7 +1630,9 @@ function renderTavernEditor(character = getTavernCharacter()) {
   const engineSelect = $("#tavernEngineSelect");
   if (engineSelect) engineSelect.value = tavernState.engine;
   const providerSelect = $("#tavernProviderSelect");
-  if (providerSelect) providerSelect.value = tavernState.provider;
+  if (providerSelect) providerSelect.value = getTavernCharacterProvider(character);
+  const characterProviderSelect = $("#tavernCharacterProviderSelect");
+  if (characterProviderSelect) characterProviderSelect.value = getTavernCharacterProvider(character);
   if ($("#tavernNameInput")) $("#tavernNameInput").value = character.name;
   if ($("#tavernTaglineInput")) $("#tavernTaglineInput").value = character.tagline;
   if ($("#tavernPersonaInput")) $("#tavernPersonaInput").value = character.persona;
@@ -1774,7 +1781,7 @@ function saveTavernCharacterFromForm() {
   tavernState.memory = $("#tavernMemoryInput")?.value.trim() || tavernState.memory;
   tavernState.mode = normalizeTavernMode($("#tavernModeSelect")?.value || tavernState.mode);
   tavernState.engine = normalizeTavernEngine($("#tavernEngineSelect")?.value || tavernState.engine);
-  tavernState.provider = normalizeTavernProvider($("#tavernProviderSelect")?.value || tavernState.provider);
+  character.apiProvider = getTavernCharacterProvider(character);
   saveTavernState();
   renderTavern();
   showToast("角色卡和世界书已保存在本机。", "ok");
@@ -1819,10 +1826,11 @@ function tavernProviderLabel(providerName) {
 }
 
 function tavernEngineLabel(engine = tavernState.engine) {
+  const provider = getTavernCharacterProvider();
   return {
     local: "Local",
-    api: `API · ${tavernProviderLabel(tavernState.provider)}`,
-    auto: `Auto · ${tavernProviderLabel(tavernState.provider)}`
+    api: `API · ${tavernProviderLabel(provider)}`,
+    auto: `Auto · ${tavernProviderLabel(provider)}`
   }[engine] || "Local";
 }
 
@@ -2039,7 +2047,7 @@ async function callTavernProviderDirect(providerName, config, prompt) {
 
 async function buildApiTavernReply(userText, character = getTavernCharacter(), options = {}) {
   const config = getConfig();
-  const requestedProvider = normalizeTavernProvider(tavernState.provider);
+  const requestedProvider = getTavernCharacterProvider(character);
   const messages = getTavernMessages(character?.id).slice(-24);
   const contextPack = buildTavernContextPack(userText, character, { ...options, messages });
   const payload = {
@@ -2808,10 +2816,15 @@ function setTavernEngine(engine) {
 }
 
 function setTavernProvider(provider) {
-  tavernState.provider = normalizeTavernProvider(provider);
+  const character = getTavernCharacter();
+  const nextProvider = normalizeTavernProvider(provider);
+  if (character) character.apiProvider = nextProvider;
+  tavernState.provider = nextProvider;
   saveTavernState();
+  renderTavernCharacterList();
+  renderTavernEditor(character);
   updateTavernEngineUi();
-  showToast(`酒馆 API 模型：${tavernProviderLabel(tavernState.provider)}。`, "ok");
+  showToast(`当前角色 API 模型：${tavernProviderLabel(nextProvider)}。`, "ok");
 }
 
 function getLastTavernUserPrompt(character) {
@@ -2912,7 +2925,7 @@ function getTavernTranscript(character = getTavernCharacter()) {
     `# ${character.name}`,
     `设定：${character.tagline}`,
     `模式：${tavernModes[tavernState.mode]?.label || "剧情推进"}`,
-    `回复方式：${tavernState.engine === "local" ? "本地" : tavernState.engine === "api" ? "API" : "自动"} / ${tavernProviderLabel(tavernState.provider)}`,
+    `回复方式：${tavernState.engine === "local" ? "本地" : tavernState.engine === "api" ? "API" : "自动"} / ${tavernProviderLabel(getTavernCharacterProvider(character))}`,
     "",
     "## 角色设定",
     character.persona,
@@ -2941,6 +2954,46 @@ function exportTavernChat() {
   showToast("酒馆记录已导出。", "ok");
 }
 
+function exportAllTavernChatsTxt() {
+  const content = [
+    "白泽 IP 预演台｜全部酒馆对话",
+    `导出时间：${new Date().toLocaleString()}`,
+    `角色数量：${tavernState.characters.length}`,
+    "",
+    ...tavernState.characters.map((character, index) => [
+      `${"=".repeat(18)} 角色 ${index + 1}：${character.name} ${"=".repeat(18)}`,
+      `一句话设定：${character.tagline || "本地角色卡"}`,
+      `角色 API 模型：${tavernProviderLabel(getTavernCharacterProvider(character))}`,
+      "",
+      "【角色设定】",
+      character.persona || "未填写",
+      "",
+      "【开场白】",
+      character.greeting || "未填写",
+      "",
+      "【对话内容】",
+      ...(getTavernMessages(character.id).length
+        ? getTavernMessages(character.id).map((message) => `${message.role === "user" ? "你" : character.name}：${message.text}`)
+        : ["暂无对话"]),
+      ""
+    ].join("\n")),
+    "",
+    "【世界书】",
+    tavernState.world || "未填写",
+    "",
+    "【长期记忆】",
+    tavernState.memory || "暂无长期记忆"
+  ].join("\n");
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `白泽IP预演台-全部酒馆对话-${new Date().toISOString().slice(0, 10)}.txt`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  showToast("全部酒馆对话已导出为 TXT。", "ok");
+}
+
 function exportTavernCharacter() {
   const character = getTavernCharacter();
   if (!character) return;
@@ -2954,7 +3007,7 @@ function exportTavernCharacter() {
     memory: tavernState.memory,
     mode: tavernState.mode,
     engine: tavernState.engine,
-    provider: tavernState.provider,
+    provider: getTavernCharacterProvider(character),
     messages: getTavernMessages(character.id)
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
@@ -2983,7 +3036,8 @@ function importTavernCharacterPayload(payload, fallbackName = "导入角色") {
     name,
     tagline: source.tagline || source.summary || source.description || "导入的本地角色卡",
     persona: personaParts.join("\n\n") || "这是一个导入角色，请补充性格、目标、边界和剧情类型。",
-    greeting: source.greeting || source.first_mes || source.first_message || source.intro || `${name}推门走进白泽酒馆：我来了。`
+    greeting: source.greeting || source.first_mes || source.first_message || source.intro || `${name}推门走进白泽酒馆：我来了。`,
+    apiProvider: source.apiProvider || source.provider || payload?.provider || tavernState.provider
   });
   tavernState.characters.unshift(imported);
   tavernState.activeId = imported.id;
@@ -3000,7 +3054,7 @@ function importTavernCharacterPayload(payload, fallbackName = "导入角色") {
   tavernState.memory = String(payload?.memory || source.memory || tavernState.memory || "").trim();
   tavernState.mode = normalizeTavernMode(payload?.mode || tavernState.mode);
   tavernState.engine = normalizeTavernEngine(payload?.engine || tavernState.engine);
-  tavernState.provider = normalizeTavernProvider(payload?.provider || tavernState.provider);
+  tavernState.provider = normalizeTavernProvider(payload?.provider || imported.apiProvider || tavernState.provider);
   saveTavernState();
   renderTavern();
   showToast("角色卡已导入本机。", "ok");
@@ -9462,6 +9516,7 @@ function bindEvents() {
   $("#deleteTavernCharacter")?.addEventListener("click", deleteTavernCharacter);
   $("#sendTavernMessage")?.addEventListener("click", () => sendTavernMessage().catch((error) => showToast(`酒馆回复失败：${error.message}`, "fail")));
   $("#exportTavernChat")?.addEventListener("click", exportTavernChat);
+  $("#exportAllTavernChats")?.addEventListener("click", exportAllTavernChatsTxt);
   $("#exportTavernCharacter")?.addEventListener("click", exportTavernCharacter);
   $("#importTavernCharacter")?.addEventListener("click", () => $("#importTavernCharacterFile")?.click());
   $("#importTavernCharacterFile")?.addEventListener("change", importTavernCharacterFromFile);
@@ -9471,6 +9526,15 @@ function bindEvents() {
   $("#tavernModeSelect")?.addEventListener("change", (event) => setTavernMode(event.target.value));
   $("#tavernEngineSelect")?.addEventListener("change", (event) => setTavernEngine(event.target.value));
   $("#tavernProviderSelect")?.addEventListener("change", (event) => setTavernProvider(event.target.value));
+  $("#tavernCharacterProviderSelect")?.addEventListener("change", (event) => setTavernProvider(event.target.value));
+  $("#expandTavernInput")?.addEventListener("click", (event) => {
+    const compose = event.currentTarget.closest(".tavern-compose");
+    const expanded = !compose?.classList.contains("expanded");
+    compose?.classList.toggle("expanded", expanded);
+    event.currentTarget.setAttribute("aria-pressed", String(expanded));
+    event.currentTarget.textContent = expanded ? "收起输入" : "放大输入";
+    if (expanded) $("#tavernUserInput")?.focus();
+  });
   $("#tavernPlotControlMode")?.addEventListener("change", (event) => setTavernPlotControl({ mode: event.target.value }));
   $("#tavernPlotLogicRange")?.addEventListener("input", (event) => setTavernPlotControl({ logic: Number(event.target.value) }));
   $("#tavernPlotCustomPrompt")?.addEventListener("input", (event) => setTavernPlotControl({ custom: event.target.value }));
