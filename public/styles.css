@@ -3310,6 +3310,44 @@ button:not(:disabled):active,
   padding: 0 12px 12px;
 }
 
+.tavern-historian-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(111, 31, 27, 0.15);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(111, 31, 27, 0.08), rgba(255, 253, 247, 0.84)),
+    rgba(255, 253, 247, 0.72);
+}
+
+.tavern-historian-card p,
+.tavern-historian-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.tavern-historian-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 900;
+  color: var(--ink);
+}
+
+.tavern-historian-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.tavern-historian-actions button {
+  min-height: 38px;
+  padding-inline: 8px;
+}
+
 .tavern-editor-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3643,6 +3681,16 @@ button:not(:disabled):active,
 
 .tavern-message.user p {
   background: rgba(239, 226, 199, 0.78);
+}
+
+.tavern-message.historian p {
+  border-color: rgba(111, 31, 27, 0.24);
+  background:
+    linear-gradient(135deg, rgba(111, 31, 27, 0.1), rgba(239, 226, 199, 0.78));
+}
+
+.tavern-message.historian span {
+  color: var(--accent-dark);
 }
 
 .tavern-compose {
@@ -5110,6 +5158,10 @@ select {
     min-height: 32px;
     padding: 6px 7px;
     font-size: 11px;
+  }
+
+  .tavern-historian-actions {
+    grid-template-columns: 1fr;
   }
 
   .tavern-chat-log {

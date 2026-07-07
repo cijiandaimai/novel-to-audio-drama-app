@@ -318,6 +318,8 @@ const tavernSessionsKey = "tavernSessions";
 const tavernActiveCharacterKey = "tavernActiveCharacter";
 const tavernWorldKey = "tavernWorld";
 const tavernMemoryKey = "tavernMemory";
+const tavernChronicleKey = "tavernChronicle";
+const tavernHistorianModeKey = "tavernHistorianMode";
 const tavernModeKey = "tavernMode";
 const tavernEngineKey = "tavernEngine";
 const tavernProviderKey = "tavernProvider";
@@ -411,6 +413,12 @@ const defaultTavernMemory = [
   "场景状态：只要人在酒馆里就是安全的；离开酒馆后所有因果重新追上来。",
   "叙事原则：每轮对话要承接上一轮的动作、情绪或秘密交易；优先推进悬念、筹码和人物关系，不要把场景重置成普通聊天。"
 ].join("\n");
+
+const defaultTavernChronicle = [
+  "【史书】",
+  "暂无已定史实。请在角色对话推进后点击“史官修史”，由 API 史官按时间线记录已经发生且不可随意改写的大事。"
+].join("\n");
+
 const tavernModes = {
   story: {
     label: "剧情推进",
@@ -494,6 +502,8 @@ const tavernState = {
   activeId: "",
   world: "",
   memory: "",
+  chronicle: "",
+  historianMode: false,
   mode: "story",
   engine: "local",
   provider: "auto",
@@ -1553,6 +1563,8 @@ function saveTavernState() {
   localStorage.setItem(tavernActiveCharacterKey, tavernState.activeId);
   localStorage.setItem(tavernWorldKey, tavernState.world);
   localStorage.setItem(tavernMemoryKey, tavernState.memory);
+  localStorage.setItem(tavernChronicleKey, tavernState.chronicle);
+  localStorage.setItem(tavernHistorianModeKey, tavernState.historianMode ? "1" : "");
   localStorage.setItem(tavernModeKey, tavernState.mode);
   localStorage.setItem(tavernEngineKey, tavernState.engine);
   localStorage.setItem(tavernProviderKey, tavernState.provider);
@@ -1597,12 +1609,15 @@ function loadTavernState() {
   if (!getTavernCharacter(tavernState.activeId)) tavernState.activeId = tavernState.characters[0]?.id || "";
   const storedWorld = String(localStorage.getItem(tavernWorldKey) || "");
   const storedMemory = String(localStorage.getItem(tavernMemoryKey) || "");
+  const storedChronicle = String(localStorage.getItem(tavernChronicleKey) || "");
   tavernState.world = !storedWorld || storedWorld === "白泽酒馆在本机运行。这里适合记录角色关系、地点规则、长期伏笔和广播剧桥段。"
     ? defaultTavernWorld
     : storedWorld;
   tavernState.memory = !storedMemory || storedMemory === "暂无长期记忆。可在对话后点击“记忆”或“整理记忆”自动提取。"
     ? defaultTavernMemory
     : storedMemory;
+  tavernState.chronicle = storedChronicle || defaultTavernChronicle;
+  tavernState.historianMode = localStorage.getItem(tavernHistorianModeKey) === "1";
   tavernState.mode = normalizeTavernMode(localStorage.getItem(tavernModeKey) || "story");
   tavernState.engine = normalizeTavernEngine(localStorage.getItem(tavernEngineKey) || "local");
   tavernState.provider = normalizeTavernProvider(localStorage.getItem(tavernProviderKey) || "auto");
@@ -1639,8 +1654,10 @@ function renderTavernEditor(character = getTavernCharacter()) {
   if ($("#tavernGreetingInput")) $("#tavernGreetingInput").value = character.greeting;
   if ($("#tavernWorldInput")) $("#tavernWorldInput").value = tavernState.world;
   if ($("#tavernMemoryInput")) $("#tavernMemoryInput").value = tavernState.memory;
+  if ($("#tavernChronicleInput")) $("#tavernChronicleInput").value = tavernState.chronicle;
   if ($("#deleteTavernCharacter")) $("#deleteTavernCharacter").disabled = tavernState.characters.length <= 1;
   renderTavernPlotControlUi();
+  renderTavernHistorianUi();
   updateTavernEngineUi();
 }
 
@@ -1713,6 +1730,56 @@ function buildTavernSuperPrompt() {
   ].filter(Boolean).join("\n");
 }
 
+function renderTavernHistorianUi() {
+  const toggle = $("#tavernHistorianToggle");
+  const status = $("#tavernHistorianStatus");
+  if (toggle) toggle.checked = Boolean(tavernState.historianMode);
+  if (status) {
+    status.textContent = tavernState.historianMode
+      ? "史官身份已开启：本轮玩家会以史官身份向角色发言，回复必须走 API。"
+      : "史官必须接入 API；史书会作为已发生事实，参与后续剧情参考。";
+  }
+}
+
+function saveTavernChronicleFromForm({ toast = true } = {}) {
+  tavernState.chronicle = $("#tavernChronicleInput")?.value.trim() || defaultTavernChronicle;
+  saveTavernState();
+  renderTavernHistorianUi();
+  if (toast) showToast("史书已保存。", "ok");
+}
+
+function setTavernHistorianMode(enabled) {
+  if (enabled && tavernState.engine === "local") {
+    tavernState.historianMode = false;
+    renderTavernHistorianUi();
+    showToast("史官必须接入 API：请先把酒馆回复方式切到 API 或自动。", "fail");
+    return;
+  }
+  tavernState.historianMode = Boolean(enabled);
+  saveTavernState();
+  renderTavernHistorianUi();
+  showToast(tavernState.historianMode ? "已开启史官身份。" : "已关闭史官身份。", "ok");
+}
+
+function buildTavernHistorianContext(options = {}) {
+  const chronicle = String(tavernState.chronicle || "").trim();
+  const lines = [];
+  if (chronicle) {
+    lines.push(
+      "【史书】",
+      compactTavernText(chronicle, 1800),
+      "史书规则：史书记录的是模拟世界里已经发生的事实。已发生的死亡、迁徙、权力更替、关系破裂、心态转变和重大事件不可随意改写；后续剧情只能在不冲突的前提下发展。"
+    );
+  }
+  if (options.asHistorian || tavernState.historianMode) {
+    lines.push(
+      "【史官身份】",
+      "本轮用户以“史官”身份介入。史官不是普通角色，而是记录、询问、校准和引导世界走向的人；角色可以回应史官的问题或记述，但不得否认史书里已经发生的事实。"
+    );
+  }
+  return lines.join("\n");
+}
+
 function renderTavernChat(character = getTavernCharacter()) {
   const log = $("#tavernChatLog");
   if (!log || !character) return;
@@ -1720,8 +1787,8 @@ function renderTavernChat(character = getTavernCharacter()) {
   $("#tavernActiveTagline").textContent = character.tagline || "本地角色卡";
   const messages = getTavernMessages(character.id);
   log.innerHTML = messages.map((message, index) => `
-    <article class="tavern-message ${message.role === "user" ? "user" : "character"}">
-      <span>${message.role === "user" ? "你" : escapeHtml(character.name)}</span>
+    <article class="tavern-message ${message.role === "user" ? "user" : "character"}${message.asHistorian ? " historian" : ""}">
+      <span>${escapeHtml(tavernMessageLabel(message, character))}</span>
       <p>${escapeHtml(message.text)}</p>
       ${message.role === "character" ? `<button class="secondary tavern-speak-button" type="button" data-tavern-speak="${index}">配音</button>` : ""}
     </article>
@@ -1779,6 +1846,7 @@ function saveTavernCharacterFromForm() {
   character.greeting = $("#tavernGreetingInput")?.value.trim();
   tavernState.world = $("#tavernWorldInput")?.value.trim() || tavernState.world;
   tavernState.memory = $("#tavernMemoryInput")?.value.trim() || tavernState.memory;
+  tavernState.chronicle = $("#tavernChronicleInput")?.value.trim() || tavernState.chronicle || defaultTavernChronicle;
   tavernState.mode = normalizeTavernMode($("#tavernModeSelect")?.value || tavernState.mode);
   tavernState.engine = normalizeTavernEngine($("#tavernEngineSelect")?.value || tavernState.engine);
   character.apiProvider = getTavernCharacterProvider(character);
@@ -1802,13 +1870,14 @@ function deleteTavernCharacter() {
   showToast("角色卡已删除。", "ok");
 }
 
-function appendTavernMessage(role, text, characterId = tavernState.activeId) {
+function appendTavernMessage(role, text, characterId = tavernState.activeId, meta = {}) {
   const safeText = String(text || "").trim();
   if (!safeText || !characterId) return;
   getTavernMessages(characterId).push({
     role,
     text: safeText,
-    at: new Date().toISOString()
+    at: new Date().toISOString(),
+    ...(meta.asHistorian ? { asHistorian: true } : {})
   });
 }
 
@@ -1910,7 +1979,8 @@ function compactTavernText(value = "", max = 700) {
 }
 
 function tavernMessageLabel(message = {}, character = getTavernCharacter()) {
-  return message.role === "user" ? "用户" : character?.name || "角色";
+  if (message.role === "user" && message.asHistorian) return "史官（你）";
+  return message.role === "user" ? "你" : character?.name || "角色";
 }
 
 function buildTavernTimeline(messages = [], character = getTavernCharacter()) {
@@ -1959,6 +2029,7 @@ function buildTavernContextPack(userText, character = getTavernCharacter(), opti
     `角色卡：${compactTavernText(character?.persona || "未填写", 900)}`,
     `世界书：${compactTavernText(tavernState.world || "未填写", 900)}`,
     `长期记忆：${compactTavernText(tavernState.memory || "暂无长期记忆", 1000)}`,
+    buildTavernHistorianContext(options),
     "【连续性锚点】",
     inferTavernContinuity(userText, character, messages),
     promptOptimization,
@@ -1980,6 +2051,7 @@ function buildTavernApiPrompt(userText, character = getTavernCharacter(), option
     "每次回复必须至少延续一个上下文锚点：动作、情绪、地点、物件、伏笔、称呼、关系或未解决问题。",
     `当前酒馆模式：${mode.label}。${mode.guide}`,
     buildTavernSuperPrompt(),
+    buildTavernHistorianContext(options),
     "输出前在内部自检：是否承接上一轮、是否保持角色口吻、是否引用记忆或世界书、是否推进当前模式。只输出最终回复。"
   ].filter(Boolean).join("\n");
   const user = [
@@ -2054,6 +2126,8 @@ async function buildApiTavernReply(userText, character = getTavernCharacter(), o
     character,
     world: tavernState.world,
     memory: tavernState.memory,
+    chronicle: tavernState.chronicle,
+    asHistorian: Boolean(options.asHistorian),
     mode: normalizeTavernMode(options.mode || tavernState.mode),
     providerName: requestedProvider,
     userText,
@@ -2692,12 +2766,14 @@ async function runAssistantImage() {
 
 async function buildTavernReply(userText, character = getTavernCharacter(), options = {}) {
   const engine = normalizeTavernEngine(options.engine || tavernState.engine);
+  if (options.requireApi && engine === "local") throw new Error("史官必须接入 API，不能使用本地回复。");
   if (engine === "local") return buildLocalTavernReply(userText, character, options);
   try {
     const reply = await buildApiTavernReply(userText, character, options);
     if (reply) return reply;
     throw new Error("模型没有返回内容。");
   } catch (error) {
+    if (options.requireApi) throw error;
     if (engine === "api") {
       showToast(`API 模式失败，已用本地回复接住：${error.message}`, "fail");
     } else {
@@ -2772,6 +2848,14 @@ async function appendEnhancedTavernReply(userText, character = getTavernCharacte
   return reply;
 }
 
+function canUseTavernHistorianApi({ toast = false } = {}) {
+  if (tavernState.engine === "local") {
+    if (toast) showToast("史官必须接入 API：请先把酒馆回复方式切到 API 或自动。", "fail");
+    return false;
+  }
+  return true;
+}
+
 async function sendTavernMessage() {
   const input = $("#tavernUserInput");
   const button = $("#sendTavernMessage");
@@ -2782,7 +2866,10 @@ async function sendTavernMessage() {
     input?.focus();
     return;
   }
-  appendTavernMessage("user", text, character.id);
+  const asHistorian = Boolean(tavernState.historianMode);
+  if (asHistorian && !canUseTavernHistorianApi({ toast: true })) return;
+  tavernState.chronicle = $("#tavernChronicleInput")?.value.trim() || tavernState.chronicle || defaultTavernChronicle;
+  appendTavernMessage("user", text, character.id, { asHistorian });
   input.value = "";
   saveTavernState();
   renderTavernChat(character);
@@ -2790,7 +2877,7 @@ async function sendTavernMessage() {
   setButtonBusy(button, true, tavernState.engine === "local" ? "本地生成中..." : "API 回复中...");
   button.dataset.busy = "yes";
   try {
-    await appendEnhancedTavernReply(text, character);
+    await appendEnhancedTavernReply(text, character, { asHistorian, requireApi: asHistorian });
     saveTavernState();
     renderTavernChat(character);
     renderTavernCharacterList();
@@ -2810,7 +2897,9 @@ function setTavernMode(mode) {
 
 function setTavernEngine(engine) {
   tavernState.engine = normalizeTavernEngine(engine);
+  if (tavernState.engine === "local") tavernState.historianMode = false;
   saveTavernState();
+  renderTavernHistorianUi();
   updateTavernEngineUi();
   showToast(`酒馆回复方式：${tavernState.engine === "local" ? "本地" : tavernState.engine === "api" ? "API" : "自动"}。`, "ok");
 }
@@ -2918,6 +3007,80 @@ async function runTavernQuickAction(action) {
   if (action === "memory") summarizeTavernMemory();
 }
 
+function buildTavernChronicleSource() {
+  return tavernState.characters.map((character) => {
+    const lines = getTavernMessages(character.id)
+      .slice(-40)
+      .map((message) => `${tavernMessageLabel(message, character)}：${message.text || message.content || ""}`)
+      .join("\n");
+    return `【角色线：${character.name}】\n设定：${character.tagline || "本地角色卡"}\n${lines || "暂无对话"}`;
+  }).join("\n\n").slice(-16000);
+}
+
+function buildTavernChroniclePrompt() {
+  const system = [
+    "你是白泽 IP 预演台的“史官”。",
+    "你的职责是把模拟世界中已经发生的事实整理为史书，而不是继续扮演普通角色。",
+    "已经发生的事实不可被改写；无法确认的内容只能写成传闻、疑点或待考。",
+    "输出必须是完整新版史书正文，不要解释工作过程。"
+  ].join("\n");
+  const user = [
+    "【任务】",
+    "根据现有史书、世界书、长期记忆和最近对话，更新史书。",
+    "请按时间线记录：年号/月/日或阶段、地点、相关角色、已发生事件、死亡/失踪/迁徙/权力变化、人物心态转变、后续伏笔。",
+    "不要改变已经发生的事实；如果新对话推翻旧说法，只能标注为“传闻更正”或“待考”。",
+    "",
+    "【现有史书】",
+    tavernState.chronicle || defaultTavernChronicle,
+    "",
+    "【世界书】",
+    tavernState.world || "未填写",
+    "",
+    "【长期记忆】",
+    tavernState.memory || "暂无长期记忆",
+    "",
+    "【最近角色线】",
+    buildTavernChronicleSource(),
+    "",
+    "【输出格式】",
+    "请只输出史书正文。推荐格式：",
+    "【纪年/阶段】地点｜角色｜事件｜结果｜心态变化｜后续影响"
+  ].join("\n");
+  return { system, user };
+}
+
+async function updateTavernChronicleWithApi() {
+  saveTavernChronicleFromForm({ toast: false });
+  if (!canUseTavernHistorianApi({ toast: true })) return;
+  const button = $("#updateTavernChronicle");
+  const config = getConfig();
+  const requestedProvider = getTavernCharacterProvider();
+  const prompt = buildTavernChroniclePrompt();
+  setButtonBusy(button, true, "修史中...");
+  try {
+    let providerName = requestedProvider;
+    let text = "";
+    try {
+      const result = await apiJson("/api/tavern-historian", { ...prompt, providerName: requestedProvider, config }, config);
+      providerName = result.providerName || providerName;
+      text = result.reply || "";
+    } catch {
+      providerName = resolveTavernProvider(config, requestedProvider);
+      if (!providerName) throw new Error("请先在配置页填写模型 Key 和模型 ID，或配置可用的后端中转。");
+      text = await callTavernProviderDirect(providerName, config, prompt);
+    }
+    tavernState.chronicle = String(text || "").trim() || tavernState.chronicle;
+    if ($("#tavernChronicleInput")) $("#tavernChronicleInput").value = tavernState.chronicle;
+    saveTavernState();
+    renderTavernHistorianUi();
+    showToast(`史官已修史：${tavernProviderLabel(providerName)}。`, "ok");
+  } catch (error) {
+    showToast(`史官修史失败：${error.message}`, "fail");
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
 function getTavernTranscript(character = getTavernCharacter()) {
   if (!character) return "";
   const messages = getTavernMessages(character.id);
@@ -2936,8 +3099,11 @@ function getTavernTranscript(character = getTavernCharacter()) {
     "## 本地记忆",
     tavernState.memory,
     "",
+    "## 史书",
+    tavernState.chronicle,
+    "",
     "## 对话记录",
-    ...messages.map((message) => `${message.role === "user" ? "你" : character.name}：${message.text}`)
+    ...messages.map((message) => `${tavernMessageLabel(message, character)}：${message.text}`)
   ].join("\n");
 }
 
@@ -2974,7 +3140,7 @@ function exportAllTavernChatsTxt() {
       "",
       "【对话内容】",
       ...(getTavernMessages(character.id).length
-        ? getTavernMessages(character.id).map((message) => `${message.role === "user" ? "你" : character.name}：${message.text}`)
+        ? getTavernMessages(character.id).map((message) => `${tavernMessageLabel(message, character)}：${message.text}`)
         : ["暂无对话"]),
       ""
     ].join("\n")),
@@ -2983,7 +3149,10 @@ function exportAllTavernChatsTxt() {
     tavernState.world || "未填写",
     "",
     "【长期记忆】",
-    tavernState.memory || "暂无长期记忆"
+    tavernState.memory || "暂无长期记忆",
+    "",
+    "【史书】",
+    tavernState.chronicle || defaultTavernChronicle
   ].join("\n");
   const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -3001,6 +3170,24 @@ function exportAllTavernChatsTxt() {
   showToast(hint, "ok");
 }
 
+function exportTavernChronicle() {
+  saveTavernChronicleFromForm({ toast: false });
+  const content = [
+    "白泽 IP 预演台｜史书",
+    `导出时间：${new Date().toLocaleString()}`,
+    "",
+    tavernState.chronicle || defaultTavernChronicle
+  ].join("\n");
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `白泽IP预演台-史书-${new Date().toISOString().slice(0, 10)}.txt`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+  showToast("史书已导出到下载文件夹。", "ok");
+}
+
 function exportTavernCharacter() {
   const character = getTavernCharacter();
   if (!character) return;
@@ -3012,6 +3199,7 @@ function exportTavernCharacter() {
     character,
     world: tavernState.world,
     memory: tavernState.memory,
+    chronicle: tavernState.chronicle,
     mode: tavernState.mode,
     engine: tavernState.engine,
     provider: getTavernCharacterProvider(character),
@@ -3053,12 +3241,14 @@ function importTavernCharacterPayload(payload, fallbackName = "导入角色") {
     .map((message) => ({
       role: message.role === "user" ? "user" : "character",
       text: String(message.text || message.content || "").trim(),
-      at: message.at || new Date().toISOString()
+      at: message.at || new Date().toISOString(),
+      ...(message.asHistorian ? { asHistorian: true } : {})
     }))
     .filter((message) => message.text);
   seedTavernSession(imported);
   tavernState.world = String(payload?.world || source.world || source.worldbook || source.scenario || tavernState.world || "").trim();
   tavernState.memory = String(payload?.memory || source.memory || tavernState.memory || "").trim();
+  tavernState.chronicle = String(payload?.chronicle || source.chronicle || tavernState.chronicle || defaultTavernChronicle).trim();
   tavernState.mode = normalizeTavernMode(payload?.mode || tavernState.mode);
   tavernState.engine = normalizeTavernEngine(payload?.engine || tavernState.engine);
   tavernState.provider = normalizeTavernProvider(payload?.provider || imported.apiProvider || tavernState.provider);
@@ -9530,6 +9720,10 @@ function bindEvents() {
   $("#clearTavernChat")?.addEventListener("click", clearTavernChat);
   $("#sendTavernToCreate")?.addEventListener("click", sendTavernToCreate);
   $("#summarizeTavernMemory")?.addEventListener("click", summarizeTavernMemory);
+  $("#saveTavernChronicle")?.addEventListener("click", () => saveTavernChronicleFromForm());
+  $("#updateTavernChronicle")?.addEventListener("click", () => updateTavernChronicleWithApi());
+  $("#exportTavernChronicle")?.addEventListener("click", exportTavernChronicle);
+  $("#tavernHistorianToggle")?.addEventListener("change", (event) => setTavernHistorianMode(event.target.checked));
   $("#tavernModeSelect")?.addEventListener("change", (event) => setTavernMode(event.target.value));
   $("#tavernEngineSelect")?.addEventListener("change", (event) => setTavernEngine(event.target.value));
   $("#tavernProviderSelect")?.addEventListener("change", (event) => setTavernProvider(event.target.value));
