@@ -6210,6 +6210,24 @@ body.player-queue-open {
   grid-template-columns: repeat(11, minmax(56px, 1fr));
 }
 
+#quickTrimModeKeep,
+#quickTrimModeDelete,
+.trim-mode-tabs {
+  display: none !important;
+}
+
+body[data-view="editor"] .editor-inline-actions::before {
+  content: "上半区拖动框选，下半区拖动移动音块";
+  align-self: center;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 250, 240, 0.12);
+  border-radius: 999px;
+  color: rgba(255, 250, 240, 0.72);
+  background: rgba(255, 250, 240, 0.06);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* Queue drawer compact row controls and overlay safety. */
 .player-queue-backdrop {
   z-index: 1980;

@@ -505,12 +505,13 @@
                   <button id="quickImportA" class="primary">左声道</button>
                   <button id="quickImportB" class="primary">右声道</button>
                   <button id="quickMicToggle" class="secondary">录音</button>
+                  <button id="quickKaraoke" class="secondary" type="button">K歌</button>
                   <button id="quickUndoImport" class="secondary">撤销</button>
                   <button id="quickClearTrack" class="secondary">移除</button>
                   <button id="quickTrimModeKeep" class="secondary">保留模式</button>
                   <button id="quickTrimModeDelete" class="secondary danger">删中间</button>
-                  <button id="quickAddSelection" class="secondary">保留</button>
-                  <button id="quickDeleteSelection" class="secondary danger">删选区</button>
+                  <button id="quickAddSelection" class="secondary">静音</button>
+                  <button id="quickDeleteSelection" class="secondary danger">独奏</button>
                   <button id="quickSplitClip" class="secondary">分割</button>
                   <button id="quickPreviewMix" class="secondary">播放</button>
                   <button id="quickExportMix" class="primary">导出</button>
@@ -556,8 +557,8 @@
                     <button id="trimModeKeep" class="primary" type="button">保留选区</button>
                     <button id="trimModeDelete" class="secondary" type="button">删除中间</button>
                   </div>
-                  <button id="keepSelectionTop" class="primary" type="button">执行保留</button>
-                  <button id="deleteSelectionTop" class="secondary danger" type="button">删除选区</button>
+                  <button id="keepSelectionTop" class="primary" type="button">静音选区</button>
+                  <button id="deleteSelectionTop" class="secondary danger" type="button">独奏选区</button>
                 </div>
               </div>
 
@@ -607,6 +608,7 @@
                   <div class="editor-quick-row">
                     <button id="startEditorMic" class="secondary">开始录音</button>
                     <button id="stopEditorMic" class="secondary hidden" disabled>停止并导入</button>
+                    <button id="startKaraoke" class="secondary" type="button">K歌：伴奏+录音</button>
                   </div>
                   <p id="editorMicStatus" class="hint">录音会直接导入目标轨道，覆盖前会自动保存为可撤销状态。</p>
                 </div>
@@ -765,8 +767,8 @@
                 <div class="editor-selection-actions">
                   <button id="setClipStartFromPlayer" class="secondary">设起点</button>
                   <button id="setClipEndFromPlayer" class="secondary">设终点</button>
-                  <button id="addClip" class="primary">执行保留</button>
-                  <button id="deleteSelectionRange" class="secondary danger">删除中间</button>
+                  <button id="addClip" class="primary">静音选区</button>
+                  <button id="deleteSelectionRange" class="secondary danger">独奏选区</button>
                   <button id="addWholeClip" class="secondary">整段加入</button>
                 </div>
                 <details class="timeline-marker-panel" open>

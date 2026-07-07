@@ -522,6 +522,14 @@ const editorState = {
   micPending: false,
   micChunks: [],
   micMimeType: "audio/webm",
+  karaokeActive: false,
+  karaokePending: false,
+  karaokeRecorder: null,
+  karaokeStream: null,
+  karaokeChunks: [],
+  karaokeStartPlayhead: 0,
+  karaokeTrackId: "B",
+  karaokeSource: null,
   markers: [],
   clipBuffers: {}
 };
@@ -5390,7 +5398,10 @@ function getTimelineDuration() {
   const recordingEnd = editorState.micRecorder?.state === "recording"
     ? editorState.micStartPlayhead + Math.max(0, (performance.now() - editorState.micStartClock) / 1000)
     : 0;
-  return Math.max(1, clipEnd, trackEnd, recordingEnd);
+  const karaokeEnd = editorState.karaokeRecorder?.state === "recording"
+    ? editorState.karaokeStartPlayhead + Math.max(0, Date.now() / 1000 - editorState.playbackStartClock)
+    : 0;
+  return Math.max(1, clipEnd, trackEnd, recordingEnd, karaokeEnd);
 }
 
 function snapshotEditor() {
@@ -5648,8 +5659,7 @@ function syncEditorQuickState() {
   const selectionLength = Math.max(0, editorState.selection.sourceEnd - editorState.selection.sourceStart);
   const selectionInfo = $("#quickSelectionInfo");
   if (selectionInfo) {
-    const modeLabel = editorState.trimMode === "delete-middle" ? "删除中间" : "保留选区";
-    selectionInfo.textContent = `${modeLabel} ${formatSeconds(selectionLength)}`;
+    selectionInfo.textContent = `选区 ${formatSeconds(selectionLength)}`;
   }
   const startBadge = $("#cutStartBadge");
   const endBadge = $("#cutEndBadge");
@@ -5657,12 +5667,11 @@ function syncEditorQuickState() {
   if (startBadge) startBadge.textContent = formatSeconds(editorState.selection.sourceStart);
   if (endBadge) endBadge.textContent = formatSeconds(editorState.selection.sourceEnd);
   if (durationBadge) durationBadge.textContent = formatSeconds(selectionLength);
-  const deleteMode = editorState.trimMode === "delete-middle";
   [
-    ["#trimModeKeep", !deleteMode],
-    ["#quickTrimModeKeep", !deleteMode],
-    ["#trimModeDelete", deleteMode],
-    ["#quickTrimModeDelete", deleteMode]
+    ["#trimModeKeep", true],
+    ["#quickTrimModeKeep", true],
+    ["#trimModeDelete", false],
+    ["#quickTrimModeDelete", false]
   ].forEach(([selector, active]) => {
     const button = $(selector);
     if (!button) return;
@@ -5671,19 +5680,18 @@ function syncEditorQuickState() {
     button.classList.toggle("secondary", !active);
     button.setAttribute("aria-pressed", active ? "true" : "false");
   });
-  const modeActionLabel = deleteMode ? "删除中间" : "执行保留";
   ["#quickAddSelection", "#keepSelectionTop", "#addClip"].forEach((selector) => {
     const button = $(selector);
     if (button) {
       button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
-      button.textContent = selector === "#quickAddSelection" ? (deleteMode ? "删中间" : "保留") : modeActionLabel;
+      button.textContent = selector === "#quickAddSelection" ? "静音" : "静音选区";
     }
   });
   ["#quickDeleteSelection", "#deleteSelectionTop", "#deleteSelectionRange"].forEach((selector) => {
     const button = $(selector);
     if (button) {
       button.disabled = selectionLength <= 0.05 || !getActiveTrack().buffer;
-      if (selector === "#deleteSelectionRange") button.textContent = "删除中间";
+      button.textContent = selector === "#quickDeleteSelection" ? "独奏" : "独奏选区";
     }
   });
   ["#nudgeSelectionStartLeft", "#nudgeSelectionStartRight", "#nudgeSelectionEndLeft", "#nudgeSelectionEndRight"].forEach((selector) => {
@@ -5704,6 +5712,7 @@ function syncEditorQuickState() {
   const transportDuration = $("#transportDurationLabel");
   if (transportDuration) transportDuration.textContent = `总长 ${formatSeconds(getTimelineDuration())}`;
   const recording = editorState.micRecorder?.state === "recording";
+  const karaokeActive = editorState.karaokeActive || editorState.karaokeRecorder?.state === "recording";
   const micToggle = $("#quickMicToggle");
   if (micToggle) {
     micToggle.disabled = editorState.micPending;
@@ -5730,6 +5739,21 @@ function syncEditorQuickState() {
     transportRecord.classList.toggle("primary", recording);
     transportRecord.classList.toggle("secondary", !recording);
   }
+  ["#quickKaraoke", "#startKaraoke"].forEach((selector) => {
+    const button = $(selector);
+    if (!button) return;
+    const hasBacking = Boolean(getTrack("B")?.buffer);
+    button.disabled = editorState.karaokePending || (!hasBacking && !karaokeActive);
+    button.textContent = editorState.karaokePending
+      ? "正在启动..."
+      : karaokeActive
+        ? "停止K歌"
+        : selector === "#quickKaraoke"
+          ? "K歌"
+          : "K歌：伴奏+录音";
+    button.classList.toggle("primary", karaokeActive);
+    button.classList.toggle("secondary", !karaokeActive);
+  });
   const active = getActiveTrack();
   const undoImport = $("#quickUndoImport");
   if (undoImport) undoImport.disabled = !active.sourceHistory?.length;
@@ -5897,12 +5921,130 @@ function deleteSelectedRange() {
   showToast("已按选区生成删除后的片段。", "ok");
 }
 
-function applyTrimModeAction() {
-  if (editorState.trimMode === "delete-middle") {
-    deleteSelectedRange();
+function getSelectionTimelineRange() {
+  const { trackId, start, end, timelineStart } = getClipInputs();
+  const selectionStart = Math.min(start, end);
+  const selectionEnd = Math.max(start, end);
+  const length = Math.max(0, selectionEnd - selectionStart);
+  const safeTimelineStart = Number.isFinite(timelineStart) ? Math.max(0, timelineStart) : selectionStart;
+  return {
+    trackId,
+    sourceStart: selectionStart,
+    sourceEnd: selectionEnd,
+    timelineStart: safeTimelineStart,
+    timelineEnd: safeTimelineStart + length,
+    length
+  };
+}
+
+function makeWholeTrackTimelineClip(trackId) {
+  const track = getTrack(trackId);
+  if (!track?.buffer) return null;
+  return {
+    id: `whole-${trackId}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: `${track.name} 整段`,
+    trackId,
+    sourceStart: 0,
+    sourceEnd: track.buffer.duration,
+    timelineStart: 0,
+    volume: 1,
+    fadeIn: 0,
+    fadeOut: 0,
+    muted: false
+  };
+}
+
+function makeTimelineSegmentClip(clip, sourceStart, sourceEnd, timelineStart, { muted = clip.muted, suffix = "" } = {}) {
+  return {
+    ...clip,
+    id: `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    name: suffix ? `${clip.name} ${suffix}` : clip.name,
+    sourceStart,
+    sourceEnd,
+    timelineStart: Math.max(0, timelineStart),
+    muted
+  };
+}
+
+function applySelectionAudioMode(mode = "mute") {
+  const range = getSelectionTimelineRange();
+  const track = getTrack(range.trackId);
+  if (!track?.buffer || range.length <= 0.05) {
+    showToast("请先在波形上框选要处理的选区。", "fail");
     return;
   }
-  addSelectionAsClip();
+  const solo = mode === "solo";
+  pushEditorHistory();
+  const trackClips = editorState.clips.filter((clip) => clip.trackId === range.trackId);
+  const sourceTrackClips = trackClips.length ? trackClips : [makeWholeTrackTimelineClip(range.trackId)].filter(Boolean);
+  const otherClips = editorState.clips
+    .filter((clip) => clip.trackId !== range.trackId)
+    .map((clip) => (solo ? { ...clip, muted: true } : clip));
+  const rebuilt = [];
+  let selectedSegmentId = "";
+
+  sourceTrackClips.forEach((clip) => {
+    const clipDuration = getClipDuration(clip);
+    const clipStart = clip.timelineStart;
+    const clipEnd = clipStart + clipDuration;
+    const overlapStart = Math.max(clipStart, range.timelineStart);
+    const overlapEnd = Math.min(clipEnd, range.timelineEnd);
+    if (overlapEnd <= overlapStart + 0.01) {
+      rebuilt.push(solo ? { ...clip, muted: true } : clip);
+      return;
+    }
+
+    if (overlapStart - clipStart > 0.01) {
+      rebuilt.push(makeTimelineSegmentClip(
+        clip,
+        clip.sourceStart,
+        clip.sourceStart + (overlapStart - clipStart),
+        clipStart,
+        { muted: solo ? true : clip.muted, suffix: "前段" }
+      ));
+    }
+
+    const selectedClip = makeTimelineSegmentClip(
+      clip,
+      clip.sourceStart + (overlapStart - clipStart),
+      clip.sourceStart + (overlapEnd - clipStart),
+      overlapStart,
+      { muted: solo ? false : true, suffix: solo ? "独奏" : "静音" }
+    );
+    rebuilt.push(selectedClip);
+    selectedSegmentId = selectedClip.id;
+
+    if (clipEnd - overlapEnd > 0.01) {
+      rebuilt.push(makeTimelineSegmentClip(
+        clip,
+        clip.sourceStart + (overlapEnd - clipStart),
+        clip.sourceEnd,
+        overlapEnd,
+        { muted: solo ? true : clip.muted, suffix: "后段" }
+      ));
+    }
+  });
+
+  editorState.clips = [...otherClips, ...rebuilt].sort((a, b) => a.timelineStart - b.timelineStart);
+  editorState.selectedClipId = selectedSegmentId || rebuilt[0]?.id || "";
+  setClipInputs(range.sourceStart, range.sourceEnd, range.timelineStart);
+  setPlayhead(range.timelineStart, { snap: false, follow: true });
+  setEditorContext("clips");
+  renderClipList();
+  renderWaveform();
+  showToast(solo ? "已独奏选区，其他片段已静音。" : "已静音选区，可撤销。", "ok");
+}
+
+function muteSelectionRange() {
+  applySelectionAudioMode("mute");
+}
+
+function soloSelectionRange() {
+  applySelectionAudioMode("solo");
+}
+
+function applyTrimModeAction() {
+  muteSelectionRange();
 }
 
 function setTrimMode(mode = "keep") {
@@ -6520,6 +6662,185 @@ function stopEditorMicRecording() {
   syncEditorQuickState();
 }
 
+function getKaraokeBackingClips() {
+  const backingTrack = getTrack("B");
+  if (!backingTrack?.buffer) return [];
+  const clips = editorState.clips.filter((clip) => clip.trackId === "B" && !clip.muted);
+  if (clips.length) return clips;
+  return [makeWholeTrackTimelineClip("B")].filter(Boolean);
+}
+
+async function startKaraokeRecording() {
+  if (editorState.karaokeActive || editorState.karaokeRecorder?.state === "recording") {
+    stopKaraokeRecording();
+    return;
+  }
+  if (editorState.karaokePending) return;
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    showToast("当前环境不支持麦克风录音。", "fail");
+    return;
+  }
+  const backingTrack = getTrack("B");
+  if (!backingTrack?.buffer) {
+    showToast("请先把伴奏导入轨道 2。", "fail");
+    setActiveTrack("B");
+    setEditorPanel("import");
+    return;
+  }
+  if (editorState.micRecorder?.state === "recording") stopEditorMicRecording();
+  stopEditorPlayback();
+  const backingClips = getKaraokeBackingClips();
+  const backingEnd = backingClips.reduce((max, clip) => Math.max(max, clip.timelineStart + getClipDuration(clip)), backingTrack.buffer.duration);
+  let startAt = clamp(editorState.timeline.playhead || 0, 0, Math.max(0, backingEnd - 0.05));
+  if (startAt >= backingEnd - 0.05) startAt = 0;
+  editorState.karaokePending = true;
+  editorState.karaokeChunks = [];
+  editorState.karaokeStartPlayhead = startAt;
+  editorState.karaokeTrackId = "B";
+  syncEditorQuickState();
+
+  let karaokeScheduledNodes = [];
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      }
+    });
+    const context = getEditorAudioContext();
+    if (context.state === "suspended") await context.resume();
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+    const recorder = new MediaRecorder(stream, { mimeType });
+    editorState.karaokeStream = stream;
+    editorState.karaokeRecorder = recorder;
+    editorState.micMimeType = mimeType;
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) editorState.karaokeChunks.push(event.data);
+    });
+    recorder.addEventListener("stop", async () => {
+      try {
+        cancelAnimationFrame(editorState.playheadRaf);
+        editorState.playheadRaf = 0;
+        const blob = new Blob(editorState.karaokeChunks, { type: editorState.micMimeType });
+        if (!blob.size) throw new Error("没有录到声音。");
+        const name = `K歌录音-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+        const startTime = editorState.karaokeStartPlayhead || 0;
+        await addEditorBufferClip({
+          arrayBuffer: await blob.arrayBuffer(),
+          url: URL.createObjectURL(blob),
+          name,
+          trackId: "A",
+          timelineStart: startTime
+        });
+        $("#editorMicStatus").textContent = `K歌录音已从 ${formatSeconds(startTime)} 导入轨道 1。`;
+        showToast("K歌录音已导入轨道 1。", "ok");
+      } catch (error) {
+        $("#editorMicStatus").textContent = `K歌录音保存失败：${error.message}`;
+        showToast(`K歌录音保存失败：${error.message}`, "fail");
+      } finally {
+        editorState.karaokeStream?.getTracks().forEach((track) => track.stop());
+        editorState.karaokeStream = null;
+        editorState.karaokeRecorder = null;
+        editorState.karaokeChunks = [];
+        editorState.karaokeActive = false;
+        editorState.karaokePending = false;
+        syncEditorQuickState();
+      }
+    });
+
+    const now = context.currentTime;
+    const nodes = [];
+    karaokeScheduledNodes = nodes;
+    const trackVolume = backingTrack.muted ? 0 : clamp(backingTrack.volume || 1, 0, 2);
+    backingClips.forEach((clip) => {
+      const buffer = getClipBuffer(clip);
+      if (!buffer || clip.muted) return;
+      const clipDuration = getClipDuration(clip);
+      const clipEnd = clip.timelineStart + clipDuration;
+      if (clipEnd <= startAt) return;
+      const delay = Math.max(0, clip.timelineStart - startAt);
+      const skipped = Math.max(0, startAt - clip.timelineStart);
+      const sourceOffset = clip.sourceStart + skipped;
+      const duration = Math.max(0.05, clip.sourceEnd - sourceOffset);
+      const source = context.createBufferSource();
+      const gain = context.createGain();
+      source.buffer = buffer;
+      gain.gain.value = clamp((clip.volume || 1) * trackVolume, 0, 2);
+      source.connect(gain).connect(context.destination);
+      source.onended = () => {
+        editorState.playingNodes = editorState.playingNodes.filter((node) => node !== source);
+        if (!editorState.playingNodes.length && editorState.karaokeRecorder?.state === "recording") {
+          stopKaraokeRecording({ fromSourceEnd: true });
+        }
+      };
+      source.start(now + delay, sourceOffset, duration);
+      nodes.push(source);
+    });
+    if (!nodes.length) throw new Error("播放头后面没有可用的轨道 2 伴奏。");
+    recorder.start();
+    editorState.playingNodes = nodes;
+    editorState.karaokeSource = nodes[0] || null;
+    editorState.karaokeActive = true;
+    editorState.karaokePending = false;
+    editorState.playbackMode = "karaoke";
+    editorState.playbackTargetId = "";
+    editorState.playbackStartClock = Date.now() / 1000;
+    editorState.playbackStartPlayhead = startAt;
+    editorState.playbackDuration = backingEnd;
+    setActiveTrack("A");
+    setPlayhead(startAt, { snap: false, follow: true });
+    $("#editorMicStatus").textContent = `K歌中：正在播放轨道 2，并从 ${formatSeconds(startAt)} 录入轨道 1。`;
+    syncEditorPlaybackButtons(true);
+    syncEditorQuickState();
+    animatePreviewPlayhead();
+    showToast("K歌开始：轨道 2 播放，轨道 1 录音。", "ok");
+  } catch (error) {
+    editorState.karaokeStream?.getTracks().forEach((track) => track.stop());
+    editorState.karaokeStream = null;
+    editorState.karaokeRecorder = null;
+    editorState.karaokeChunks = [];
+    editorState.karaokeActive = false;
+    editorState.karaokePending = false;
+    [...editorState.playingNodes, ...karaokeScheduledNodes].forEach((node) => {
+      try { node.stop(); } catch {}
+    });
+    editorState.playingNodes = [];
+    syncEditorQuickState();
+    showToast(`K歌启动失败：${error.message}`, "fail");
+  }
+}
+
+function stopKaraokeRecording({ fromSourceEnd = false } = {}) {
+  const recorder = editorState.karaokeRecorder;
+  editorState.karaokeActive = false;
+  editorState.karaokePending = false;
+  cancelAnimationFrame(editorState.playheadRaf);
+  editorState.playheadRaf = 0;
+  editorState.playingNodes.forEach((node) => {
+    try {
+      node.onended = null;
+      if (!fromSourceEnd) node.stop();
+    } catch {}
+  });
+  editorState.playingNodes = [];
+  editorState.karaokeSource = null;
+  editorState.playbackMode = "";
+  editorState.playbackTargetId = "";
+  syncEditorPlaybackButtons(false);
+  if (recorder?.state === "recording") {
+    recorder.stop();
+  } else {
+    editorState.karaokeStream?.getTracks().forEach((track) => track.stop());
+    editorState.karaokeStream = null;
+    editorState.karaokeRecorder = null;
+    editorState.karaokeChunks = [];
+  }
+  syncEditorQuickState();
+}
+
 function animateRecordingPlayhead() {
   cancelAnimationFrame(editorState.micPlayheadRaf);
   const tick = () => {
@@ -6661,6 +6982,12 @@ function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDurati
   ctx.moveTo(0, laneTop + laneHeight / 2);
   ctx.lineTo(width, laneTop + laneHeight / 2);
   ctx.stroke();
+  if (track.id === editorState.activeTrackId && laneHeight > 74 * ratio) {
+    ctx.fillStyle = "rgba(255, 250, 240, 0.42)";
+    ctx.font = `${10 * ratio}px Microsoft YaHei, sans-serif`;
+    ctx.fillText("上半区拖动：框选", width - 132 * ratio, laneTop + 20 * ratio);
+    ctx.fillText("下半区拖动：移动音块", width - 152 * ratio, laneTop + laneHeight / 2 + 20 * ratio);
+  }
 
   if (!track.buffer) {
     ctx.fillStyle = "rgba(255, 250, 240, 0.42)";
@@ -6830,16 +7157,15 @@ function renderWaveform() {
     const x1 = timeToX(selectionStart, info);
     const x2 = timeToX(selectionStart + selectionDuration, info);
     const y = lane.top;
-    const deleteMode = editorState.trimMode === "delete-middle";
-    ctx.fillStyle = deleteMode ? "rgba(111, 31, 27, 0.24)" : "rgba(184, 139, 74, 0.22)";
+    ctx.fillStyle = "rgba(184, 139, 74, 0.22)";
     ctx.fillRect(x1, y, Math.max(2 * ratio, x2 - x1), lane.height);
-    ctx.strokeStyle = deleteMode ? "rgba(255, 126, 104, 0.94)" : "rgba(255, 206, 115, 0.92)";
+    ctx.strokeStyle = "rgba(255, 206, 115, 0.92)";
     ctx.lineWidth = 2 * ratio;
     ctx.strokeRect(x1, y + 1 * ratio, Math.max(2 * ratio, x2 - x1), lane.height - 2 * ratio);
     if (Math.abs(x2 - x1) > 78 * ratio) {
-      ctx.fillStyle = deleteMode ? "rgba(255, 232, 224, 0.92)" : "rgba(255, 250, 240, 0.92)";
+      ctx.fillStyle = "rgba(255, 250, 240, 0.92)";
       ctx.font = `${11 * ratio}px Microsoft YaHei, sans-serif`;
-      ctx.fillText(deleteMode ? "删除中间" : "保留选区", x1 + 8 * ratio, y + 20 * ratio);
+      ctx.fillText("选区", x1 + 8 * ratio, y + 20 * ratio);
     }
   }
 
@@ -6892,6 +7218,12 @@ function getCanvasPointer(event) {
   const track = lane?.track || editorState.tracks[trackIndex];
   const time = xToTime(x, info);
   return { canvas, ...info, x, y, lane, trackIndex, track, time };
+}
+
+function getLanePointerZone(point) {
+  if (!point?.lane) return "upper";
+  const localY = point.y - point.lane.top;
+  return localY <= point.lane.height / 2 ? "upper" : "lower";
 }
 
 function hitTestClip(point) {
@@ -7078,22 +7410,15 @@ function startTimelineDrag(event) {
     selectEditorClip(hit.clip);
     setPlayhead(point.time, { snap: false, follow: true });
     if (handleTimelineDoubleTap(point, hit)) return;
-    if (event.pointerType === "touch") {
-      editorState.pendingDrag = { mode: "touch-clip-drag", hit, point, x: point.x, y: point.y };
-      setTimelineDragClass("long-press-armed", true);
-      clearTimeout(editorState.longPressTimer);
-      editorState.longPressTimer = window.setTimeout(() => {
-        if (!editorState.pendingDrag || editorState.drag) return;
-        const pending = editorState.pendingDrag;
-        clearPendingTimelineDrag();
-        beginClipDrag(pending.hit, pending.point);
-      }, 360);
+    if (getLanePointerZone(point) === "upper") {
+      beginClipRangeSelect(hit, point);
       return;
     }
-    editorState.pendingDrag = { mode: "mouse-clip-drag", hit, point, x: point.x, y: point.y };
+    beginClipDrag(hit, point);
     return;
   }
   if (!point.track?.buffer) return;
+  const zone = getLanePointerZone(point);
   const selection = editorState.selection;
   const handleSize = 18 * point.ratio;
   const selectionLength = Math.max(0, selection.sourceEnd - selection.sourceStart);
@@ -7101,7 +7426,12 @@ function startTimelineDrag(event) {
   const x1 = timeToX(selectionTimelineStart, point);
   const x2 = timeToX(selectionTimelineStart + selectionLength, point);
   const inside = point.track.id === selection.trackId && point.x >= x1 && point.x <= x2;
-  const type = Math.abs(point.x - x1) < handleSize ? "left" : Math.abs(point.x - x2) < handleSize ? "right" : inside ? "move" : "create";
+  let type = Math.abs(point.x - x1) < handleSize ? "left" : Math.abs(point.x - x2) < handleSize ? "right" : inside ? "move" : "create";
+  if (zone === "upper" && type === "move") type = "create";
+  if (zone === "lower" && type === "create" && !inside) {
+    setPlayhead(point.time, { snap: false, follow: true });
+    return;
+  }
   editorState.drag = {
     type,
     trackId: point.track.id,
@@ -7360,6 +7690,10 @@ function updateClipField(clipId, field, value, checked) {
 }
 
 function stopEditorPlayback() {
+  if (editorState.karaokeActive || editorState.karaokeRecorder?.state === "recording" || editorState.playbackMode === "karaoke") {
+    stopKaraokeRecording();
+    return;
+  }
   clearTimeout(editorState.clipTimer);
   cancelAnimationFrame(editorState.playheadRaf);
   editorState.playheadRaf = 0;
@@ -8836,16 +9170,17 @@ function bindEvents() {
       syncEditorQuickState();
     });
   });
+  $("#quickKaraoke")?.addEventListener("click", () => startKaraokeRecording());
   $("#quickUndoImport")?.addEventListener("click", () => undoTrackImport(editorState.activeTrackId));
   $("#quickClearTrack")?.addEventListener("click", () => clearTrackSource(editorState.activeTrackId));
   $("#quickTrimModeKeep")?.addEventListener("click", () => setTrimMode("keep"));
   $("#quickTrimModeDelete")?.addEventListener("click", () => setTrimMode("delete-middle"));
   $("#trimModeKeep")?.addEventListener("click", () => setTrimMode("keep"));
   $("#trimModeDelete")?.addEventListener("click", () => setTrimMode("delete-middle"));
-  $("#quickAddSelection")?.addEventListener("click", applyTrimModeAction);
-  $("#keepSelectionTop")?.addEventListener("click", applyTrimModeAction);
-  $("#quickDeleteSelection")?.addEventListener("click", deleteSelectedRange);
-  $("#deleteSelectionTop")?.addEventListener("click", deleteSelectedRange);
+  $("#quickAddSelection")?.addEventListener("click", muteSelectionRange);
+  $("#keepSelectionTop")?.addEventListener("click", muteSelectionRange);
+  $("#quickDeleteSelection")?.addEventListener("click", soloSelectionRange);
+  $("#deleteSelectionTop")?.addEventListener("click", soloSelectionRange);
   $("#quickSplitClip")?.addEventListener("click", splitClipAtPlayhead);
   $("#quickPreviewMix")?.addEventListener("click", previewTimelineMix);
   $("#quickExportMix")?.addEventListener("click", exportEditorMix);
@@ -8908,6 +9243,7 @@ function bindEvents() {
     syncEditorQuickState();
   }));
   $("#stopEditorMic").addEventListener("click", stopEditorMicRecording);
+  $("#startKaraoke")?.addEventListener("click", () => startKaraokeRecording());
   $$("[data-undo-import]").forEach((button) => {
     button.addEventListener("click", () => undoTrackImport(button.dataset.undoImport));
   });
@@ -8996,8 +9332,8 @@ function bindEvents() {
     const { start } = getClipInputs();
     setClipInputs(start, preview.currentTime || 0, editorState.selection.timelineStart);
   });
-  $("#addClip").addEventListener("click", applyTrimModeAction);
-  $("#deleteSelectionRange")?.addEventListener("click", deleteSelectedRange);
+  $("#addClip").addEventListener("click", muteSelectionRange);
+  $("#deleteSelectionRange")?.addEventListener("click", soloSelectionRange);
   $("#addTimelineMarker")?.addEventListener("click", () => addTimelineMarker());
   $("#clearTimelineMarkers")?.addEventListener("click", clearTimelineMarkers);
   $("#timelineMarkersList")?.addEventListener("click", (event) => {
