@@ -3152,12 +3152,34 @@ button:not(:disabled):active,
 .tavern-role-panel,
 .tavern-chat-panel,
 .tavern-editor-panel {
+  display: grid;
+  gap: 12px;
+  align-content: start;
   min-width: 0;
+  min-height: 160px;
+  overflow: visible;
+  visibility: visible;
 }
 
 .tavern-character-list {
   display: grid;
   gap: 9px;
+  min-height: 74px;
+  visibility: visible;
+}
+
+.tavern-empty-card {
+  display: grid;
+  min-height: 66px;
+  place-items: center;
+  padding: 12px;
+  border: 1px dashed rgba(111, 31, 27, 0.24);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.72);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
 }
 
 .tavern-character-card {
@@ -4583,6 +4605,7 @@ body.keyboard-open .assistant-compose {
 .sample-card,
 .history-item,
 .config-grid .panel,
+.tavern-role-panel,
 .tavern-chat-panel,
 .tavern-editor-panel {
   min-width: 0;
