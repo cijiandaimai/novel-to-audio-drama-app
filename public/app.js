@@ -484,8 +484,8 @@ const tavernState = {
 const editorState = {
   audioContext: null,
   tracks: [
-    { id: "A", name: "轨道 1", label: "人声/主轨", buffer: null, url: "", fileName: "", volume: 1, muted: false, solo: false, sourceHistory: [], heightWeight: 1 },
-    { id: "B", name: "轨道 2", label: "音乐/环境", buffer: null, url: "", fileName: "", volume: 0.75, muted: false, solo: false, sourceHistory: [], heightWeight: 1 }
+    { id: "A", name: "轨道 1", label: "人声/主轨", buffer: null, url: "", fileName: "", volume: 1, muted: false, solo: false, reverb: 0, sourceHistory: [], heightWeight: 1 },
+    { id: "B", name: "轨道 2", label: "音乐/环境", buffer: null, url: "", fileName: "", volume: 0.75, muted: false, solo: false, reverb: 0, sourceHistory: [], heightWeight: 1 }
   ],
   activeTrackId: "A",
   selection: { trackId: "A", sourceStart: 0, sourceEnd: 0, timelineStart: 0 },
@@ -534,6 +534,8 @@ const editorState = {
   markers: [],
   clipBuffers: {}
 };
+const editorReverbImpulseCache = new WeakMap();
+
 const recorderState = {
   stream: null,
   recorder: null,
@@ -3807,10 +3809,18 @@ function scrollCurrentQueueItemIntoView() {
   });
 }
 
+function ensurePlayerQueuePortal() {
+  const backdrop = $("#playerQueueBackdrop");
+  const drawer = $("#playerQueueDrawer");
+  if (!backdrop || !drawer) return { backdrop, drawer };
+  if (backdrop.parentElement !== document.body) document.body.append(backdrop);
+  if (drawer.parentElement !== document.body) document.body.append(drawer);
+  return { backdrop, drawer };
+}
+
 function setPlayerQueueDrawer(open) {
   playerState.queueDrawerOpen = Boolean(open && playerState.playlist.length);
-  const drawer = $("#playerQueueDrawer");
-  const backdrop = $("#playerQueueBackdrop");
+  const { drawer, backdrop } = ensurePlayerQueuePortal();
   drawer?.classList.toggle("open", playerState.queueDrawerOpen);
   drawer?.setAttribute("aria-hidden", playerState.queueDrawerOpen ? "false" : "true");
   backdrop?.classList.toggle("hidden", !playerState.queueDrawerOpen);
@@ -5162,6 +5172,16 @@ function dataUrlToBase64(dataUrl = "") {
   return comma >= 0 ? text.slice(comma + 1) : text;
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer || 0);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
 function guessAudioMime(fileName = "") {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".mp3")) return "audio/mpeg";
@@ -5215,14 +5235,37 @@ function collectAudioSegmentsForSaving(result, links = {}) {
 
 async function saveBlobToDownloads(blob, title, fileName, dataUrlCache = {}) {
   const plugin = getBaizeMediaPlugin();
-  if (!plugin?.saveAudioSegments) return null;
+  if (!plugin?.saveAudioSegments && !plugin?.startAudioSegmentSave) return null;
+  const mimeType = blob.type || guessAudioMime(fileName);
+  if (plugin?.startAudioSegmentSave && plugin?.appendAudioSegmentChunk && plugin?.finishAudioSegmentSave) {
+    let sessionId = "";
+    try {
+      const session = await plugin.startAudioSegmentSave({ title, fileName, mimeType, size: blob.size });
+      sessionId = session?.sessionId || "";
+      if (!sessionId) throw new Error("Cannot create export file.");
+      const chunkSize = 256 * 1024;
+      for (let offset = 0; offset < blob.size; offset += chunkSize) {
+        const chunk = blob.slice(offset, Math.min(blob.size, offset + chunkSize));
+        const base64 = arrayBufferToBase64(await chunk.arrayBuffer());
+        await plugin.appendAudioSegmentChunk({ sessionId, base64 });
+      }
+      const saved = await plugin.finishAudioSegmentSave({ sessionId });
+      addSavedDownloadFilesToPlaylist(saved, title);
+      return saved;
+    } catch (error) {
+      if (sessionId && plugin?.abortAudioSegmentSave) {
+        try { await plugin.abortAudioSegmentSave({ sessionId }); } catch {}
+      }
+      throw error;
+    }
+  }
   const dataUrl = dataUrlCache.value || await fileToDataUrl(blob);
   dataUrlCache.value = dataUrl;
   const saved = await plugin.saveAudioSegments({
     title,
     segments: [{
       fileName,
-      mimeType: blob.type || guessAudioMime(fileName),
+      mimeType,
       base64: dataUrlToBase64(dataUrl)
     }]
   });
@@ -5451,6 +5494,12 @@ function getEditorAudioContext() {
     editorState.audioContext = new AudioContextClass();
   }
   return editorState.audioContext;
+}
+
+function createEditorOfflineContext(channels, length, sampleRate) {
+  const OfflineContextClass = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  if (!OfflineContextClass) throw new Error("Offline audio export is not supported on this device.");
+  return new OfflineContextClass(channels, length, sampleRate);
 }
 
 function getTrack(trackId = editorState.activeTrackId) {
@@ -5715,6 +5764,12 @@ function syncTrackControls(trackId) {
   const track = getTrack(trackId);
   $$(`[data-track-volume="${track.id}"]`).forEach((input) => {
     input.value = String(track.volume);
+  });
+  $$(`[data-track-reverb="${track.id}"]`).forEach((input) => {
+    input.value = String(track.reverb || 0);
+  });
+  $$(`[data-track-reverb-label="${track.id}"]`).forEach((label) => {
+    label.textContent = `${Math.round((track.reverb || 0) * 100)}%`;
   });
   $$(`[data-track-mute="${track.id}"]`).forEach((input) => {
     input.checked = track.muted;
@@ -6888,7 +6943,7 @@ async function startKaraokeRecording() {
       const gain = context.createGain();
       source.buffer = buffer;
       gain.gain.value = clamp((clip.volume || 1) * trackVolume, 0, 2);
-      source.connect(gain).connect(context.destination);
+      connectEditorClipOutput(context, source, gain, context.destination, backingTrack);
       source.onended = () => {
         editorState.playingNodes = editorState.playingNodes.filter((node) => node !== source);
         if (!editorState.playingNodes.length && editorState.karaokeRecorder?.state === "recording") {
@@ -7944,12 +7999,61 @@ function getRenderableClips() {
   return { clips, loadedTracks };
 }
 
+function createEditorReverbImpulse(context, amount = 0) {
+  const wet = clamp(amount, 0, 1);
+  const key = String(Math.round(wet * 100));
+  let contextCache = editorReverbImpulseCache.get(context);
+  if (!contextCache) {
+    contextCache = new Map();
+    editorReverbImpulseCache.set(context, contextCache);
+  }
+  if (contextCache.has(key)) return contextCache.get(key);
+  const sampleRate = context.sampleRate || 44100;
+  const duration = 0.35 + wet * 2.15;
+  const length = Math.max(1, Math.floor(sampleRate * duration));
+  const impulse = context.createBuffer(2, length, sampleRate);
+  const decay = 1.8 + wet * 4.2;
+  for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+    const data = impulse.getChannelData(channel);
+    for (let i = 0; i < length; i += 1) {
+      const t = i / length;
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay) * wet;
+    }
+  }
+  contextCache.set(key, impulse);
+  return impulse;
+}
+
+function connectEditorClipOutput(context, source, gain, destination, track) {
+  const reverb = clamp(track?.reverb || 0, 0, 1);
+  source.connect(gain);
+  if (reverb <= 0.001) {
+    gain.connect(destination);
+    return;
+  }
+  const dry = context.createGain();
+  const wet = context.createGain();
+  const convolver = context.createConvolver();
+  dry.gain.value = 1 - reverb * 0.18;
+  wet.gain.value = reverb * 0.72;
+  convolver.buffer = createEditorReverbImpulse(context, reverb);
+  gain.connect(dry).connect(destination);
+  gain.connect(convolver).connect(wet).connect(destination);
+}
+
 async function renderEditorMixBuffer() {
   const { clips, loadedTracks } = getRenderableClips();
   const sampleRate = loadedTracks[0].buffer.sampleRate || 44100;
   const totalDuration = clips.reduce((max, clip) => Math.max(max, clip.timelineStart + Math.max(0, clip.sourceEnd - clip.sourceStart)), 0);
   if (totalDuration <= 0) throw new Error("没有可导出的有效时长。");
-  const offline = new OfflineAudioContext(2, Math.ceil(totalDuration * sampleRate), sampleRate);
+  const offline = createEditorOfflineContext(2, Math.ceil(totalDuration * sampleRate), sampleRate);
+  const master = offline.createDynamicsCompressor();
+  master.threshold.value = -8;
+  master.knee.value = 24;
+  master.ratio.value = 5;
+  master.attack.value = 0.004;
+  master.release.value = 0.18;
+  master.connect(offline.destination);
   for (const clip of clips) {
     const track = getTrack(clip.trackId);
     const buffer = getClipBuffer(clip);
@@ -7966,7 +8070,7 @@ async function renderEditorMixBuffer() {
     if (fadeIn > 0) gain.gain.linearRampToValueAtTime(volume, startAt + fadeIn);
     gain.gain.setValueAtTime(volume, Math.max(startAt, startAt + duration - fadeOut));
     if (fadeOut > 0) gain.gain.linearRampToValueAtTime(0, startAt + duration);
-    source.connect(gain).connect(offline.destination);
+    connectEditorClipOutput(offline, source, gain, master, track);
     source.start(startAt, clip.sourceStart, duration);
   }
   return offline.startRendering();
@@ -8017,7 +8121,7 @@ async function previewTimelineMix() {
           gain.gain.linearRampToValueAtTime(0, startTime + duration);
         }
       }
-      source.connect(gain).connect(context.destination);
+      connectEditorClipOutput(context, source, gain, context.destination, track);
       source.onended = () => {
         editorState.playingNodes = editorState.playingNodes.filter((node) => node !== source);
         if (!editorState.playingNodes.length) {
@@ -8054,8 +8158,8 @@ function audioBufferToWav(buffer) {
   const bytesPerSample = 2;
   const blockAlign = numberOfChannels * bytesPerSample;
   const dataSize = sampleCount * blockAlign;
-  const arrayBuffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(arrayBuffer);
+  const header = new ArrayBuffer(44);
+  const view = new DataView(header);
   const writeString = (offset, value) => {
     for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
   };
@@ -8072,17 +8176,28 @@ function audioBufferToWav(buffer) {
   view.setUint16(34, 16, true);
   writeString(36, "data");
   view.setUint32(40, dataSize, true);
-  let offset = 44;
+
   const channels = Array.from({ length: numberOfChannels }, (_, channel) => buffer.getChannelData(channel));
-  for (let i = 0; i < sampleCount; i++) {
-    for (let channel = 0; channel < numberOfChannels; channel++) {
-      const sample = Math.max(-1, Math.min(1, channels[channel][i] || 0));
-      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-      offset += 2;
+  const parts = [header];
+  const framesPerChunk = 65536;
+  for (let frame = 0; frame < sampleCount; frame += framesPerChunk) {
+    const frames = Math.min(framesPerChunk, sampleCount - frame);
+    const chunk = new ArrayBuffer(frames * blockAlign);
+    const chunkView = new DataView(chunk);
+    let offset = 0;
+    for (let i = 0; i < frames; i++) {
+      const sourceIndex = frame + i;
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        const sample = Math.max(-1, Math.min(1, channels[channel][sourceIndex] || 0));
+        chunkView.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        offset += 2;
+      }
     }
+    parts.push(chunk);
   }
-  return new Blob([arrayBuffer], { type: "audio/wav" });
+  return new Blob(parts, { type: "audio/wav" });
 }
+
 
 async function exportEditorMix() {
   setButtonBusy("#exportMix", true, "导出中...");
@@ -9390,6 +9505,10 @@ function bindEvents() {
     getTrack(input.dataset.trackVolume).volume = Number(input.value) || 0;
     syncTrackControls(input.dataset.trackVolume);
     renderWaveform();
+  }));
+  $$("[data-track-reverb]").forEach((input) => input.addEventListener("input", () => {
+    getTrack(input.dataset.trackReverb).reverb = clamp(Number(input.value) || 0, 0, 1);
+    syncTrackControls(input.dataset.trackReverb);
   }));
   $$("[data-track-mute]").forEach((input) => input.addEventListener("change", () => {
     getTrack(input.dataset.trackMute).muted = input.checked;

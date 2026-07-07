@@ -33,8 +33,10 @@ import java.nio.charset.StandardCharsets;
 import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 @CapacitorPlugin(
@@ -46,6 +48,18 @@ import java.util.Set;
 )
 public class BaizeMediaPlugin extends Plugin {
     private static final String APP_FOLDER = "白泽声工坊";
+    private final Map<String, SaveSession> saveSessions = new HashMap<>();
+
+    private static class SaveSession {
+        String id;
+        String title;
+        String fileName;
+        String mimeType;
+        Uri uri;
+        File file;
+        OutputStream output;
+        long size;
+    }
 
     @PluginMethod
     public void saveAudioSegments(PluginCall call) {
@@ -71,6 +85,92 @@ public class BaizeMediaPlugin extends Plugin {
             call.resolve(result);
         } catch (Exception error) {
             call.reject("保存到下载文件夹失败：" + error.getMessage(), error);
+        }
+    }
+
+    @PluginMethod
+    public void startAudioSegmentSave(PluginCall call) {
+        String title = safeName(call.getString("title", "Untitled"));
+        String fileName = safeFileName(call.getString("fileName", "mix.wav"), 0);
+        String mimeType = call.getString("mimeType", guessMimeType(fileName));
+        try {
+            SaveSession session = openSaveSession(title, fileName, mimeType);
+            saveSessions.put(session.id, session);
+            JSObject result = new JSObject();
+            result.put("sessionId", session.id);
+            result.put("folder", "Download/" + APP_FOLDER + "/" + title);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Export failed: " + error.getMessage(), error);
+        }
+    }
+
+    @PluginMethod
+    public void appendAudioSegmentChunk(PluginCall call) {
+        String sessionId = call.getString("sessionId", "");
+        SaveSession session = saveSessions.get(sessionId);
+        if (session == null) {
+            call.reject("Export session not found");
+            return;
+        }
+        try {
+            String data = call.getString("base64", "");
+            if (!data.isEmpty()) {
+                byte[] bytes = Base64.decode(data, Base64.DEFAULT);
+                session.output.write(bytes);
+                session.size += bytes.length;
+            }
+            call.resolve(new JSObject());
+        } catch (Exception error) {
+            call.reject("Export failed: " + error.getMessage(), error);
+        }
+    }
+
+    @PluginMethod
+    public void finishAudioSegmentSave(PluginCall call) {
+        String sessionId = call.getString("sessionId", "");
+        SaveSession session = saveSessions.remove(sessionId);
+        if (session == null) {
+            call.reject("Export session not found");
+            return;
+        }
+        try {
+            closeSessionOutput(session);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && session.uri != null) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                getContext().getContentResolver().update(session.uri, values, null, null);
+            }
+            JSArray files = new JSArray();
+            String uri = session.uri != null ? session.uri.toString() : Uri.fromFile(session.file).toString();
+            String path = session.file != null ? session.file.getAbsolutePath() : "Download/" + APP_FOLDER + "/" + session.title + "/" + session.fileName;
+            files.put(savedFileObject(session.fileName, session.mimeType, uri, path, session.size));
+            JSObject result = new JSObject();
+            result.put("folder", "Download/" + APP_FOLDER + "/" + session.title);
+            result.put("count", files.length());
+            result.put("files", files);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Export failed: " + error.getMessage(), error);
+        }
+    }
+
+    @PluginMethod
+    public void abortAudioSegmentSave(PluginCall call) {
+        String sessionId = call.getString("sessionId", "");
+        SaveSession session = saveSessions.remove(sessionId);
+        try {
+            if (session != null) {
+                closeSessionOutput(session);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && session.uri != null) {
+                    getContext().getContentResolver().delete(session.uri, null, null);
+                } else if (session.file != null) {
+                    session.file.delete();
+                }
+            }
+            call.resolve(new JSObject());
+        } catch (Exception error) {
+            call.reject("Export failed: " + error.getMessage(), error);
         }
     }
 
@@ -131,6 +231,44 @@ public class BaizeMediaPlugin extends Plugin {
         }
         Uri uri = Uri.fromFile(file);
         return savedFileObject(fileName, mimeType, uri.toString(), file.getAbsolutePath(), bytes.length);
+    }
+
+    private SaveSession openSaveSession(String title, String fileName, String mimeType) throws Exception {
+        SaveSession session = new SaveSession();
+        session.id = "save-" + System.currentTimeMillis() + "-" + Math.round(Math.random() * 1000000);
+        session.title = title;
+        session.fileName = fileName;
+        session.mimeType = mimeType;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContentValues values = new ContentValues();
+            values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+            values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/" + APP_FOLDER + "/" + title);
+            values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            ContentResolver resolver = getContext().getContentResolver();
+            Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+            if (uri == null) throw new IllegalStateException("Cannot create or write download file");
+            OutputStream output = resolver.openOutputStream(uri);
+            if (output == null) throw new IllegalStateException("Cannot create or write download file");
+            session.uri = uri;
+            session.output = output;
+            return session;
+        }
+
+        File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), APP_FOLDER + "/" + title);
+        if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create or write download file");
+        File file = new File(dir, fileName);
+        session.file = file;
+        session.output = new FileOutputStream(file);
+        return session;
+    }
+
+    private void closeSessionOutput(SaveSession session) throws Exception {
+        if (session != null && session.output != null) {
+            session.output.flush();
+            session.output.close();
+            session.output = null;
+        }
     }
 
     private JSArray queryAudioDownloads() {
