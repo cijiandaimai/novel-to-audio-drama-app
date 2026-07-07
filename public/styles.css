@@ -5299,7 +5299,7 @@ body[data-view="editor"] .editor-menu-button.active {
 .editor-wave-head {
   order: 3;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.9fr) auto;
   gap: 10px;
   align-items: center;
   padding: 8px;
@@ -5338,6 +5338,31 @@ body[data-view="editor"] .editor-menu-button.active {
   display: grid;
   grid-template-columns: repeat(2, minmax(86px, 1fr));
   gap: 8px;
+}
+
+.editor-lyric-preview {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(255, 250, 238, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 250, 238, 0.06);
+}
+
+.editor-lyric-preview small {
+  color: rgba(255, 250, 240, 0.52);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.editor-lyric-preview strong {
+  overflow: hidden;
+  color: #fffaf0;
+  font-size: 13px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .editor-inline-actions button {
@@ -5535,16 +5560,22 @@ body[data-view="editor"] .studio-timecode strong {
 }
 
 body[data-view="editor"] .editor-wave-head {
-  grid-template-columns: minmax(0, 1fr) minmax(168px, auto);
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.9fr) minmax(168px, auto);
   gap: 6px;
 }
 
 body[data-view="editor"] .editor-time-badges,
-body[data-view="editor"] .editor-inline-actions {
+body[data-view="editor"] .editor-inline-actions,
+body[data-view="editor"] .editor-lyric-preview {
   gap: 6px;
 }
 
 body[data-view="editor"] .editor-time-badges span {
+  min-height: 38px;
+  padding: 4px 8px;
+}
+
+body[data-view="editor"] .editor-lyric-preview {
   min-height: 38px;
   padding: 4px 8px;
 }
@@ -6214,18 +6245,6 @@ body.player-queue-open {
 #quickTrimModeDelete,
 .trim-mode-tabs {
   display: none !important;
-}
-
-body[data-view="editor"] .editor-inline-actions::before {
-  content: "上半区拖动框选，下半区拖动移动音块";
-  align-self: center;
-  padding: 7px 10px;
-  border: 1px solid rgba(255, 250, 240, 0.12);
-  border-radius: 999px;
-  color: rgba(255, 250, 240, 0.72);
-  background: rgba(255, 250, 240, 0.06);
-  font-size: 12px;
-  white-space: nowrap;
 }
 
 /* Queue drawer compact row controls and overlay safety. */

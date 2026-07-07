@@ -4638,6 +4638,7 @@ function renderLyrics() {
   if (!playerState.lyrics.length) {
     panel.innerHTML = `<p id="lyricCurrent">导入 LRC / KRC 歌词后，这里会跟随音频逐字亮起。</p>`;
     updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
+    updateEditorLyricPreview();
     return;
   }
   panel.innerHTML = playerState.lyrics
@@ -4654,6 +4655,7 @@ function renderLyrics() {
     })
     .join("");
   updatePlayerPathLabel(playerState.playlist.find((item) => item.id === playerState.currentPlaylistId));
+  updateEditorLyricPreview();
 }
 
 function applyLyricText(rawText, fileName = "") {
@@ -4666,6 +4668,7 @@ function applyLyricText(rawText, fileName = "") {
   playerState.activeWordIndex = -1;
   playerState.lastLyricScrollIndex = -1;
   renderLyrics();
+  updateEditorLyricPreview();
   return parsed;
 }
 
@@ -5691,6 +5694,37 @@ function syncTrackControls(trackId) {
   });
 }
 
+function getLyricLineAtTime(time = 0) {
+  if (!playerState.lyrics.length) return { current: null, next: null };
+  let activeIndex = -1;
+  for (let index = 0; index < playerState.lyrics.length; index += 1) {
+    if (playerState.lyrics[index].time <= time + 0.15) activeIndex = index;
+    else break;
+  }
+  const current = activeIndex >= 0 ? playerState.lyrics[activeIndex] : null;
+  const next = playerState.lyrics[Math.max(0, activeIndex + 1)] || null;
+  return { current, next };
+}
+
+function updateEditorLyricPreview() {
+  const lineNode = $("#editorLyricLine");
+  const metaNode = $("#editorLyricMeta");
+  if (!lineNode || !metaNode) return;
+  if (!playerState.lyrics.length) {
+    metaNode.textContent = "歌词";
+    lineNode.textContent = "歌词未导入";
+    return;
+  }
+  const { current, next } = getLyricLineAtTime(editorState.timeline.playhead);
+  const line = current || next;
+  metaNode.textContent = current
+    ? `${formatLyricTime(current.time)}｜${playerState.lyricFormatLabel || "歌词"}`
+    : `即将 ${formatLyricTime(next?.time || 0)}`;
+  lineNode.textContent = line
+    ? `${current ? "" : "即将："}${line.text}${line.translation ? ` / ${line.translation}` : ""}`
+    : "歌词已结束";
+}
+
 function syncEditorQuickState() {
   editorState.tracks.forEach((track) => {
     const status = $(`#simpleTrackStatus${track.id}`);
@@ -5716,6 +5750,7 @@ function syncEditorQuickState() {
   if (startBadge) startBadge.textContent = formatSeconds(editorState.selection.sourceStart);
   if (endBadge) endBadge.textContent = formatSeconds(editorState.selection.sourceEnd);
   if (durationBadge) durationBadge.textContent = formatSeconds(selectionLength);
+  updateEditorLyricPreview();
   [
     ["#trimModeKeep", true],
     ["#quickTrimModeKeep", true],
@@ -7031,12 +7066,6 @@ function drawTrackWaveform(ctx, track, laneTop, laneHeight, width, visibleDurati
   ctx.moveTo(0, laneTop + laneHeight / 2);
   ctx.lineTo(width, laneTop + laneHeight / 2);
   ctx.stroke();
-  if (track.id === editorState.activeTrackId && laneHeight > 74 * ratio) {
-    ctx.fillStyle = "rgba(255, 250, 240, 0.42)";
-    ctx.font = `${10 * ratio}px Microsoft YaHei, sans-serif`;
-    ctx.fillText("上半区拖动：框选", width - 132 * ratio, laneTop + 20 * ratio);
-    ctx.fillText("下半区拖动：移动音块", width - 152 * ratio, laneTop + laneHeight / 2 + 20 * ratio);
-  }
 
   if (!track.buffer) {
     ctx.fillStyle = "rgba(255, 250, 240, 0.42)";
