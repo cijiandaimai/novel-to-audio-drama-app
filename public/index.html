@@ -281,6 +281,34 @@
                   <button class="secondary" type="button" data-tavern-action="memory">记忆</button>
                 </div>
               </div>
+              <section id="tavernPlotControlPanel" class="tavern-plot-control" data-mode="off" aria-label="剧情走向控制">
+                <div class="tavern-plot-head">
+                  <div>
+                    <strong>自动超级前置提示词</strong>
+                    <span>API / 自动回复时控制剧情走向，本地回复不联网。</span>
+                  </div>
+                  <select id="tavernPlotControlMode" aria-label="剧情走向控制模式">
+                    <option value="off">关闭</option>
+                    <option value="preset">启用预设</option>
+                    <option value="custom">自定义</option>
+                  </select>
+                </div>
+                <div class="tavern-logic-row">
+                  <span>现实逻辑</span>
+                  <input id="tavernPlotLogicRange" type="range" min="0" max="100" step="1" value="25" />
+                  <span>无厘头跳脱</span>
+                  <b id="tavernPlotLogicLabel">现实为主</b>
+                </div>
+                <div id="tavernPlotOptionGrid" class="tavern-plot-option-grid">
+                  <label><input type="checkbox" data-tavern-plot-option="explosive" /> 情节夸张炸裂</label>
+                  <label><input type="checkbox" data-tavern-plot-option="suspense" /> 不停悬疑反转</label>
+                  <label><input type="checkbox" data-tavern-plot-option="rollercoaster" /> 跌宕起伏无比刺激</label>
+                  <label><input type="checkbox" data-tavern-plot-option="romance" /> 情感拉扯强</label>
+                  <label><input type="checkbox" data-tavern-plot-option="business" /> 制片提案感</label>
+                  <label><input type="checkbox" data-tavern-plot-option="dark" /> 暗黑高压</label>
+                </div>
+                <textarea id="tavernPlotCustomPrompt" class="tavern-plot-custom" rows="3" placeholder="切到自定义后填写你的剧情走向提示词。"></textarea>
+              </section>
               <div id="tavernChatLog" class="tavern-chat-log" aria-live="polite"></div>
               <div class="tavern-compose">
                 <textarea id="tavernUserInput" placeholder="输入你想对角色说的话。Ctrl + Enter 发送。"></textarea>

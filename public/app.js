@@ -321,6 +321,7 @@ const tavernMemoryKey = "tavernMemory";
 const tavernModeKey = "tavernMode";
 const tavernEngineKey = "tavernEngine";
 const tavernProviderKey = "tavernProvider";
+const tavernPlotControlKey = "tavernPlotControl";
 const defaultPlayerBg = "/assets/player-default-bg.png";
 const midnightPlayerBg = "/assets/player-midnight-bg.png";
 const playerState = {
@@ -433,6 +434,22 @@ const tavernModes = {
   }
 };
 
+const tavernPlotControlOptions = {
+  explosive: "情节夸张炸裂：允许强冲突、高刺激事件和更强视觉/听觉冲击，但必须保留因果链。",
+  suspense: "不停悬疑反转：每轮至少埋下或推进一个疑点、误导、秘密或反转线索。",
+  rollercoaster: "跌宕起伏无比刺激：提高节奏密度，让情绪、危险、选择和代价持续升级。",
+  romance: "情感拉扯强：强化关系张力、暧昧、误会、亏欠、保护欲和无法直说的真心。",
+  business: "制片提案感：输出更适合短剧/长剧开发的戏剧节点、人物目标和可拍场面。",
+  dark: "暗黑高压：增加压迫感、危险感、秘密交易和不可逆后果，但不破坏角色边界。"
+};
+
+const defaultTavernPlotControl = {
+  mode: "off",
+  logic: 25,
+  options: ["suspense", "rollercoaster"],
+  custom: ""
+};
+
 const voiceGatewayCatalog = {
   cloned: { voiceId: "zh_female_quark_xinshen", model: "QUARK_VOICE", useClone: true },
   qisi: { voiceId: "zh_female_quark_xinshen", model: "QUARK_VOICE" },
@@ -479,7 +496,8 @@ const tavernState = {
   memory: "",
   mode: "story",
   engine: "local",
-  provider: "auto"
+  provider: "auto",
+  plotControl: { ...defaultTavernPlotControl }
 };
 const editorState = {
   audioContext: null,
@@ -1514,6 +1532,20 @@ function normalizeTavernProvider(provider) {
   return ["auto", "doubao", "deepseek", "qwen", "kimi", "gpt", "gemini", "grok"].includes(provider) ? provider : "auto";
 }
 
+function normalizeTavernPlotControl(value = {}) {
+  const source = value && typeof value === "object" ? value : {};
+  const mode = ["off", "preset", "custom"].includes(source.mode) ? source.mode : defaultTavernPlotControl.mode;
+  const options = Array.isArray(source.options)
+    ? source.options.filter((item) => tavernPlotControlOptions[item])
+    : defaultTavernPlotControl.options;
+  return {
+    mode,
+    logic: clamp(source.logic ?? defaultTavernPlotControl.logic, 0, 100),
+    options: [...new Set(options)],
+    custom: String(source.custom || "").trim().slice(0, 1200)
+  };
+}
+
 function saveTavernState() {
   localStorage.setItem(tavernCharactersKey, JSON.stringify(tavernState.characters));
   localStorage.setItem(tavernSessionsKey, JSON.stringify(tavernState.sessions));
@@ -1523,6 +1555,7 @@ function saveTavernState() {
   localStorage.setItem(tavernModeKey, tavernState.mode);
   localStorage.setItem(tavernEngineKey, tavernState.engine);
   localStorage.setItem(tavernProviderKey, tavernState.provider);
+  localStorage.setItem(tavernPlotControlKey, JSON.stringify(normalizeTavernPlotControl(tavernState.plotControl)));
 }
 
 function getTavernCharacter(id = tavernState.activeId) {
@@ -1568,6 +1601,7 @@ function loadTavernState() {
   tavernState.mode = normalizeTavernMode(localStorage.getItem(tavernModeKey) || "story");
   tavernState.engine = normalizeTavernEngine(localStorage.getItem(tavernEngineKey) || "local");
   tavernState.provider = normalizeTavernProvider(localStorage.getItem(tavernProviderKey) || "auto");
+  tavernState.plotControl = normalizeTavernPlotControl(readJsonStorage(tavernPlotControlKey, defaultTavernPlotControl));
   tavernState.characters.forEach(seedTavernSession);
   saveTavernState();
 }
@@ -1599,7 +1633,77 @@ function renderTavernEditor(character = getTavernCharacter()) {
   if ($("#tavernWorldInput")) $("#tavernWorldInput").value = tavernState.world;
   if ($("#tavernMemoryInput")) $("#tavernMemoryInput").value = tavernState.memory;
   if ($("#deleteTavernCharacter")) $("#deleteTavernCharacter").disabled = tavernState.characters.length <= 1;
+  renderTavernPlotControlUi();
   updateTavernEngineUi();
+}
+
+function tavernPlotLogicLabel(value = tavernState.plotControl.logic) {
+  const logic = clamp(value, 0, 100);
+  if (logic <= 18) return "现实严谨";
+  if (logic <= 40) return "现实为主";
+  if (logic <= 65) return "戏剧加强";
+  if (logic <= 84) return "夸张跳脱";
+  return "无厘头炸裂";
+}
+
+function renderTavernPlotControlUi() {
+  tavernState.plotControl = normalizeTavernPlotControl(tavernState.plotControl);
+  const modeSelect = $("#tavernPlotControlMode");
+  const logicRange = $("#tavernPlotLogicRange");
+  const logicLabel = $("#tavernPlotLogicLabel");
+  const customInput = $("#tavernPlotCustomPrompt");
+  if (modeSelect) modeSelect.value = tavernState.plotControl.mode;
+  if (logicRange) logicRange.value = tavernState.plotControl.logic;
+  if (logicLabel) logicLabel.textContent = tavernPlotLogicLabel(tavernState.plotControl.logic);
+  if (customInput) {
+    customInput.value = tavernState.plotControl.custom;
+    customInput.disabled = tavernState.plotControl.mode === "off";
+    customInput.placeholder = tavernState.plotControl.mode === "custom"
+      ? "写你自己的自动超级前置提示词，例如：所有回复都朝复仇悬疑短剧推进，每轮制造一个反转，但保持人物动机可信。"
+      : "切到自定义后填写；预设模式会自动按上方选项生成。";
+  }
+  $$('[data-tavern-plot-option]').forEach((input) => {
+    input.checked = tavernState.plotControl.options.includes(input.dataset.tavernPlotOption);
+    input.disabled = tavernState.plotControl.mode === "off";
+  });
+  const control = $("#tavernPlotControlPanel");
+  if (control) control.dataset.mode = tavernState.plotControl.mode;
+}
+
+function setTavernPlotControl(patch = {}) {
+  tavernState.plotControl = normalizeTavernPlotControl({ ...tavernState.plotControl, ...patch });
+  saveTavernState();
+  renderTavernPlotControlUi();
+}
+
+function buildTavernSuperPrompt() {
+  const control = normalizeTavernPlotControl(tavernState.plotControl);
+  if (control.mode === "off") return "";
+  const logic = control.logic;
+  const logicGuide = logic <= 18
+    ? "逻辑缜密度：极度现实严谨。所有事件必须符合现实世界因果、物理、社会、法律、利益和人性动机，少用巧合。"
+    : logic <= 40
+      ? "逻辑缜密度：现实为主。戏剧性可以增强，但每个反转都要有前因、线索和人物动机。"
+      : logic <= 65
+        ? "逻辑缜密度：戏剧加强。允许高密度冲突、巧合和情绪转折，但不要断掉角色连续性。"
+        : logic <= 84
+          ? "逻辑缜密度：夸张跳脱。可以突破常理制造爽感和奇观，但情绪、关系和场景必须能接上。"
+          : "逻辑缜密度：无厘头炸裂。允许荒诞、超现实、反套路和强喜剧跳跃，但仍保留角色口吻与核心目标。";
+  const selected = control.options
+    .map((key) => tavernPlotControlOptions[key])
+    .filter(Boolean)
+    .map((line) => `- ${line}`);
+  const custom = control.custom
+    ? ["【自定义走向】", control.custom]
+    : [];
+  return [
+    "【自动超级前置提示词｜剧情走向控制】",
+    logicGuide,
+    "执行优先级：不得破坏角色卡、世界书、长期记忆和最近时间线；除非逻辑滑杆接近无厘头端，否则不要让角色突然崩设或剧情无因跳跃。",
+    selected.length ? "【走向选项】" : "【走向选项】未启用预设，按逻辑滑杆控制整体风格。",
+    ...selected,
+    ...custom
+  ].filter(Boolean).join("\n");
 }
 
 function renderTavernChat(character = getTavernCharacter()) {
@@ -1867,8 +1971,9 @@ function buildTavernApiPrompt(userText, character = getTavernCharacter(), option
     "如果用户输入很短，也要主动用上一句角色回复、上一句用户输入、世界书和长期记忆补足语境。",
     "每次回复必须至少延续一个上下文锚点：动作、情绪、地点、物件、伏笔、称呼、关系或未解决问题。",
     `当前酒馆模式：${mode.label}。${mode.guide}`,
+    buildTavernSuperPrompt(),
     "输出前在内部自检：是否承接上一轮、是否保持角色口吻、是否引用记忆或世界书、是否推进当前模式。只输出最终回复。"
-  ].join("\n");
+  ].filter(Boolean).join("\n");
   const user = [
     contextPack,
     `【用户新输入】\n${userText}`,
@@ -9366,6 +9471,18 @@ function bindEvents() {
   $("#tavernModeSelect")?.addEventListener("change", (event) => setTavernMode(event.target.value));
   $("#tavernEngineSelect")?.addEventListener("change", (event) => setTavernEngine(event.target.value));
   $("#tavernProviderSelect")?.addEventListener("change", (event) => setTavernProvider(event.target.value));
+  $("#tavernPlotControlMode")?.addEventListener("change", (event) => setTavernPlotControl({ mode: event.target.value }));
+  $("#tavernPlotLogicRange")?.addEventListener("input", (event) => setTavernPlotControl({ logic: Number(event.target.value) }));
+  $("#tavernPlotCustomPrompt")?.addEventListener("input", (event) => setTavernPlotControl({ custom: event.target.value }));
+  $("#tavernPlotOptionGrid")?.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-tavern-plot-option]");
+    if (!input) return;
+    const option = input.dataset.tavernPlotOption;
+    const options = new Set(tavernState.plotControl.options);
+    if (input.checked) options.add(option);
+    else options.delete(option);
+    setTavernPlotControl({ options: [...options] });
+  });
   $("#tavernQuickActions")?.addEventListener("click", (event) => {
     const action = event.target.closest("[data-tavern-action]")?.dataset.tavernAction;
     if (action) runTavernQuickAction(action).catch((error) => showToast(`酒馆操作失败：${error.message}`, "fail"));

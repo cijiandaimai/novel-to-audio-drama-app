@@ -3440,6 +3440,99 @@ button:not(:disabled):active,
   padding: 7px 8px;
 }
 
+.tavern-plot-control {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(184, 139, 74, 0.22);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(184, 139, 74, 0.12), rgba(255, 253, 247, 0.82)),
+    rgba(255, 253, 247, 0.74);
+}
+
+.tavern-plot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tavern-plot-head div {
+  display: grid;
+  gap: 2px;
+}
+
+.tavern-plot-head strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.tavern-plot-head span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.tavern-plot-head select {
+  width: min(180px, 42vw);
+  min-height: 36px;
+}
+
+.tavern-logic-row {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr) auto auto;
+  gap: 9px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tavern-logic-row input[type="range"] {
+  width: 100%;
+}
+
+.tavern-logic-row b {
+  min-width: 72px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(55, 50, 42, 0.08);
+  color: #7a5623;
+  text-align: center;
+}
+
+.tavern-plot-option-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 7px;
+}
+
+.tavern-plot-option-grid label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid rgba(55, 50, 42, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 253, 247, 0.76);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tavern-plot-custom {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.tavern-plot-control[data-mode="off"] .tavern-plot-option-grid,
+.tavern-plot-control[data-mode="off"] .tavern-logic-row,
+.tavern-plot-control[data-mode="off"] .tavern-plot-custom {
+  opacity: 0.52;
+}
+
 .tavern-chat-log {
   display: grid;
   align-content: start;
@@ -4905,6 +4998,45 @@ select {
     min-height: 36px;
     padding-inline: 4px;
     font-size: 12px;
+  }
+
+  .tavern-plot-control {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .tavern-plot-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tavern-plot-head select {
+    width: 100%;
+  }
+
+  .tavern-logic-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+
+  .tavern-logic-row input[type="range"] {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .tavern-logic-row b {
+    justify-self: end;
+  }
+
+  .tavern-plot-option-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .tavern-plot-option-grid label {
+    min-height: 32px;
+    padding: 6px 7px;
+    font-size: 11px;
   }
 
   .tavern-chat-log {
