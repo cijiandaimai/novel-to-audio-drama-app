@@ -6230,30 +6230,42 @@ body[data-view="editor"] .editor-inline-actions::before {
 
 /* Queue drawer compact row controls and overlay safety. */
 .player-queue-backdrop {
-  z-index: 1980;
+  z-index: 20980;
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 
 .player-queue-drawer {
-  z-index: 1990;
-  width: min(760px, 100vw);
-  height: min(62dvh, 520px);
-  max-height: calc(100dvh - max(20px, env(safe-area-inset-top, 0px)));
+  z-index: 20990;
+  bottom: calc(var(--bottom-nav-height, 88px) + env(safe-area-inset-bottom, 0px) + 10px);
+  width: min(760px, calc(100vw - 16px));
+  height: min(68dvh, calc(100dvh - var(--bottom-nav-height, 88px) - env(safe-area-inset-bottom, 0px) - 34px));
+  max-height: calc(100dvh - var(--bottom-nav-height, 88px) - env(safe-area-inset-bottom, 0px) - 34px);
   padding-bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  border-radius: 20px;
   overflow: hidden;
   isolation: isolate;
+  contain: layout paint;
+  overscroll-behavior: contain;
+  transform: translate(-50%, calc(100% + var(--bottom-nav-height, 88px) + 32px));
+}
+
+.player-queue-drawer.open {
+  transform: translate(-50%, 0);
 }
 
 .player-queue-drawer .player-playlist-list {
   padding-bottom: calc(34px + env(safe-area-inset-bottom, 0px));
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  touch-action: pan-y;
 }
 
 .player-queue-drawer .playlist-item {
   grid-template-columns: 26px minmax(0, 1fr) auto;
   gap: 6px;
   padding: 6px 7px;
-  min-height: 54px;
+  min-height: 50px;
 }
 
 .player-queue-drawer .playlist-drag-handle {
@@ -6268,8 +6280,11 @@ body[data-view="editor"] .editor-inline-actions::before {
 .player-queue-drawer .playlist-title-button {
   grid-template-columns: auto minmax(0, 1fr);
   gap: 7px;
-  min-height: 42px;
+  min-height: 40px;
   padding: 6px 4px;
+  background: transparent;
+  border-color: transparent;
+  text-align: left;
 }
 
 .player-queue-drawer .playlist-copy strong {
@@ -6285,14 +6300,13 @@ body[data-view="editor"] .editor-inline-actions::before {
 
 .playlist-row-actions {
   display: grid;
-  grid-template-columns: 28px 28px 50px 42px;
+  grid-template-columns: 28px 28px 42px;
   gap: 4px;
   align-items: center;
   justify-self: end;
 }
 
 .player-queue-drawer .playlist-move,
-.player-queue-drawer .playlist-inline-play,
 .player-queue-drawer .playlist-remove {
   min-width: 0;
   min-height: 32px;
@@ -6306,35 +6320,16 @@ body[data-view="editor"] .editor-inline-actions::before {
   white-space: nowrap;
 }
 
-.player-queue-drawer .playlist-inline-play {
-  padding: 0;
-  background: rgba(255, 250, 238, 0.14);
-}
-
 .player-queue-drawer .playlist-remove {
   color: #ffd6ca;
   background: rgba(111, 31, 27, 0.18);
 }
 
-.player-queue-drawer .playlist-toggle-label {
-  min-width: 0;
-  min-height: 30px;
-  padding-inline: 8px;
-  background: transparent;
-}
-
-.player-queue-drawer .playlist-item.active .playlist-inline-play {
-  background: #fffaf0;
-}
-
-.player-queue-drawer .playlist-item.active .playlist-toggle-label {
-  color: #3d3328;
-}
-
 @media (max-width: 760px) {
   .player-queue-drawer {
-    height: min(66dvh, calc(100dvh - var(--bottom-nav-height, 88px) - 10px));
-    max-height: calc(100dvh - 10px);
+    bottom: calc(var(--bottom-nav-height, 88px) + env(safe-area-inset-bottom, 0px) + 8px);
+    height: min(72dvh, calc(100dvh - var(--bottom-nav-height, 88px) - env(safe-area-inset-bottom, 0px) - 24px));
+    max-height: calc(100dvh - var(--bottom-nav-height, 88px) - env(safe-area-inset-bottom, 0px) - 24px);
   }
 
   .player-queue-drawer .playlist-item {
@@ -6345,7 +6340,7 @@ body[data-view="editor"] .editor-inline-actions::before {
     grid-column: 2;
     grid-row: 2;
     width: 100%;
-    grid-template-columns: 30px 30px minmax(54px, 0.8fr) minmax(48px, 0.7fr);
+    grid-template-columns: 30px 30px minmax(48px, 0.7fr);
     justify-self: stretch;
   }
 
@@ -6357,7 +6352,9 @@ body[data-view="editor"] .editor-inline-actions::before {
 
 @media (max-width: 420px) {
   .player-queue-drawer {
-    height: min(72dvh, calc(100dvh - var(--bottom-nav-height, 74px) - 8px));
+    bottom: calc(var(--bottom-nav-height, 74px) + env(safe-area-inset-bottom, 0px) + 6px);
+    height: min(74dvh, calc(100dvh - var(--bottom-nav-height, 74px) - env(safe-area-inset-bottom, 0px) - 18px));
+    max-height: calc(100dvh - var(--bottom-nav-height, 74px) - env(safe-area-inset-bottom, 0px) - 18px);
   }
 
   .player-queue-drawer .playlist-item {
@@ -6365,6 +6362,6 @@ body[data-view="editor"] .editor-inline-actions::before {
   }
 
   .playlist-row-actions {
-    grid-template-columns: 28px 28px minmax(50px, 1fr) minmax(44px, 0.8fr);
+    grid-template-columns: 28px 28px minmax(44px, 0.8fr);
   }
 }

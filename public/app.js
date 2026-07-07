@@ -3739,6 +3739,48 @@ function updatePlayerPathLabel(item = null) {
   if (lyricLabel) lyricLabel.textContent = playerState.lyricFormatLabel || t("lyricEmpty");
 }
 
+function formatFileSize(size = 0) {
+  const value = Number(size) || 0;
+  if (value <= 0) return "未知大小";
+  const units = ["B", "KB", "MB", "GB"];
+  let next = value;
+  let index = 0;
+  while (next >= 1024 && index < units.length - 1) {
+    next /= 1024;
+    index += 1;
+  }
+  return `${next >= 10 || index === 0 ? next.toFixed(0) : next.toFixed(1)} ${units[index]}`;
+}
+
+function getPlaylistRowMeta(item, { isActive = false, isPlaying = false } = {}) {
+  if (isActive) return isPlaying ? "正在播放" : "当前选中";
+  if (item.collectionName) return item.collectionName;
+  if (item.lyricText || item.lyricFileName) return "已绑定歌词";
+  if (item.sourceType === "native-download") return "下载音频";
+  if (item.sourceType === "local") return "本机导入";
+  if (item.sourceType === "generated") return "生成音频";
+  return "音频";
+}
+
+function buildPlaylistFileInfo(item) {
+  if (!item) return "";
+  return [
+    `标题：${item.title || "未命名音频"}`,
+    `文件名：${item.fileName || item.title || "未知"}`,
+    `大小：${formatFileSize(item.fileSize)}`,
+    `类型：${item.mimeType || guessAudioMime(item.fileName || item.src || "") || "未知"}`,
+    `来源：${item.collectionName || item.sourceType || "播放队列"}`,
+    `路径：${item.displayPath || item.src || "未知"}`,
+    `歌词：${item.lyricFileName || (item.lyricText ? "已绑定" : "未绑定")}`
+  ].join("\n");
+}
+
+function showPlaylistFileInfo(id) {
+  const item = playerState.playlist.find((entry) => entry.id === id);
+  if (!item) return;
+  window.alert(buildPlaylistFileInfo(item));
+}
+
 function updatePlayerQueueSummary() {
   const count = playerState.playlist.length;
   const countText = `${count}`;
@@ -3780,6 +3822,15 @@ function handlePlayerQueueKeydown(event) {
   if (event.key !== "Escape" || !playerState.queueDrawerOpen) return;
   event.preventDefault();
   setPlayerQueueDrawer(false);
+}
+
+function handlePlayerQueueScrollLock(event) {
+  if (!playerState.queueDrawerOpen) return;
+  const drawer = $("#playerQueueDrawer");
+  if (!drawer?.contains(event.target)) {
+    event.preventDefault();
+    return;
+  }
 }
 
 function syncPlaylistOrderDocument() {
@@ -3838,22 +3889,20 @@ function renderPlayerPlaylist() {
   list.innerHTML = playerState.playlist.map((item, index) => {
     const isActive = item.id === playerState.currentPlaylistId;
     const isPlaying = isActive && isPlayerActivelyPlaying();
+    const rowMeta = getPlaylistRowMeta(item, { isActive, isPlaying });
     return `
-    <article class="playlist-item${isActive ? " active" : ""}${isPlaying ? " playing" : ""}" data-playlist-id="${item.id}" draggable="true" ${isActive ? 'aria-current="true"' : ""}>
+    <article class="playlist-item${isActive ? " active" : ""}${isPlaying ? " playing" : ""}" data-playlist-id="${item.id}" draggable="true" title="长按查看文件信息" ${isActive ? 'aria-current="true"' : ""}>
       <span class="playlist-drag-handle" aria-hidden="true">☰</span>
-      <button class="playlist-play playlist-title-button" data-playlist-action="play">
+      <button class="playlist-title-button" data-playlist-action="play" aria-label="播放 ${escapeHtml(item.title)}">
         <span class="playlist-current-bars" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="playlist-copy">
           <strong>${escapeHtml(item.title)}</strong>
-          <span>${escapeHtml(item.collectionName ? `${item.collectionName}｜${item.displayPath || item.src || "音频"}` : (item.displayPath || item.src || "音频"))}</span>
+          <span>${escapeHtml(rowMeta)}</span>
         </span>
       </button>
       <div class="playlist-row-actions" aria-label="${escapeHtml(item.title)} 操作">
         <button class="playlist-move" data-playlist-action="move-up" ${index === 0 ? "disabled" : ""} aria-label="上移 ${escapeHtml(item.title)}">↑</button>
         <button class="playlist-move" data-playlist-action="move-down" ${index === playerState.playlist.length - 1 ? "disabled" : ""} aria-label="下移 ${escapeHtml(item.title)}">↓</button>
-        <button class="playlist-inline-play" data-playlist-action="play" aria-label="${isPlaying ? "暂停" : "播放"} ${escapeHtml(item.title)}">
-          <em class="playlist-toggle-label">${isPlaying ? t("pause") : t("play")}</em>
-        </button>
         <button class="playlist-remove" data-playlist-action="remove" aria-label="移除 ${escapeHtml(item.title)}">移除</button>
       </div>
     </article>
@@ -9461,7 +9510,38 @@ function bindEvents() {
   $("#lyricPanel").addEventListener("pointermove", moveFullscreenLyricScrub);
   $("#lyricPanel").addEventListener("pointerup", endFullscreenLyricScrub);
   $("#lyricPanel").addEventListener("pointercancel", stopLyricScrub);
+  let playlistInfoTimer = null;
+  let playlistInfoSuppressClick = false;
+  const clearPlaylistInfoTimer = () => {
+    clearTimeout(playlistInfoTimer);
+    playlistInfoTimer = null;
+  };
+  $("#playerPlaylist").addEventListener("pointerdown", (event) => {
+    const row = event.target.closest("[data-playlist-id]");
+    if (!row) return;
+    clearPlaylistInfoTimer();
+    playlistInfoSuppressClick = false;
+    playlistInfoTimer = window.setTimeout(() => {
+      playlistInfoSuppressClick = true;
+      showPlaylistFileInfo(row.dataset.playlistId);
+    }, 650);
+  });
+  ["pointerup", "pointercancel", "pointerleave", "dragstart"].forEach((eventName) => {
+    $("#playerPlaylist").addEventListener(eventName, clearPlaylistInfoTimer);
+  });
+  $("#playerPlaylist").addEventListener("contextmenu", (event) => {
+    const row = event.target.closest("[data-playlist-id]");
+    if (!row) return;
+    event.preventDefault();
+    clearPlaylistInfoTimer();
+    showPlaylistFileInfo(row.dataset.playlistId);
+  });
   $("#playerPlaylist").addEventListener("click", (event) => {
+    if (playlistInfoSuppressClick) {
+      event.preventDefault();
+      playlistInfoSuppressClick = false;
+      return;
+    }
     const action = event.target.closest("[data-playlist-action]")?.dataset.playlistAction;
     if (!action) return;
     event.preventDefault();
@@ -9517,6 +9597,8 @@ function bindEvents() {
   document.addEventListener("fullscreenchange", syncPlayerFullscreenUi);
   document.addEventListener("keydown", handlePlayerFullscreenKey);
   document.addEventListener("keydown", handlePlayerQueueKeydown);
+  document.addEventListener("wheel", handlePlayerQueueScrollLock, { passive: false, capture: true });
+  document.addEventListener("touchmove", handlePlayerQueueScrollLock, { passive: false, capture: true });
   document.addEventListener("keydown", handleEditorShortcut);
   document.addEventListener("touchstart", handleRouteSwipeStart, { passive: true });
   document.addEventListener("touchend", handleRouteSwipeEnd, { passive: true });
