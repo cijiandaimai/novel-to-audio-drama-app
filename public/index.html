@@ -416,7 +416,20 @@
                       <input id="tavernHistorianToggle" type="checkbox" />
                       <span>以史官身份和角色沟通</span>
                     </label>
-                    <p>史官负责记录这个模拟世界已经发生的事：纪年、地点、死亡、迁徙、重大变化、人物心态转变和后续影响。史官功能必须接入 API；史书会作为后续剧情的重要参考。</p>
+                    <label class="field">
+                      <span>史官修史/审校模型</span>
+                      <select id="tavernHistorianProviderSelect">
+                        <option value="auto">自动选择</option>
+                        <option value="doubao">豆包</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="qwen">千问</option>
+                        <option value="kimi">Kimi</option>
+                        <option value="gpt">GPT</option>
+                        <option value="gemini">Gemini</option>
+                        <option value="grok">Grok</option>
+                      </select>
+                    </label>
+                    <p>史官负责记录这个模拟世界已经发生的事：纪年、地点、死亡、迁徙、重大变化、人物心态转变和后续影响。史官功能必须接入 API；史书会作为后续剧情的重要参考。上面的模型用于自动修史、手动修史和史官审校；角色对话仍按当前角色自己的 API 模型回复。</p>
                     <label class="field">
                       <span>史书</span>
                       <textarea id="tavernChronicleInput" class="short-textarea" placeholder="例如：【青阳纪·三月初七】谢无痕携半块染血玉牌入酒馆，青衡宗追兵被酒馆规矩阻在门外；谢无痕开始怀疑宗门血案另有主谋。"></textarea>
