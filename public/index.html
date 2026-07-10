@@ -384,6 +384,17 @@
                     <textarea id="tavernPersonaInput" class="short-textarea" placeholder="写角色性格、说话方式、背景、禁忌。"></textarea>
                   </label>
                   <label class="field">
+                    <span>角色当前状态</span>
+                    <textarea id="tavernCharacterStateInput" class="short-textarea tavern-character-state" placeholder="记录当前位置、受伤/情绪、目标、已知秘密、与其他角色关系。点“整理状态”可从最近对话自动提炼。"></textarea>
+                  </label>
+                  <div class="tavern-character-state-table" aria-live="polite">
+                    <div class="tavern-character-state-table-head">
+                      <strong>角色动态状态表</strong>
+                      <small id="tavernCharacterStateTableHint">随对话自动更新，防止人设和处境漂移。</small>
+                    </div>
+                    <ul id="tavernCharacterStateTableList" class="tavern-character-state-table-list"></ul>
+                  </div>
+                  <label class="field">
                     <span>开场白</span>
                     <textarea id="tavernGreetingInput" class="short-textarea" placeholder="角色第一次出场时说的话。"></textarea>
                   </label>
@@ -403,6 +414,28 @@
                     <span>本地记忆</span>
                     <textarea id="tavernMemoryInput" class="short-textarea" placeholder="记录长期关系、伏笔、用户偏好和上一幕结论。可以点“整理记忆”从当前聊天自动提取。"></textarea>
                   </label>
+                  <div class="tavern-memory-anchors" aria-live="polite">
+                    <div class="tavern-memory-anchors-head">
+                      <strong>剧情记忆锚点</strong>
+                      <small id="tavernMemoryAnchorsHint">对话后自动沉淀，防止长程人设遗忘。</small>
+                      <div class="tavern-memory-anchor-tools">
+                        <button id="rebuildTavernMemoryAnchors" class="secondary" type="button">重建锚点</button>
+                        <button id="clearTavernMemoryAnchors" class="secondary" type="button">清理未置顶</button>
+                      </div>
+                    </div>
+                    <ul id="tavernMemoryAnchorsList" class="tavern-memory-anchors-list"></ul>
+                  </div>
+                  <div class="tavern-info-permissions" aria-live="polite">
+                    <div class="tavern-info-permissions-head">
+                      <strong>信息权限表</strong>
+                      <small id="tavernInfoPermissionsHint">记录谁知道秘密、线索、身份和证据。</small>
+                      <div class="tavern-info-permission-tools">
+                        <button id="rebuildTavernInfoPermissions" class="secondary" type="button">重建权限</button>
+                        <button id="clearTavernInfoPermissions" class="secondary" type="button">清空权限</button>
+                      </div>
+                    </div>
+                    <ul id="tavernInfoPermissionsList" class="tavern-info-permissions-list"></ul>
+                  </div>
                 </div>
               </details>
               <details class="tavern-fold tavern-historian-fold" open>
@@ -429,14 +462,27 @@
                         <option value="grok">Grok</option>
                       </select>
                     </label>
+                    <label class="tavern-historian-toggle tavern-auto-chronicle-toggle">
+                      <input id="tavernAutoChronicleToggle" type="checkbox" />
+                      <span>API 回复后自动修史（节流重试）</span>
+                    </label>
                     <p>史官负责记录这个模拟世界已经发生的事：纪年、地点、死亡、迁徙、重大变化、人物心态转变和后续影响。史官功能必须接入 API；史书会作为后续剧情的重要参考。上面的模型用于自动修史、手动修史和史官审校；角色对话仍按当前角色自己的 API 模型回复。</p>
                     <label class="field">
                       <span>史书</span>
                       <textarea id="tavernChronicleInput" class="short-textarea" placeholder="例如：【青阳纪·三月初七】谢无痕携半块染血玉牌入酒馆，青衡宗追兵被酒馆规矩阻在门外；谢无痕开始怀疑宗门血案另有主谋。"></textarea>
                     </label>
+                    <div class="tavern-chronicle-events" aria-live="polite">
+                      <div class="tavern-chronicle-events-head">
+                        <span>结构化史实事件</span>
+                        <small id="tavernChronicleEventsHint">保存或修史后自动提炼。</small>
+                      </div>
+                      <ul id="tavernChronicleEventsList" class="tavern-chronicle-events-list"></ul>
+                    </div>
                     <div class="actions tavern-historian-actions">
                       <button id="updateTavernChronicle" class="primary" type="button">史官修史</button>
+                      <button id="retryTavernAutoChronicle" class="secondary" type="button">重试自动修史</button>
                       <button id="auditTavernReply" class="secondary" type="button">史官审校</button>
+                      <button id="rewriteTavernReplyWithAudit" class="secondary" type="button">按审校重写</button>
                       <button id="saveTavernChronicle" class="secondary" type="button">保存史书</button>
                       <button id="exportTavernChronicle" class="secondary" type="button">导出史书</button>
                     </div>
@@ -456,7 +502,7 @@
                 </summary>
                 <div class="tavern-fold-body">
                   <div class="tavern-worldline-card">
-                    <p>把当前角色、对话、世界书、史书、记忆和高级设置保存成一个世界线节点。读取会回到该节点；另开平行宇宙会复制当前状态继续试另一种剧情。</p>
+                    <p>世界线现在是剧情分支工作区：保存节点后，当前分支会随对话、史书、角色卡和高级设置自动同步草稿；下拉选择只用于预览，点“读取”才会切换分支；另开平行宇宙会复制当前状态继续试另一种剧情。</p>
                     <label class="field">
                       <span>世界线名称</span>
                       <input id="tavernWorldlineName" type="text" placeholder="例如：主世界线 / 谢无痕提前死亡线" />
@@ -469,15 +515,22 @@
                       <button id="saveTavernWorldline" class="primary" type="button">保存节点</button>
                       <button id="forkTavernWorldline" class="secondary" type="button">另开平行宇宙</button>
                       <button id="loadTavernWorldline" class="secondary" type="button">读取</button>
+                      <button id="compareTavernWorldlines" class="secondary" type="button">对比评分</button>
+                      <button id="sendBestWorldlineToCreate" class="secondary" type="button">推荐转创作台</button>
+                      <button id="importTavernWorldlinePackage" class="secondary" type="button">导入包</button>
+                      <button id="exportTavernWorldlinePackage" class="secondary" type="button">导出包</button>
                       <button id="deleteTavernWorldline" class="secondary danger" type="button">删除</button>
+                      <input id="importTavernWorldlinePackageFile" type="file" accept=".json,application/json" hidden />
                     </div>
                     <small id="tavernWorldlineStatus" class="tavern-worldline-status">还没有世界线存档。</small>
+                    <small id="tavernWorldlineCompareResult" class="tavern-worldline-compare-result"></small>
                   </div>
                 </div>
               </details>
               <div class="actions tavern-editor-actions">
                 <button id="saveTavernCharacter" class="primary">保存角色</button>
                 <button id="summarizeTavernMemory" class="secondary">整理记忆</button>
+                <button id="summarizeTavernCharacterState" class="secondary">整理状态</button>
                 <button id="deleteTavernCharacter" class="secondary danger">删除角色</button>
                 <button id="sendTavernToCreate" class="secondary">转入创作台</button>
               </div>

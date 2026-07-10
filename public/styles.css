@@ -3345,7 +3345,8 @@ button:not(:disabled):active,
 
 .tavern-historian-card p,
 .tavern-historian-status,
-.tavern-audit-status {
+.tavern-audit-status,
+.tavern-worldline-compare-result {
   margin: 0;
   color: var(--muted);
   font-size: 12px;
@@ -3371,8 +3372,249 @@ button:not(:disabled):active,
   padding-inline: 8px;
 }
 
+
+.tavern-memory-anchors {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(35, 70, 120, 0.13);
+  border-radius: 10px;
+  background: rgba(246, 250, 255, 0.72);
+}
+
+.tavern-memory-anchors-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tavern-memory-anchors-head strong {
+  flex: 1 1 auto;
+  min-width: 96px;
+}
+
+.tavern-memory-anchors-head small {
+  flex: 1 1 180px;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: right;
+}
+
+.tavern-memory-anchor-tools,
+.tavern-memory-anchor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.tavern-memory-anchor-tools {
+  flex: 0 0 auto;
+}
+
+.tavern-memory-anchor-tools button,
+.tavern-memory-anchor-actions button {
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.tavern-memory-anchors-list {
+  display: grid;
+  gap: 6px;
+  max-height: 170px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.tavern-memory-anchor {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.tavern-memory-anchor b {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.tavern-memory-anchor small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.tavern-character-state-table,
+.tavern-info-permissions {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(35, 70, 120, 0.13);
+  border-radius: 10px;
+  background: rgba(246, 250, 255, 0.72);
+}
+
+.tavern-character-state-table-head,
+.tavern-info-permissions-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tavern-character-state-table-head small,
+.tavern-info-permissions-head small {
+  flex: 1 1 180px;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: right;
+}
+
+.tavern-info-permission-tools {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.tavern-info-permission-tools button,
+.tavern-info-permission button {
+  min-height: 28px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.tavern-character-state-table-list,
+.tavern-info-permissions-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.tavern-state-row,
+.tavern-info-permission {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.tavern-state-row.active {
+  outline: 1px solid rgba(45, 107, 196, 0.32);
+  background: rgba(236, 244, 255, 0.88);
+}
+
+.tavern-state-row b,
+.tavern-info-permission b {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.tavern-state-row small,
+.tavern-info-permission small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.tavern-info-permission button {
+  justify-self: start;
+}
+
+.tavern-chronicle-events {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(111, 31, 27, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.tavern-chronicle-events-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.tavern-chronicle-events-head small {
+  color: var(--muted);
+  font-weight: 700;
+  text-align: right;
+}
+
+.tavern-chronicle-events-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.tavern-chronicle-event {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.tavern-chronicle-event b {
+  color: var(--ink);
+  font-size: 12px;
+}
+
+.tavern-chronicle-event small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .tavern-audit-report {
   min-height: 150px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.tavern-character-state {
+  min-height: 120px;
   font-size: 12px;
   line-height: 1.6;
 }
@@ -3760,6 +4002,25 @@ button:not(:disabled):active,
 
 .tavern-message.possess span {
   color: #7a5623;
+}
+
+.tavern-message-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tavern-message.user .tavern-message-actions {
+  justify-content: flex-end;
+}
+
+.tavern-message-actions button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 1.1;
 }
 
 .tavern-compose {
@@ -5270,6 +5531,46 @@ select {
 
   .tavern-worldline-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tavern-memory-anchors-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .tavern-memory-anchors-head small {
+    text-align: left;
+  }
+
+  .tavern-memory-anchor-tools,
+  .tavern-memory-anchor-actions {
+    justify-content: flex-start;
+  }
+
+  .tavern-memory-anchor-tools button,
+  .tavern-memory-anchor-actions button {
+    flex: 1 1 88px;
+  }
+
+  .tavern-character-state-table-head,
+  .tavern-info-permissions-head {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .tavern-character-state-table-head small,
+  .tavern-info-permissions-head small {
+    text-align: left;
+  }
+
+  .tavern-info-permission-tools {
+    justify-content: flex-start;
+  }
+
+  .tavern-info-permission-tools button {
+    flex: 1 1 88px;
   }
 
   .tavern-chat-log {

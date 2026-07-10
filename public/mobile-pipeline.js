@@ -1,5 +1,5 @@
 export const optimizedPlan = {
-  title: "白泽声工坊自动流水线",
+  title: "白泽 IP 预演台自动流水线",
   stages: [
     "自动选择 A/B/C 计划并生成故事骨架、角色表、改编策略",
     "按计划扩展场景与戏剧冲突",
