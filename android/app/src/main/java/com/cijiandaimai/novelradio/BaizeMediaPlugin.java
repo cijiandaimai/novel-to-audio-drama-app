@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
+import android.util.Log;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -43,10 +44,12 @@ import java.util.Set;
     name = "BaizeMedia",
     permissions = {
         @Permission(alias = "media", strings = { Manifest.permission.READ_MEDIA_AUDIO }),
-        @Permission(alias = "storage", strings = { Manifest.permission.READ_EXTERNAL_STORAGE })
+        @Permission(alias = "storage", strings = { Manifest.permission.READ_EXTERNAL_STORAGE }),
+        @Permission(alias = "legacyWrite", strings = { Manifest.permission.WRITE_EXTERNAL_STORAGE })
     }
 )
 public class BaizeMediaPlugin extends Plugin {
+    private static final String TAG = "BaizeMediaPlugin";
     private static final String APP_FOLDER = "白泽声工坊";
     private final Map<String, SaveSession> saveSessions = new HashMap<>();
 
@@ -63,6 +66,10 @@ public class BaizeMediaPlugin extends Plugin {
 
     @PluginMethod
     public void saveAudioSegments(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && getPermissionState("legacyWrite") != PermissionState.GRANTED) {
+            requestPermissionForAlias("legacyWrite", call, "saveAudioSegmentsPermsCallback");
+            return;
+        }
         String title = safeName(call.getString("title", "未命名作品"));
         JSONArray segments = call.getArray("segments", new JSArray());
         JSArray files = new JSArray();
@@ -84,12 +91,25 @@ public class BaizeMediaPlugin extends Plugin {
             result.put("files", files);
             call.resolve(result);
         } catch (Exception error) {
-            call.reject("保存到下载文件夹失败：" + error.getMessage(), error);
+            call.reject("保存到下载文件夹失败：" + safeMessage(error), error);
         }
+    }
+
+    @PermissionCallback
+    private void saveAudioSegmentsPermsCallback(PluginCall call) {
+        if (getPermissionState("legacyWrite") != PermissionState.GRANTED) {
+            call.reject("未获得存储权限，无法把音频保存到下载文件夹。");
+            return;
+        }
+        saveAudioSegments(call);
     }
 
     @PluginMethod
     public void startAudioSegmentSave(PluginCall call) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && getPermissionState("legacyWrite") != PermissionState.GRANTED) {
+            requestPermissionForAlias("legacyWrite", call, "startAudioSegmentSavePermsCallback");
+            return;
+        }
         String title = safeName(call.getString("title", "Untitled"));
         String fileName = safeFileName(call.getString("fileName", "mix.wav"), 0);
         String mimeType = call.getString("mimeType", guessMimeType(fileName));
@@ -101,8 +121,17 @@ public class BaizeMediaPlugin extends Plugin {
             result.put("folder", "Download/" + APP_FOLDER + "/" + title);
             call.resolve(result);
         } catch (Exception error) {
-            call.reject("Export failed: " + error.getMessage(), error);
+            call.reject("创建音频导出文件失败：" + safeMessage(error), error);
         }
+    }
+
+    @PermissionCallback
+    private void startAudioSegmentSavePermsCallback(PluginCall call) {
+        if (getPermissionState("legacyWrite") != PermissionState.GRANTED) {
+            call.reject("未获得存储权限，无法创建导出文件。");
+            return;
+        }
+        startAudioSegmentSave(call);
     }
 
     @PluginMethod
@@ -110,10 +139,13 @@ public class BaizeMediaPlugin extends Plugin {
         String sessionId = call.getString("sessionId", "");
         SaveSession session = saveSessions.get(sessionId);
         if (session == null) {
-            call.reject("Export session not found");
+            call.reject("导出任务已失效，请重新导出。");
             return;
         }
         try {
+            if (session.output == null) {
+                throw new IllegalStateException("导出文件流已关闭，请重新导出。");
+            }
             String data = call.getString("base64", "");
             if (!data.isEmpty()) {
                 byte[] bytes = Base64.decode(data, Base64.DEFAULT);
@@ -122,7 +154,7 @@ public class BaizeMediaPlugin extends Plugin {
             }
             call.resolve(new JSObject());
         } catch (Exception error) {
-            call.reject("Export failed: " + error.getMessage(), error);
+            call.reject("写入音频数据失败：" + safeMessage(error), error);
         }
     }
 
@@ -131,7 +163,7 @@ public class BaizeMediaPlugin extends Plugin {
         String sessionId = call.getString("sessionId", "");
         SaveSession session = saveSessions.remove(sessionId);
         if (session == null) {
-            call.reject("Export session not found");
+            call.reject("导出任务已失效，请重新导出。");
             return;
         }
         try {
@@ -139,7 +171,9 @@ public class BaizeMediaPlugin extends Plugin {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && session.uri != null) {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0);
-                getContext().getContentResolver().update(session.uri, values, null, null);
+                if (getContext().getContentResolver().update(session.uri, values, null, null) <= 0) {
+                    throw new IllegalStateException("音频已写入，但系统未能发布导出文件");
+                }
             }
             JSArray files = new JSArray();
             String uri = session.uri != null ? session.uri.toString() : Uri.fromFile(session.file).toString();
@@ -151,7 +185,8 @@ public class BaizeMediaPlugin extends Plugin {
             result.put("files", files);
             call.resolve(result);
         } catch (Exception error) {
-            call.reject("Export failed: " + error.getMessage(), error);
+            discardSaveSession(session);
+            call.reject("完成音频导出失败：" + safeMessage(error), error);
         }
     }
 
@@ -159,19 +194,8 @@ public class BaizeMediaPlugin extends Plugin {
     public void abortAudioSegmentSave(PluginCall call) {
         String sessionId = call.getString("sessionId", "");
         SaveSession session = saveSessions.remove(sessionId);
-        try {
-            if (session != null) {
-                closeSessionOutput(session);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && session.uri != null) {
-                    getContext().getContentResolver().delete(session.uri, null, null);
-                } else if (session.file != null) {
-                    session.file.delete();
-                }
-            }
-            call.resolve(new JSObject());
-        } catch (Exception error) {
-            call.reject("Export failed: " + error.getMessage(), error);
-        }
+        discardSaveSession(session);
+        call.resolve(new JSObject());
     }
 
     @PluginMethod
@@ -194,12 +218,19 @@ public class BaizeMediaPlugin extends Plugin {
             result.put("lyricCount", lyrics.length());
             call.resolve(result);
         } catch (Exception error) {
-            call.reject("扫描下载文件夹失败：" + error.getMessage(), error);
+            call.reject("扫描下载文件夹失败：" + safeMessage(error), error);
         }
     }
 
     @PermissionCallback
     private void scanDownloadsPermsCallback(PluginCall call) {
+        boolean denied = Build.VERSION.SDK_INT >= 33
+            ? getPermissionState("media") != PermissionState.GRANTED
+            : getPermissionState("storage") != PermissionState.GRANTED;
+        if (denied) {
+            call.reject("未获得音频读取权限，无法扫描下载文件夹。请到系统设置中允许后重试。");
+            return;
+        }
         scanDownloads(call);
     }
 
@@ -213,13 +244,26 @@ public class BaizeMediaPlugin extends Plugin {
             ContentResolver resolver = getContext().getContentResolver();
             Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
             if (uri == null) throw new IllegalStateException("无法创建下载文件");
-            try (OutputStream output = resolver.openOutputStream(uri)) {
-                if (output == null) throw new IllegalStateException("无法写入下载文件");
-                output.write(bytes);
+            try {
+                OutputStream output = resolver.openOutputStream(uri);
+                if (output == null) throw new IllegalStateException("系统没有返回可写入的下载文件流");
+                try (OutputStream closeable = output) {
+                    closeable.write(bytes);
+                    closeable.flush();
+                }
+                values.clear();
+                values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                if (resolver.update(uri, values, null, null) <= 0) {
+                    throw new IllegalStateException("下载文件写入完成，但系统未能发布该文件");
+                }
+            } catch (Exception error) {
+                try {
+                    resolver.delete(uri, null, null);
+                } catch (Exception cleanupError) {
+                    Log.w(TAG, "Failed to remove an incomplete download row", cleanupError);
+                }
+                throw error;
             }
-            values.clear();
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
-            resolver.update(uri, values, null, null);
             return savedFileObject(fileName, mimeType, uri.toString(), "Download/" + APP_FOLDER + "/" + title + "/" + fileName, bytes.length);
         }
 
@@ -228,6 +272,12 @@ public class BaizeMediaPlugin extends Plugin {
         File file = new File(dir, fileName);
         try (FileOutputStream output = new FileOutputStream(file)) {
             output.write(bytes);
+            output.flush();
+        } catch (Exception error) {
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Failed to remove incomplete legacy download: " + file.getAbsolutePath());
+            }
+            throw error;
         }
         Uri uri = Uri.fromFile(file);
         return savedFileObject(fileName, mimeType, uri.toString(), file.getAbsolutePath(), bytes.length);
@@ -248,48 +298,112 @@ public class BaizeMediaPlugin extends Plugin {
             ContentResolver resolver = getContext().getContentResolver();
             Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
             if (uri == null) throw new IllegalStateException("Cannot create or write download file");
-            OutputStream output = resolver.openOutputStream(uri);
-            if (output == null) throw new IllegalStateException("Cannot create or write download file");
-            session.uri = uri;
-            session.output = output;
-            return session;
+            try {
+                OutputStream output = resolver.openOutputStream(uri);
+                if (output == null) throw new IllegalStateException("系统没有返回可写入的导出文件流");
+                session.uri = uri;
+                session.output = output;
+                return session;
+            } catch (Exception error) {
+                try {
+                    resolver.delete(uri, null, null);
+                } catch (Exception cleanupError) {
+                    Log.w(TAG, "Failed to remove an incomplete export row", cleanupError);
+                }
+                throw error;
+            }
         }
 
         File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), APP_FOLDER + "/" + title);
         if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create or write download file");
         File file = new File(dir, fileName);
         session.file = file;
-        session.output = new FileOutputStream(file);
-        return session;
+        try {
+            session.output = new FileOutputStream(file);
+            return session;
+        } catch (Exception error) {
+            if (file.exists() && !file.delete()) {
+                Log.w(TAG, "Failed to remove incomplete legacy export: " + file.getAbsolutePath());
+            }
+            throw error;
+        }
     }
 
     private void closeSessionOutput(SaveSession session) throws Exception {
         if (session != null && session.output != null) {
-            session.output.flush();
-            session.output.close();
+            OutputStream output = session.output;
             session.output = null;
+            try {
+                output.flush();
+            } finally {
+                output.close();
+            }
         }
+    }
+
+    private void discardSaveSession(SaveSession session) {
+        if (session == null) return;
+        try {
+            closeSessionOutput(session);
+        } catch (Exception error) {
+            Log.w(TAG, "Failed to close an incomplete export", error);
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && session.uri != null) {
+                getContext().getContentResolver().delete(session.uri, null, null);
+            } else if (session.file != null && session.file.exists() && !session.file.delete()) {
+                Log.w(TAG, "Failed to remove incomplete export file: " + session.file.getAbsolutePath());
+            }
+        } catch (Exception error) {
+            Log.w(TAG, "Failed to remove an incomplete export", error);
+        }
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        for (SaveSession session : new ArrayList<>(saveSessions.values())) {
+            discardSaveSession(session);
+        }
+        saveSessions.clear();
+        super.handleOnDestroy();
     }
 
     private JSArray queryAudioDownloads() {
         JSArray result = new JSArray();
         Uri uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
-        String[] projection = {
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.DISPLAY_NAME,
-            MediaStore.Audio.Media.MIME_TYPE,
-            MediaStore.Audio.Media.SIZE,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.RELATIVE_PATH
-        };
+        boolean hasRelativePath = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
+        String[] projection = hasRelativePath
+            ? new String[]{
+                MediaStore.Audio.Media._ID,
+                MediaStore.Audio.Media.DISPLAY_NAME,
+                MediaStore.Audio.Media.MIME_TYPE,
+                MediaStore.Audio.Media.SIZE,
+                MediaStore.Audio.Media.DURATION,
+                MediaStore.Audio.Media.RELATIVE_PATH
+            }
+            : new String[]{
+                MediaStore.Audio.Media._ID,
+                MediaStore.Audio.Media.DISPLAY_NAME,
+                MediaStore.Audio.Media.MIME_TYPE,
+                MediaStore.Audio.Media.SIZE,
+                MediaStore.Audio.Media.DURATION
+            };
         String selection = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             ? MediaStore.Audio.Media.RELATIVE_PATH + " LIKE ?"
             : null;
         String[] args = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
             ? new String[]{Environment.DIRECTORY_DOWNLOADS + "%"}
             : null;
-        try (Cursor cursor = getContext().getContentResolver().query(uri, projection, selection, args, null)) {
-            if (cursor == null) return result;
+        Cursor queried;
+        try {
+            queried = getContext().getContentResolver().query(uri, projection, selection, args, null);
+        } catch (SecurityException error) {
+            throw new IllegalStateException("没有读取系统音频库的权限，请在系统设置中允许音频访问。", error);
+        } catch (RuntimeException error) {
+            throw new IllegalStateException("系统音频库查询失败：" + safeMessage(error), error);
+        }
+        if (queried == null) throw new IllegalStateException("系统音频库没有返回查询结果，请稍后重试。");
+        try (Cursor cursor = queried) {
             while (cursor.moveToNext()) {
                 long id = cursor.getLong(0);
                 Uri contentUri = ContentUris.withAppendedId(uri, id);
@@ -298,7 +412,7 @@ public class BaizeMediaPlugin extends Plugin {
                 item.put("mimeType", cursor.getString(2));
                 item.put("size", cursor.getLong(3));
                 item.put("duration", cursor.getLong(4));
-                item.put("relativePath", cursor.getString(5));
+                item.put("relativePath", hasRelativePath ? cursor.getString(5) : "");
                 item.put("uri", contentUri.toString());
                 result.put(item);
             }
@@ -312,13 +426,15 @@ public class BaizeMediaPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 appendLyricMediaRows(MediaStore.Files.getContentUri("external"), result, seen);
-            } catch (Exception ignored) {
+            } catch (Exception error) {
                 // Some Android builds restrict generic file queries; try Downloads below.
+                Log.w(TAG, "Generic MediaStore lyric query is unavailable", error);
             }
             try {
                 appendLyricMediaRows(MediaStore.Downloads.EXTERNAL_CONTENT_URI, result, seen);
-            } catch (Exception ignored) {
+            } catch (Exception error) {
                 // Keep audio scan usable even when text lyrics are not exposed by MediaStore.
+                Log.w(TAG, "Downloads lyric query is unavailable", error);
             }
         } else {
             scanLegacyLyrics(new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), ""), result, seen);
@@ -336,8 +452,19 @@ public class BaizeMediaPlugin extends Plugin {
         };
         String selection = MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
         String[] args = new String[]{Environment.DIRECTORY_DOWNLOADS + "%"};
-        try (Cursor cursor = getContext().getContentResolver().query(uri, projection, selection, args, null)) {
-            if (cursor == null) return;
+        Cursor queried;
+        try {
+            queried = getContext().getContentResolver().query(uri, projection, selection, args, null);
+        } catch (SecurityException error) {
+            throw new IllegalStateException("系统不允许读取下载文件夹中的歌词。", error);
+        } catch (RuntimeException error) {
+            throw new IllegalStateException("歌词文件查询失败：" + safeMessage(error), error);
+        }
+        if (queried == null) {
+            Log.w(TAG, "MediaStore returned a null cursor for lyric query: " + uri);
+            return;
+        }
+        try (Cursor cursor = queried) {
             while (cursor.moveToNext()) {
                 String name = cursor.getString(1);
                 if (!isLyricName(name)) continue;
@@ -360,7 +487,10 @@ public class BaizeMediaPlugin extends Plugin {
 
     private void scanLegacyLyrics(File dir, JSArray result, Set<String> seen) throws Exception {
         File[] files = dir.listFiles();
-        if (files == null) return;
+        if (files == null) {
+            Log.w(TAG, "Cannot list legacy lyric directory: " + dir.getAbsolutePath());
+            return;
+        }
         for (File file : files) {
             if (file.isDirectory()) {
                 scanLegacyLyrics(file, result, seen);
@@ -397,6 +527,7 @@ public class BaizeMediaPlugin extends Plugin {
         try {
             return readText(uri, limit);
         } catch (Exception error) {
+            Log.w(TAG, "Failed to read lyric text: " + uri, error);
             return "";
         }
     }
@@ -468,5 +599,10 @@ public class BaizeMediaPlugin extends Plugin {
         if (lower.endsWith(".flac")) return "audio/flac";
         if (lower.endsWith(".ogg") || lower.endsWith(".opus")) return "audio/ogg";
         return "audio/wav";
+    }
+
+    private String safeMessage(Throwable error) {
+        String message = error == null ? "" : error.getMessage();
+        return message == null || message.trim().isEmpty() ? "未知系统错误" : message.trim();
     }
 }

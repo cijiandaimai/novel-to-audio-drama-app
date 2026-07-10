@@ -597,6 +597,33 @@ const editorState = {
 };
 const editorReverbImpulseCache = new WeakMap();
 
+function getEditorReferencedObjectUrls() {
+  const urls = new Set();
+  editorState.tracks.forEach((track) => {
+    if (track.url?.startsWith("blob:")) urls.add(track.url);
+    (track.sourceHistory || []).forEach((source) => {
+      if (source?.url?.startsWith("blob:")) urls.add(source.url);
+    });
+  });
+  if (editorState.sourceUrl?.startsWith("blob:")) urls.add(editorState.sourceUrl);
+  if (editorState.renderedUrl?.startsWith("blob:")) urls.add(editorState.renderedUrl);
+  return urls;
+}
+
+function revokeEditorObjectUrlIfUnused(url) {
+  if (!url?.startsWith("blob:")) return;
+  if (getEditorReferencedObjectUrls().has(url)) return;
+  try { URL.revokeObjectURL(url); } catch {}
+}
+
+function releaseEditorObjectUrls() {
+  getEditorReferencedObjectUrls().forEach((url) => {
+    try { URL.revokeObjectURL(url); } catch {}
+  });
+}
+
+window.addEventListener("beforeunload", releaseEditorObjectUrls);
+
 const recorderState = {
   stream: null,
   recorder: null,
@@ -1265,6 +1292,15 @@ function cleanupSpeechInput() {
   if (context?.state !== "closed") context.close().catch(() => {});
 }
 
+function cancelSpeechInput() {
+  cleanupSpeechInput();
+  speechInputState.chunks = [];
+  speechInputState.targetId = "";
+  speechInputState.startedAt = 0;
+  speechInputState.busy = false;
+  setSpeechInputBusy("", false);
+}
+
 function insertSpeechText(targetId, text) {
   const target = document.getElementById(targetId);
   const value = String(text || "").trim();
@@ -1379,8 +1415,10 @@ async function startSpeechInput(targetId) {
   }
   speechInputState.busy = true;
   setSpeechInputBusy(targetId, true, "准备中...");
+  let stream = null;
+  let context = null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
         echoCancellation: true,
@@ -1388,7 +1426,7 @@ async function startSpeechInput(targetId) {
         autoGainControl: true
       }
     });
-    const context = new AudioContextCtor();
+    context = new AudioContextCtor();
     const source = context.createMediaStreamSource(stream);
     const processor = context.createScriptProcessor(4096, 1, 1);
     const sink = context.createGain();
@@ -1413,6 +1451,8 @@ async function startSpeechInput(targetId) {
     setSpeechInputBusy(targetId, false, "停止录音");
     showToast("开始语音输入，再点一次停止并识别。", "ok");
   } catch (error) {
+    stream?.getTracks().forEach((track) => track.stop());
+    if (context && context.state !== "closed") context.close().catch(() => {});
     cleanupSpeechInput();
     speechInputState.busy = false;
     setSpeechInputBusy("", false);
@@ -3956,6 +3996,7 @@ function extractQwenTtsAudio(data = {}) {
 }
 
 let voiceGatewaySdkPromise = null;
+let voiceGatewaySdkUrl = "";
 
 function hasVoiceGatewayTts(config = getConfig()) {
   const gateway = config.voiceGateway || {};
@@ -3969,16 +4010,49 @@ function resolveVoiceGatewayVoice(value = "") {
 }
 
 function ensureVoiceGatewaySdk(config = getConfig()) {
-  if (window.VoiceTtsPlayer) return Promise.resolve();
-  if (voiceGatewaySdkPromise) return voiceGatewaySdkPromise;
+  if (typeof window.VoiceTtsPlayer === "function") return Promise.resolve(window.VoiceTtsPlayer);
   const gateway = String(config.voiceGateway?.gateway || defaultConfig.voiceGateway.gateway).replace(/\/+$/, "");
-  voiceGatewaySdkPromise = new Promise((resolve, reject) => {
+  if (!/^https?:\/\//i.test(gateway)) {
+    return Promise.reject(new Error("语音网关地址无效，请填写以 http:// 或 https:// 开头的完整地址。"));
+  }
+  const sdkUrl = `${gateway}/voice-gateway-sdk.js`;
+  if (voiceGatewaySdkPromise && voiceGatewaySdkUrl === sdkUrl) return voiceGatewaySdkPromise;
+  voiceGatewaySdkUrl = sdkUrl;
+  const loadingPromise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = `${gateway}/voice-gateway-sdk.js`;
+    let timeoutId = 0;
+    const finish = (error = null) => {
+      window.clearTimeout(timeoutId);
+      script.onload = null;
+      script.onerror = null;
+      if (error) {
+        script.remove();
+        reject(error);
+      } else {
+        script.dataset.loaded = "true";
+        resolve(window.VoiceTtsPlayer);
+      }
+    };
+    script.src = sdkUrl;
     script.async = true;
-    script.onload = () => window.VoiceTtsPlayer ? resolve() : reject(new Error("语音网关 SDK 加载失败。"));
-    script.onerror = () => reject(new Error("无法加载通用语音网关 SDK。"));
+    script.dataset.voiceGatewaySdk = "true";
+    script.onload = () => {
+      if (typeof window.VoiceTtsPlayer !== "function") {
+        finish(new Error("语音网关 SDK 已加载，但没有提供 VoiceTtsPlayer。请检查网关版本。"));
+        return;
+      }
+      finish();
+    };
+    script.onerror = () => finish(new Error("无法加载通用语音网关 SDK，请检查网关地址和网络连接。"));
+    timeoutId = window.setTimeout(() => finish(new Error("加载通用语音网关 SDK 超时，请检查网络后重试。")), 15000);
     document.head.appendChild(script);
+  });
+  voiceGatewaySdkPromise = loadingPromise.catch((error) => {
+    if (voiceGatewaySdkPromise === loadingPromise || voiceGatewaySdkUrl === sdkUrl) {
+      voiceGatewaySdkPromise = null;
+      voiceGatewaySdkUrl = "";
+    }
+    throw error;
   });
   return voiceGatewaySdkPromise;
 }
@@ -3995,50 +4069,25 @@ function blobToDataUrl(blob) {
 async function callVoiceGatewayTtsDirect(text, config = getConfig()) {
   const gatewayConfig = { ...defaultConfig.voiceGateway, ...(config.voiceGateway || {}) };
   if (!hasVoiceGatewayTts(config)) throw new Error("请先配置通用语音网关 API Key 和网关地址。");
-  await ensureVoiceGatewaySdk(config);
+  const VoiceTtsPlayer = await ensureVoiceGatewaySdk(config);
+  if (typeof VoiceTtsPlayer !== "function") throw new Error("通用语音网关 SDK 当前不可用，请重新加载后再试。");
   const voice = resolveVoiceGatewayVoice(gatewayConfig.ttsVoice || "起司妹妹");
   const useClone = Boolean(gatewayConfig.cloneVoiceId) || voice.useClone;
+  const speakText = String(text || "").replace(/\s+/g, " ").trim().slice(0, 1200);
+  if (!speakText) throw new Error("没有可合成的文字内容。");
   return await new Promise((resolve, reject) => {
     let settled = false;
     let fallbackTimer = null;
     let hardTimer = null;
-    const player = new window.VoiceTtsPlayer({
-      apiKey: gatewayConfig.apiKey,
-      gateway: String(gatewayConfig.gateway || defaultConfig.voiceGateway.gateway).replace(/\/+$/, ""),
-      voiceId: gatewayConfig.cloneVoiceId || voice.voiceId,
-      model: voice.model || "QUARK_VOICE",
-      useClone,
-      recordAudio: true,
-      onError: (error) => {
-        finish(error instanceof Error ? error : new Error(String(error || "通用语音网关 TTS 失败。")), true);
-      },
-      onStreamComplete: async () => {
-        try {
-          const result = await exportResult();
-          if (result.emptyAudio) {
-            finish(new Error("通用语音网关已返回结束信号，但没有返回音频帧。请换一个声线，或检查网关余额和声线权限。"), true);
-          } else {
-            finish(result);
-          }
-        } catch (error) {
-          finish(error, true);
-        }
-      },
-      onPlayEnd: async () => {
-        try {
-          const result = await exportResult();
-          if (!result.emptyAudio) finish(result);
-        } catch (error) {
-          finish(error, true);
-        }
-      }
-    });
+    let feedEndTimer = null;
+    let player = null;
 
     function finish(value, isError = false) {
       if (settled) return;
       settled = true;
       if (fallbackTimer) window.clearTimeout(fallbackTimer);
       if (hardTimer) window.clearTimeout(hardTimer);
+      if (feedEndTimer) window.clearTimeout(feedEndTimer);
       if (isError) reject(value);
       else resolve(value);
     }
@@ -4060,21 +4109,77 @@ async function callVoiceGatewayTtsDirect(text, config = getConfig()) {
       };
     }
 
-    const speakText = String(text || "").replace(/\s+/g, " ").trim().slice(0, 1200);
-    player.connect()
+    try {
+      player = new VoiceTtsPlayer({
+        apiKey: gatewayConfig.apiKey,
+        gateway: String(gatewayConfig.gateway || defaultConfig.voiceGateway.gateway).replace(/\/+$/, ""),
+        voiceId: gatewayConfig.cloneVoiceId || voice.voiceId,
+        model: voice.model || "QUARK_VOICE",
+        useClone,
+        recordAudio: true,
+        onError: (error) => {
+          finish(error instanceof Error ? error : new Error(String(error || "通用语音网关 TTS 失败。")), true);
+        },
+        onStreamComplete: async () => {
+          try {
+            const result = await exportResult();
+            if (result.emptyAudio) {
+              finish(new Error("通用语音网关已返回结束信号，但没有返回音频帧。请换一个声线，或检查网关余额和声线权限。"), true);
+            } else {
+              finish(result);
+            }
+          } catch (error) {
+            finish(error, true);
+          }
+        },
+        onPlayEnd: async () => {
+          try {
+            const result = await exportResult();
+            if (!result.emptyAudio) finish(result);
+          } catch (error) {
+            finish(error, true);
+          }
+        }
+      });
+    } catch (error) {
+      finish(new Error(`通用语音网关播放器初始化失败：${error?.message || error}`), true);
+      return;
+    }
+    if (typeof player.connect !== "function" || typeof player.feedText !== "function") {
+      finish(new Error("语音网关 SDK 版本不兼容：缺少 connect 或 feedText 方法。"), true);
+      return;
+    }
+
+    Promise.resolve()
+      .then(() => player.connect())
       .then(() => {
-        player.feedText(speakText, 1);
-        window.setTimeout(() => player.feedText("", 2), 180);
+        if (settled) return;
+        try {
+          player.feedText(speakText, 1);
+          feedEndTimer = window.setTimeout(() => {
+            try {
+              player.feedText("", 2);
+            } catch (error) {
+              finish(new Error(`语音网关发送结束信号失败：${error?.message || error}`), true);
+            }
+          }, 180);
+        } catch (error) {
+          finish(new Error(`语音网关发送文本失败：${error?.message || error}`), true);
+        }
       })
-      .catch((error) => finish(error, true));
+      .catch((error) => finish(new Error(`语音网关连接失败：${error?.message || error}`), true));
 
     fallbackTimer = window.setTimeout(() => {
       if (settled) return;
-      const blob = player.exportWavBlob?.();
-      if (blob) {
-        blobToDataUrl(blob)
-          .then((audioDataUrl) => finish({ provider: "voice-gateway-tts", audioDataUrl, livePlayed: true }))
-          .catch((error) => finish(error, true));
+      try {
+        const blob = player.exportWavBlob?.();
+        if (blob) {
+          blobToDataUrl(blob)
+            .then((audioDataUrl) => finish({ provider: "voice-gateway-tts", audioDataUrl, livePlayed: true }))
+            .catch((error) => finish(error, true));
+        }
+      } catch (error) {
+        finish(new Error(`语音网关导出音频失败：${error?.message || error}`), true);
       }
     }, 18000);
     hardTimer = window.setTimeout(() => {
@@ -5887,8 +5992,14 @@ function stopTransientAudioIn(root, { except = null, reset = true } = {}) {
 }
 
 function stopViewTransientAudio(viewName) {
-  if (viewName === "editor") stopEditorPlayback();
   const view = $(`#${viewName}`);
+  if (viewName === "editor") {
+    stopEditorPlayback();
+    if (editorState.micRecorder?.state === "recording") stopEditorMicRecording();
+  }
+  if (viewName === "create" && isVoiceRecording()) stopVoiceRecording();
+  const speechTarget = speechInputState.targetId ? document.getElementById(speechInputState.targetId) : null;
+  if (speechInputState.stream && speechTarget?.closest(".view") === view) cancelSpeechInput();
   stopTransientAudioIn(view);
 }
 
@@ -7259,16 +7370,29 @@ function handlePlayerEndedEvent() {
 }
 
 function handleAppAudioResumeSignal() {
-  if (document.visibilityState === "hidden") return;
+  if (document.visibilityState === "hidden") {
+    stopViewTransientAudio(normalizeView(document.body.dataset.view || lastRouteView));
+    return;
+  }
   scheduleInterruptedResume("app-resume", 300);
 }
 
 function registerPlaybackInterruptionHandlers() {
   document.addEventListener("visibilitychange", handleAppAudioResumeSignal);
   window.addEventListener("focus", handleAppAudioResumeSignal);
+  window.addEventListener("pagehide", () => {
+    stopViewTransientAudio(normalizeView(document.body.dataset.view || lastRouteView));
+    if (speechInputState.stream) cancelSpeechInput();
+    releaseEditorAudioContext();
+  });
   const app = getCapacitorAppPlugin();
   app?.addListener?.("appStateChange", ({ isActive }) => {
-    if (isActive) handleAppAudioResumeSignal();
+    if (isActive) {
+      handleAppAudioResumeSignal();
+    } else {
+      stopViewTransientAudio(normalizeView(document.body.dataset.view || lastRouteView));
+      if (speechInputState.stream) cancelSpeechInput();
+    }
   });
 }
 
@@ -7920,6 +8044,102 @@ function decorateApiHelpFields() {
   });
 }
 
+function initUiDisclosureControls() {
+  const collapseStorageKey = "baizeUiCollapseStateV1";
+  let savedState = {};
+  try {
+    savedState = JSON.parse(localStorage.getItem(collapseStorageKey) || "{}") || {};
+  } catch {
+    savedState = {};
+  }
+
+  const persistState = () => {
+    try {
+      localStorage.setItem(collapseStorageKey, JSON.stringify(savedState));
+    } catch {
+      // Local storage may be unavailable in private or restricted WebViews.
+    }
+  };
+
+  const panels = [
+    ...$$('#config .config-grid > .panel.provider'),
+    ...$$('.ui-collapsible-panel')
+  ];
+  panels.forEach((panel, index) => {
+    if (panel.dataset.uiCollapseReady === "true") return;
+    panel.dataset.uiCollapseReady = "true";
+    const directChildren = Array.from(panel.children);
+    let heading = directChildren.find((child) => child.classList?.contains("panel-title-row"));
+    const titleNode = directChildren.find((child) => child.tagName === "H3") || heading?.querySelector("h3");
+    const descriptionNode = directChildren.find((child) => child.tagName === "P") || heading?.querySelector("p");
+    const firstConfig = panel.querySelector("[data-config]")?.dataset.config?.split(".")[0] || "";
+    const key = panel.dataset.uiCollapseKey
+      || panel.id
+      || `config-${firstConfig || index}`;
+
+    if (!heading) {
+      heading = document.createElement("div");
+      heading.className = "panel-title-row ui-panel-heading";
+      const copy = document.createElement("div");
+      copy.className = "ui-panel-heading-copy";
+      if (titleNode) copy.appendChild(titleNode);
+      if (descriptionNode) copy.appendChild(descriptionNode);
+      heading.appendChild(copy);
+      panel.insertBefore(heading, panel.firstChild);
+    } else {
+      heading.classList.add("ui-panel-heading");
+    }
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "secondary ui-collapse-toggle";
+    toggle.dataset.uiCollapseToggle = key;
+    const stateLabel = document.createElement("span");
+    stateLabel.className = "ui-collapse-state";
+    const stateIcon = document.createElement("span");
+    stateIcon.className = "ui-collapse-icon";
+    stateIcon.setAttribute("aria-hidden", "true");
+    toggle.append(stateLabel, stateIcon);
+    heading.appendChild(toggle);
+
+    const defaultExpanded = panel.closest("#config")
+      ? ["workflow", "audio"].includes(firstConfig)
+      : false;
+    const initialExpanded = Object.prototype.hasOwnProperty.call(savedState, key)
+      ? Boolean(savedState[key])
+      : defaultExpanded;
+    const applyState = (expanded) => {
+      panel.classList.toggle("ui-collapsed", !expanded);
+      toggle.setAttribute("aria-expanded", String(expanded));
+      toggle.setAttribute("aria-label", `${titleNode?.textContent?.trim() || "模块"}：${expanded ? "收起" : "展开"}`);
+      stateLabel.textContent = expanded ? "收起" : "展开";
+      stateIcon.textContent = expanded ? "↑" : "↓";
+    };
+    applyState(initialExpanded);
+    toggle.addEventListener("click", () => {
+      const expanded = panel.classList.contains("ui-collapsed");
+      savedState[key] = expanded;
+      persistState();
+      applyState(expanded);
+    });
+  });
+
+  $$('details > summary').forEach((summary) => {
+    const details = summary.parentElement;
+    if (!details || summary.querySelector(".ui-details-state")) return;
+    const marker = document.createElement("span");
+    marker.className = "ui-details-state";
+    marker.setAttribute("aria-hidden", "true");
+    const sync = () => {
+      marker.textContent = details.open ? "收起 ↑" : "展开 ↓";
+      summary.dataset.open = details.open ? "true" : "false";
+    };
+    summary.appendChild(marker);
+    details.addEventListener("toggle", sync);
+    sync();
+  });
+}
+
 function playInApp(src, title, options = {}) {
   const player = $("#mainPlayer");
   const playerTitle = $("#playerTitle");
@@ -8228,8 +8448,9 @@ async function startVoiceRecording() {
   recorderState.dataUrl = "";
   recorderState.pending = true;
   syncVoiceRecordUi();
+  let stream = null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -8247,15 +8468,25 @@ async function startVoiceRecording() {
       if (event.data?.size) recorderState.chunks.push(event.data);
     });
     recorder.addEventListener("stop", async () => {
-      const blob = new Blob(recorderState.chunks, { type: recorderState.mimeType });
-      recorderState.dataUrl = await fileToDataUrl(blob);
-      $("#voiceRecordPreview").src = recorderState.dataUrl;
-      $("#saveVoiceRecord").disabled = false;
-      $("#voiceRecordStatus").textContent = "录音完成，可以试听并保存为参考音色。";
-      recorderState.stream?.getTracks().forEach((track) => track.stop());
-      recorderState.stream = null;
-      recorderState.recorder = null;
-      syncVoiceRecordUi();
+      try {
+        const blob = new Blob(recorderState.chunks, { type: recorderState.mimeType });
+        if (!blob.size) throw new Error("没有录到有效声音，请重新录制。");
+        recorderState.dataUrl = await fileToDataUrl(blob);
+        $("#voiceRecordPreview").src = recorderState.dataUrl;
+        $("#saveVoiceRecord").disabled = false;
+        $("#voiceRecordStatus").textContent = "录音完成，可以试听并保存为参考音色。";
+      } catch (error) {
+        recorderState.dataUrl = "";
+        $("#saveVoiceRecord").disabled = true;
+        $("#voiceRecordStatus").textContent = `录音处理失败：${error?.message || error}`;
+        showToast(`录音处理失败：${error?.message || error}`, "fail");
+      } finally {
+        recorderState.stream?.getTracks().forEach((track) => track.stop());
+        recorderState.stream = null;
+        recorderState.recorder = null;
+        recorderState.pending = false;
+        syncVoiceRecordUi();
+      }
     });
     recorder.start();
     recorderState.pending = false;
@@ -8264,6 +8495,7 @@ async function startVoiceRecording() {
     $("#voiceRecordStatus").textContent = "录音中，请保持 5-20 秒清晰干声。";
     showToast("录音已开始，请保持清晰干声。");
   } catch (error) {
+    stream?.getTracks().forEach((track) => track.stop());
     recorderState.stream?.getTracks().forEach((track) => track.stop());
     recorderState.stream = null;
     recorderState.recorder = null;
@@ -8342,11 +8574,18 @@ function clamp(value, min, max) {
 }
 
 function getEditorAudioContext() {
-  if (!editorState.audioContext) {
+  if (!editorState.audioContext || editorState.audioContext.state === "closed") {
     const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("当前设备不支持 Web Audio 音频处理。");
     editorState.audioContext = new AudioContextClass();
   }
   return editorState.audioContext;
+}
+
+function releaseEditorAudioContext() {
+  const context = editorState.audioContext;
+  editorState.audioContext = null;
+  if (context?.state !== "closed") context.close().catch(() => {});
 }
 
 function createEditorOfflineContext(channels, length, sampleRate) {
@@ -9369,6 +9608,11 @@ function bindPressRepeat(selector, callback) {
   ["pointerup", "pointercancel", "pointerleave", "lostpointercapture"].forEach((eventName) => {
     button.addEventListener(eventName, stop);
   });
+  window.addEventListener("blur", stop);
+  window.addEventListener("pagehide", stop);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") stop();
+  });
   button.addEventListener("click", (event) => event.preventDefault());
 }
 
@@ -9459,7 +9703,10 @@ function snapshotTrackSource(track) {
 function pushTrackSourceHistory(track) {
   track.sourceHistory = track.sourceHistory || [];
   track.sourceHistory.push(snapshotTrackSource(track));
-  track.sourceHistory = track.sourceHistory.slice(-20);
+  const discarded = track.sourceHistory.length > 20
+    ? track.sourceHistory.splice(0, track.sourceHistory.length - 20)
+    : [];
+  discarded.forEach((source) => revokeEditorObjectUrlIfUnused(source?.url || ""));
 }
 
 function pruneClipsForTrack(trackId) {
@@ -9483,6 +9730,11 @@ function restoreTrackSource(trackId, source) {
   track.buffer = source?.buffer || null;
   track.url = source?.url || "";
   track.fileName = source?.fileName || "";
+  if (editorState.activeTrackId === trackId) {
+    editorState.sourceBuffer = track.buffer;
+    editorState.sourceUrl = track.url;
+    editorState.sourceName = track.fileName;
+  }
   pruneClipsForTrack(trackId);
   setActiveTrack(trackId);
   setClipInputs(0, Math.min(track.buffer?.duration || 0, 30), 0);
@@ -9554,6 +9806,7 @@ async function setEditorSource({ arrayBuffer, url, name, trackId = editorState.a
 async function addEditorBufferClip({ arrayBuffer, url, name, trackId = editorState.activeTrackId, timelineStart = editorState.timeline.playhead }) {
   const context = getEditorAudioContext();
   const track = getTrack(trackId);
+  const hadTrackBuffer = Boolean(track.buffer);
   const buffer = await context.decodeAudioData(arrayBuffer.slice(0));
   const bufferId = `buffer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   editorState.clipBuffers[bufferId] = buffer;
@@ -9588,6 +9841,7 @@ async function addEditorBufferClip({ arrayBuffer, url, name, trackId = editorSta
   renderClipList();
   renderWaveform();
   syncTimelineControls();
+  if (hadTrackBuffer) revokeEditorObjectUrlIfUnused(url || "");
   return clip;
 }
 
@@ -9595,7 +9849,12 @@ async function loadEditorFile(file, trackId = editorState.activeTrackId) {
   if (!file) return;
   const arrayBuffer = await file.arrayBuffer();
   const url = URL.createObjectURL(file);
-  await setEditorSource({ arrayBuffer, url, name: file.name, trackId });
+  try {
+    await setEditorSource({ arrayBuffer, url, name: file.name, trackId });
+  } catch (error) {
+    revokeEditorObjectUrlIfUnused(url);
+    throw error;
+  }
   setEditorPanel("");
   showToast(`已导入到 ${getTrack(trackId).name}：${file.name}`, "ok");
 }
@@ -9619,8 +9878,9 @@ async function startEditorMicRecording() {
   editorState.micStartClock = performance.now();
   editorState.micPending = true;
   syncEditorQuickState();
+  let stream = null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -9645,13 +9905,19 @@ async function startEditorMicRecording() {
         if (!blob.size) throw new Error("没有录到声音。");
         const name = `麦克风录音-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
         const startAt = editorState.micStartPlayhead || 0;
-        await addEditorBufferClip({
-          arrayBuffer: await blob.arrayBuffer(),
-          url: URL.createObjectURL(blob),
-          name,
-          trackId: editorState.micTrackId,
-          timelineStart: startAt
-        });
+        const url = URL.createObjectURL(blob);
+        try {
+          await addEditorBufferClip({
+            arrayBuffer: await blob.arrayBuffer(),
+            url,
+            name,
+            trackId: editorState.micTrackId,
+            timelineStart: startAt
+          });
+        } catch (error) {
+          revokeEditorObjectUrlIfUnused(url);
+          throw error;
+        }
         $("#editorMicStatus").textContent = `录音已从 ${formatSeconds(startAt)} 导入 ${getTrack(editorState.micTrackId).name}。`;
         setEditorPanel("");
         showToast("麦克风录音已导入轨道。", "ok");
@@ -9673,6 +9939,7 @@ async function startEditorMicRecording() {
     animateRecordingPlayhead();
     showToast(`正在录音到 ${getTrack(trackId).name}。`);
   } catch (error) {
+    stream?.getTracks().forEach((track) => track.stop());
     cancelAnimationFrame(editorState.micPlayheadRaf);
     editorState.micPlayheadRaf = 0;
     editorState.micStream?.getTracks().forEach((track) => track.stop());
@@ -9730,8 +9997,9 @@ async function startKaraokeRecording() {
   syncEditorQuickState();
 
   let karaokeScheduledNodes = [];
+  let stream = null;
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -9758,13 +10026,19 @@ async function startKaraokeRecording() {
         if (!blob.size) throw new Error("没有录到声音。");
         const name = `K歌录音-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
         const startTime = editorState.karaokeStartPlayhead || 0;
-        await addEditorBufferClip({
-          arrayBuffer: await blob.arrayBuffer(),
-          url: URL.createObjectURL(blob),
-          name,
-          trackId: "A",
-          timelineStart: startTime
-        });
+        const url = URL.createObjectURL(blob);
+        try {
+          await addEditorBufferClip({
+            arrayBuffer: await blob.arrayBuffer(),
+            url,
+            name,
+            trackId: "A",
+            timelineStart: startTime
+          });
+        } catch (error) {
+          revokeEditorObjectUrlIfUnused(url);
+          throw error;
+        }
         $("#editorMicStatus").textContent = `K歌录音已从 ${formatSeconds(startTime)} 导入轨道 1。`;
         showToast("K歌录音已导入轨道 1。", "ok");
       } catch (error) {
@@ -9828,6 +10102,7 @@ async function startKaraokeRecording() {
     animatePreviewPlayhead();
     showToast("K歌开始：轨道 2 播放，轨道 1 录音。", "ok");
   } catch (error) {
+    stream?.getTracks().forEach((track) => track.stop());
     editorState.karaokeStream?.getTracks().forEach((track) => track.stop());
     editorState.karaokeStream = null;
     editorState.karaokeRecorder = null;
@@ -12828,6 +13103,7 @@ function bindEvents() {
 }
 
 decorateApiHelpFields();
+initUiDisclosureControls();
 initViewportCompatibility();
 document.body.dataset.view = "discover";
 setEditorContext("studio");

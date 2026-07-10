@@ -7131,3 +7131,599 @@ body.player-queue-open {
     grid-template-columns: 26px 26px 30px;
   }
 }
+
+/* Unified UI density, control sizing and disclosure behavior. */
+:root {
+  --ui-control-height: 40px;
+  --ui-radius: 12px;
+  --ui-gap: 10px;
+}
+
+.nav {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.main {
+  width: min(1500px, 100%);
+  margin-inline: auto;
+  padding-top: 24px;
+}
+
+.page-head {
+  margin-bottom: 16px;
+}
+
+.page-head h2 {
+  font-size: clamp(24px, 3vw, 30px);
+}
+
+.panel,
+.sample-card,
+.workflow-strip {
+  border-radius: var(--ui-radius);
+  box-shadow: 0 12px 30px rgba(39, 34, 26, 0.085);
+}
+
+.panel {
+  padding: 16px;
+}
+
+.primary,
+.secondary,
+.image-picker {
+  min-height: var(--ui-control-height);
+  padding: 8px 13px;
+  border-radius: 10px;
+  line-height: 1.2;
+}
+
+input,
+textarea,
+select {
+  min-height: var(--ui-control-height);
+  padding: 9px 11px;
+  border-radius: 10px;
+}
+
+textarea {
+  min-height: 260px;
+}
+
+.short-textarea {
+  min-height: 150px;
+}
+
+.field,
+.provider label {
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.actions {
+  gap: 8px;
+  align-items: center;
+}
+
+.panel-title-row {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+details > summary {
+  min-width: 0;
+  cursor: pointer;
+  list-style: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+details > summary::-webkit-details-marker {
+  display: none;
+}
+
+details > summary::after {
+  content: none !important;
+  display: none !important;
+}
+
+.ui-details-state {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid rgba(49, 95, 76, 0.15);
+  border-radius: 999px;
+  background: rgba(49, 95, 76, 0.08);
+  color: var(--moss);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+details[open] > summary .ui-details-state {
+  border-color: rgba(111, 31, 27, 0.18);
+  background: rgba(111, 31, 27, 0.08);
+  color: var(--accent-dark);
+}
+
+.ui-section-fold {
+  margin-top: 16px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--ui-radius);
+  background: rgba(255, 252, 244, 0.72);
+  box-shadow: 0 10px 24px rgba(39, 34, 26, 0.07);
+}
+
+.ui-section-fold > summary {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 2px 4px;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.ui-section-fold > summary > small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.speaker-samples-fold .speaker-samples {
+  margin-top: 10px;
+}
+
+.speaker-samples .sample-card {
+  min-height: 0;
+  gap: 9px;
+  padding: 14px;
+}
+
+.speaker-samples .sample-visual {
+  height: 72px;
+}
+
+.home-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.home-actions .secondary {
+  min-height: 42px;
+  font-size: 13px;
+}
+
+.home-head-actions,
+.player-actions {
+  gap: 8px;
+}
+
+.player-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+}
+
+.player-actions > * {
+  min-width: 0;
+  width: 100%;
+}
+
+.ui-panel-heading {
+  min-width: 0;
+  align-items: center;
+}
+
+.ui-panel-heading-copy {
+  min-width: 0;
+}
+
+.ui-panel-heading-copy h3,
+.ui-panel-heading-copy p {
+  margin: 0;
+}
+
+.ui-panel-heading-copy p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ui-collapse-toggle {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+}
+
+.ui-collapse-icon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.panel.ui-collapsed {
+  min-height: 0;
+  padding-block: 12px;
+}
+
+.panel.ui-collapsed > :not(.ui-panel-heading) {
+  display: none !important;
+}
+
+.panel.ui-collapsed > .ui-panel-heading {
+  margin-bottom: 0;
+}
+
+.panel.ui-collapsed > .ui-panel-heading > button:not(.ui-collapse-toggle) {
+  display: none;
+}
+
+.config-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.config-grid .provider,
+.config-grid .provider:first-child {
+  order: 2;
+}
+
+.config-grid .provider:first-child {
+  order: 0;
+}
+
+.config-grid .essential-provider {
+  order: 1;
+}
+
+#config .page-head {
+  position: sticky;
+  z-index: 24;
+  top: 0;
+  padding: 8px 0;
+  background: linear-gradient(180deg, rgba(247, 242, 231, 0.98), rgba(247, 242, 231, 0.9));
+  backdrop-filter: blur(12px);
+}
+
+#config .provider:not(.ui-collapsed) {
+  grid-column: span 1;
+}
+
+#config .provider:not(.ui-collapsed) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+  align-items: start;
+}
+
+#config .provider > .ui-panel-heading,
+#config .provider > .tutorial,
+#config .provider > .actions,
+#config .provider > .network-status {
+  grid-column: 1 / -1;
+}
+
+#config .provider:first-child > label {
+  grid-column: 1 / -1;
+}
+
+#config .provider.ui-collapsed {
+  display: block;
+}
+
+.tavern-fold,
+.tavern-advanced-settings,
+.tavern-local-note,
+.player-more,
+.timeline-marker-panel,
+.assistant-guide details {
+  border-radius: 10px;
+}
+
+.tavern-fold summary,
+.tavern-advanced-settings summary,
+.tavern-local-note summary,
+.player-more > summary,
+.timeline-marker-panel > summary,
+.assistant-guide details > summary {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+}
+
+.tavern-fold summary > span:first-child,
+.tavern-advanced-settings summary > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tavern-fold summary > small,
+.tavern-advanced-settings summary > small {
+  flex: 0 1 auto;
+  max-width: 160px;
+}
+
+.tavern-chat-actions,
+.tavern-role-actions {
+  gap: 6px;
+}
+
+.tavern-chat-actions button,
+.tavern-role-actions button,
+.tavern-message-actions button {
+  min-height: 32px;
+  padding: 6px 9px;
+}
+
+.tavern-compose button {
+  min-height: 64px;
+}
+
+.editor-inline-fold {
+  grid-area: advanced;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(78, 73, 60, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 253, 247, 0.72);
+}
+
+.editor-inline-fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 8px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.editor-inline-fold > summary > small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-inline-fold .ui-details-state {
+  min-height: 22px;
+  padding: 2px 7px;
+  font-size: 10px;
+}
+
+body[data-view="editor"] .editor-inline-fold .editor-clip-tool-strip,
+body[data-view="editor"] .editor-inline-fold .editor-clip-inspector {
+  display: grid !important;
+  grid-area: auto;
+  margin: 6px;
+}
+
+body[data-view="editor"] .editor-fast-workflow {
+  grid-template-areas:
+    "tracks actions"
+    "status status"
+    "selected selected"
+    "advanced advanced";
+}
+
+.history-item {
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--ui-radius);
+}
+
+@media (min-width: 1280px) {
+  #config .provider.ui-collapsed {
+    min-height: 78px;
+  }
+}
+
+@media (max-width: 980px) {
+  .config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tavern-layout {
+    grid-template-columns: minmax(210px, 0.68fr) minmax(0, 1.32fr);
+  }
+
+  .tavern-editor-panel {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 760px) {
+  :root {
+    --ui-control-height: 40px;
+  }
+
+  .main {
+    padding: 16px 12px calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 24px);
+  }
+
+  .page-head {
+    align-items: stretch;
+    margin-bottom: 12px;
+  }
+
+  .page-head h2 {
+    font-size: 22px;
+  }
+
+  .panel {
+    padding: 13px;
+  }
+
+  #config .provider:not(.ui-collapsed) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #config .provider:not(.ui-collapsed) > * {
+    grid-column: 1;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .actions > .primary,
+  .actions > .secondary,
+  .actions > button,
+  .actions > a {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .panel-title-row.ui-panel-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .panel-title-row.ui-panel-heading > button:not(.ui-collapse-toggle) {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .panel-title-row.ui-panel-heading > .ui-collapse-toggle {
+    grid-column: 2;
+    grid-row: 1;
+    width: auto;
+  }
+
+  .ui-section-fold > summary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .ui-section-fold > summary > small {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .ui-section-fold > summary > .ui-details-state {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .speaker-samples {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .home-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .home-actions .secondary {
+    padding-inline: 5px;
+    font-size: 11px;
+  }
+
+  .tavern-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tavern-role-panel,
+  .tavern-chat-panel,
+  .tavern-editor-panel {
+    grid-column: 1;
+  }
+
+  .tavern-chat-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .tavern-chat-actions button {
+    width: 100%;
+    padding-inline: 5px;
+  }
+
+  .tavern-export-hint {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  .tavern-compose {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tavern-compose button {
+    min-height: 42px;
+  }
+
+  .editor-inline-fold {
+    grid-area: advanced;
+  }
+
+  .assistant-dock:not(.panel-open) {
+    right: 0;
+  }
+
+  .assistant-dock:not(.panel-open) .assistant-bubble {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px 0 0 14px;
+    opacity: 0.94;
+  }
+
+  .assistant-dock:not(.panel-open) .assistant-bubble span {
+    width: 27px;
+    height: 27px;
+    font-size: 18px;
+  }
+
+  body[data-view="editor"] .editor-fast-workflow {
+    grid-template-areas:
+      "tracks"
+      "actions"
+      "status"
+      "selected"
+      "advanced";
+  }
+}
+
+@media (max-width: 420px) {
+  .main {
+    padding-inline: 8px;
+  }
+
+  .page-head h2 {
+    font-size: 20px;
+  }
+
+  .ui-collapse-state {
+    display: none;
+  }
+
+  .ui-collapse-toggle {
+    width: 34px;
+    padding-inline: 6px;
+  }
+
+  .tavern-fold summary > small,
+  .tavern-advanced-settings summary > small {
+    display: none;
+  }
+}

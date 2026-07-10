@@ -157,7 +157,12 @@
             </div>
           </section>
 
-          <div class="sample-grid speaker-samples">
+          <details class="ui-section-fold speaker-samples-fold">
+            <summary>
+              <span>预演样片</span>
+              <small>3 个风格示例与对应提示词</small>
+            </summary>
+            <div class="sample-grid speaker-samples">
             <article class="sample-card sample-ancient">
               <div class="sample-visual" aria-hidden="true"></div>
               <span>古风幽默</span>
@@ -191,7 +196,8 @@
                 <pre data-prompt-src="/assets/player-examples/future-sci-fi-prompt.txt">点击后加载提示词...</pre>
               </details>
             </article>
-          </div>
+            </div>
+          </details>
           <div class="home-actions" aria-label="音箱快捷入口">
             <button class="secondary" data-jump="tavern">白泽酒馆</button>
             <button class="secondary" data-jump="config">API 配置</button>
@@ -373,7 +379,7 @@
                   <input id="tavernTaglineInput" type="text" placeholder="例如：记忆很好、语气温和的酒馆掌柜" />
                 </label>
               </div>
-              <details class="tavern-fold" open>
+              <details class="tavern-fold">
                 <summary>
                   <span>角色详细设定</span>
                   <small>人设 / 开场白</small>
@@ -438,7 +444,7 @@
                   </div>
                 </div>
               </details>
-              <details class="tavern-fold tavern-historian-fold" open>
+              <details class="tavern-fold tavern-historian-fold">
                 <summary>
                   <span>史官与史书</span>
                   <small>API 必需 / 已发生事实</small>
@@ -495,7 +501,7 @@
                   </div>
                 </div>
               </details>
-              <details class="tavern-fold tavern-worldline-fold" open>
+              <details class="tavern-fold tavern-worldline-fold">
                 <summary>
                   <span>世界线管理</span>
                   <small>存档 / 读档 / 平行宇宙</small>
@@ -579,7 +585,7 @@
           </div>
 
           <div class="creator-layout extra-tools">
-            <section class="panel">
+            <section class="panel ui-collapsible-panel" data-ui-collapse-key="create-voice-reference">
               <div class="panel-title-row">
                 <div>
                   <h3>角色音色参考</h3>
@@ -615,7 +621,7 @@
               <p class="hint">建议每个角色上传 5-20 秒清晰干声；不要上传未授权真人声音。</p>
             </section>
 
-            <section class="panel">
+            <section class="panel ui-collapsible-panel" data-ui-collapse-key="create-direct-audio">
               <div class="panel-title-row">
                 <div>
                   <h3>直接用提示词生成音频</h3>
@@ -721,19 +727,25 @@
                     <button id="deleteSelectedClip" class="secondary danger" type="button" disabled>删除</button>
                   </div>
                 </div>
-                <div class="editor-clip-tool-strip" aria-label="片段快捷工具">
-                  <button id="copySelectedClip" class="secondary" type="button" disabled>复制</button>
-                  <button id="cutSelectedClip" class="secondary" type="button" disabled>剪切</button>
-                  <button id="pasteClipAtPlayhead" class="secondary" type="button" disabled>粘贴</button>
-                  <button id="toggleSelectedClipMute" class="secondary" type="button" disabled>静音</button>
-                  <button id="fadeInSelectedClip" class="secondary" type="button" disabled>淡入</button>
-                  <button id="fadeOutSelectedClip" class="secondary" type="button" disabled>淡出</button>
-                </div>
-                <div class="editor-clip-inspector" aria-label="片段混音控制">
-                  <label>音量 <input id="selectedClipVolume" type="range" min="0" max="2" step="0.05" value="1" disabled /><span id="selectedClipVolumeLabel">1.00</span></label>
-                  <label>淡入 <input id="selectedClipFadeIn" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeInLabel">0.0s</span></label>
-                  <label>淡出 <input id="selectedClipFadeOut" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeOutLabel">0.0s</span></label>
-                </div>
+                <details class="editor-inline-fold">
+                  <summary>
+                    <span>片段高级工具</span>
+                    <small>复制 / 淡入淡出 / 音量</small>
+                  </summary>
+                  <div class="editor-clip-tool-strip" aria-label="片段快捷工具">
+                    <button id="copySelectedClip" class="secondary" type="button" disabled>复制</button>
+                    <button id="cutSelectedClip" class="secondary" type="button" disabled>剪切</button>
+                    <button id="pasteClipAtPlayhead" class="secondary" type="button" disabled>粘贴</button>
+                    <button id="toggleSelectedClipMute" class="secondary" type="button" disabled>静音</button>
+                    <button id="fadeInSelectedClip" class="secondary" type="button" disabled>淡入</button>
+                    <button id="fadeOutSelectedClip" class="secondary" type="button" disabled>淡出</button>
+                  </div>
+                  <div class="editor-clip-inspector" aria-label="片段混音控制">
+                    <label>音量 <input id="selectedClipVolume" type="range" min="0" max="2" step="0.05" value="1" disabled /><span id="selectedClipVolumeLabel">1.00</span></label>
+                    <label>淡入 <input id="selectedClipFadeIn" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeInLabel">0.0s</span></label>
+                    <label>淡出 <input id="selectedClipFadeOut" type="range" min="0" max="5" step="0.1" value="0" disabled /><span id="selectedClipFadeOutLabel">0.0s</span></label>
+                  </div>
+                </details>
               </div>
 
               <div class="editor-wave-head" aria-label="选区快捷操作">
@@ -967,7 +979,7 @@
                   <button id="deleteSelectionRange" class="secondary danger">独奏选区</button>
                   <button id="addWholeClip" class="secondary">整段加入</button>
                 </div>
-                <details class="timeline-marker-panel" open>
+                <details class="timeline-marker-panel">
                   <summary>标记点 <span id="timelineMarkerCount">0/10</span></summary>
                   <div id="timelineMarkersList" class="timeline-marker-list"></div>
                 </details>
